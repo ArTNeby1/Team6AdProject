@@ -1,0 +1,74 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ DevOpsTest, main ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-security:
+    name: Test & Security Scan
+    runs-on: ubuntu-latest
+      
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip' 
+
+      - name: 安装依赖
+        run: |
+         python3 -m pip install --upgrade pip
+         python3 -m pip install -r requirements_test.txt; 
+         
+      - name: SCA 依赖漏洞扫描
+        run: |
+          python3 -m pip_audit \
+             --requirement requirements.txt \
+             --format json \
+             --output sca-report.json || true
+          
+          cat sca-report.json
+        continue-on-error: true  
+
+      - name: 上传 SCA 报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+         name: sca-report
+         path: sca-report.json
+
+      - name: SAST
+        run: |
+          python3 -m pip install bandit
+          bandit -r . -f json -o sast-report.json || true
+          bandit -r .  # 控制台输出人类可读结果
+        continue-on-error: true
+
+      - name: 上传 SAST 报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sast-report
+          path: sast-report.json
+
+      - name: 测试
+        run: python3 -m pytest test_app.py --junit-xml=results.xml -v
+      - name: 测试
+        run: python3 -m pytest test_app.py --junit-xml=results.xml -v
+
+      - name: 发布测试报告
+        if: always()  # 测试失败也上传
+        uses: mikepenz/action-junit-report@v4
+        with:
+          report_paths: 'results.xml'
+

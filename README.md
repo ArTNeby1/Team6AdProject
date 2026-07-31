@@ -1,1 +1,7 @@
 # Team6AdProject
+1、本地部署jenkins，碰到jenkins版本过低无法安装插件。在网页中下载最新的war包，并找到镜像中的war包地址，使用docker cp命令进行替换，并更新yml文件中的jdk版本为支持当前jenkins的版本；成功后，添加pipeline\pipeline stage view\Git\Docker Pipeline\Junit\timestamper\pipeline utility steps\warnings 插件
+2、本地部署中，遇到pipeline自动构建时缺少python环境,修改yml，添加python镜像并开启Docker Pipeline插件，但是之后发现Jenkins内部缺少docker。
+考虑到后续需要云部署，决定放弃jenkins，采用github action。
+
+创建.github/workflows/ci.yml，加入获取代码、设置python、下载依赖、sca、test节点，并在项目根目录创建生产依赖和测试依赖文件控制版本。
+在添加SCA功能时，出现No module named pip_audit：检查之后发现是SCA用 python3 -m pip，而安装依赖直接用 pip。统一python解释器后校验yml文件格式后成功运行
