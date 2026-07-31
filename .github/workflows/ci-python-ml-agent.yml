@@ -1,8 +1,8 @@
-name: CI Pipeline
+name: ML CI Pipeline
 
 on:
   push:
-    branches: [ DevOpsTest, main ]
+    branches: [ ML, main ]
   pull_request:
     branches: [ main ]
 
