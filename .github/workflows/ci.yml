@@ -36,9 +36,8 @@ jobs:
              --requirement requirements.txt \
              --format json \
              --output sca-report.json || true
-    
-          # 仅告警
-          python3 -m pip_audit --requirement requirements.txt
+          
+          cat sca-report.json
         continue-on-error: true  
 
       - name: 上传 SCA 报告
@@ -47,7 +46,23 @@ jobs:
         with:
          name: sca-report
          path: sca-report.json
-         
+
+      - name: SAST
+        run: |
+          python3 -m pip install bandit
+          bandit -r . -f json -o sast-report.json || true
+          bandit -r .  # 控制台输出人类可读结果
+        continue-on-error: true
+
+      - name: 上传 SAST 报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sast-report
+          path: sast-report.json
+
+      - name: 测试
+        run: python3 -m pytest test_app.py --junit-xml=results.xml -v
       - name: 测试
         run: python3 -m pytest test_app.py --junit-xml=results.xml -v
 
