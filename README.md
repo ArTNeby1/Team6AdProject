@@ -4,3 +4,4 @@
 考虑到后续需要云部署，决定放弃jenkins，采用github action。
 
 创建.github/workflows/ci.yml，加入获取代码、设置python、下载依赖、sca、test节点，并在项目根目录创建生产依赖和测试依赖文件控制版本。
+在添加SCA功能时，出现No module named pip_audit：检查之后发现是
