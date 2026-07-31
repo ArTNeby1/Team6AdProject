@@ -30,7 +30,24 @@ jobs:
           pip install pytest
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
+      - name: SCA 依赖漏洞扫描
+        run: |
+          python3 -m pip_audit \
+             --requirement requirements.txt \
+             --format json \
+             --output sca-report.json || true
+    
+          # 仅告警
+          python3 -m pip_audit --requirement requirements.txt
+          continue-on-error: true  
 
+      - name: 上传 SCA 报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+         name: sca-report
+         path: sca-report.json
+         
       - name: 测试
         run: python3 -m pytest test_app.py --junit-xml=results.xml -v
 
