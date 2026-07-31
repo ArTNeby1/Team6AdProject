@@ -28,7 +28,7 @@ jobs:
       - name: 安装依赖
         run: |
           pip install pytest
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f requirements-test.txt ]; then pip install -r requirements-test.txt; fi
 
       - name: SCA 依赖漏洞扫描
         run: |
