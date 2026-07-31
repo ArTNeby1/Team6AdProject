@@ -28,8 +28,7 @@ jobs:
       - name: 安装依赖
         run: |
          python3 -m pip install --upgrade pip
-         if [ -f requirements-test.txt ]; then 
-         python3 -m pip install -r requirements-test.txt; 
+         python3 -m pip install -r requirements_test.txt; 
          fi
          
       - name: SCA 依赖漏洞扫描
