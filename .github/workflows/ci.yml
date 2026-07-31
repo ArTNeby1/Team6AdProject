@@ -39,7 +39,7 @@ jobs:
     
           # 仅告警
           python3 -m pip_audit --requirement requirements.txt
-          continue-on-error: true  
+        continue-on-error: true  
 
       - name: 上传 SCA 报告
         if: always()
