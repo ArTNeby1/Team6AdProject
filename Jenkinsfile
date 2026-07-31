@@ -1,5 +1,8 @@
 pipeline {
-    agent any // 先在Jenkins本机运行，方便调试
+    agent {
+        docker {
+            image 'python:3.11'
+        } // 先在Jenkins本机运行，方便调试
     
     stages {
         stage('Checkout') {
