@@ -24,11 +24,27 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip' 
+      - name: 生成依赖缓存键
+        id: dep-hash
+        run: |
+            # 将三个依赖文件的内容合并计算SHA256，任一文件变动即失效缓存
+            HASH=$(cat requirements_ml.txt requirements.txt requirements_test.txt | sha256sum | cut -d' ' -f1)
+            echo "hash=$HASH" >> $GITHUB_OUTPUT
+
+      - name: 缓存 pip 依赖
+        uses: actions/cache@v4
+        id: pip-cache
+        with:
+          path: ~/.cache/pip
+          key: pip-ml-${{ runner.os }}-py3.11-${{ steps.dep-hash.outputs.hash }}
+          restore-keys: |
+            pip-ml-${{ runner.os }}-py3.11-
 
       - name: 安装依赖
         run: |
          python3 -m pip install --upgrade pip
-         python3 -m pip install -r requirements_test.txt; 
+         python3 -m pip install -r requirements_ml.txt
+         python3 -m pip install -r requirements_test.txt
          
       - name: SCA 依赖漏洞扫描
         run: |
