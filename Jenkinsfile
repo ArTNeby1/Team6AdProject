@@ -1,5 +1,9 @@
 pipeline {
-    agent any // ← 补全了这里缺失的闭合括号
+    agent {
+        docker {
+            image 'python:3.11'
+        }
+    }
 
     stages {
         stage('Checkout') {
