@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yántú · Sprint 0 UI Wireframes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#161616;
+    --line:#161616;
+    --muted:#5A5A5A;
+    --ink-70:rgba(22,22,22,.72);
+    --ui:'Plus Jakarta Sans',system-ui,sans-serif;
+    --display:'Fraunces',Georgia,serif;
+    --mono:'Space Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--ui);color:var(--ink);background:#fff;-webkit-font-smoothing:antialiased;line-height:1.5}
+  .wrap{max-width:1180px;margin:0 auto;padding:44px 24px 80px}
+
+  /* buttons = pill, avatars = circle, everything else = rectangle, white fill only */
+  .pill{border-radius:999px !important}
+  .circle{border-radius:50% !important}
+
+  .masthead{position:relative;padding:8px 4px 30px;border-bottom:1px solid var(--line);margin-bottom:44px}
+  .brandrow{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+  .brand{font-family:var(--display);font-weight:900;font-size:clamp(38px,6vw,60px);letter-spacing:-.02em;line-height:1}
+  .kicker{font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
+  .lede{max-width:660px;margin-top:16px;font-size:16.5px;color:var(--ink-70)}
+  .lede b{color:var(--ink);font-weight:700}
+  .techstrip{display:flex;flex-wrap:wrap;gap:8px;margin-top:22px}
+  .tech{font-family:var(--mono);font-size:11.5px;font-weight:700;padding:6px 11px;background:#fff;border:1px solid var(--line);color:var(--ink)}
+  .tech i{font-style:normal;color:var(--ink);margin-right:6px}
+  .ribbon{margin-top:30px;width:100%;height:52px;display:block}
+
+  .band{display:flex;align-items:center;gap:14px;margin:46px 0 26px}
+  .band h2{font-family:var(--display);font-weight:600;font-size:24px;letter-spacing:-.01em;white-space:nowrap}
+  .band .rule{height:1px;background:var(--line);flex:1}
+  .band .en2{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:38px 30px}
+  @media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:600px){.grid{grid-template-columns:1fr;gap:44px}}
+
+  .stop{display:flex;flex-direction:column;align-items:center}
+  .phone{width:100%;max-width:296px;aspect-ratio:296/620;background:#fff;border:1.5px solid var(--line);padding:0;position:relative}
+  .screen{width:100%;height:100%;background:#fff;overflow:hidden;position:relative;display:flex;flex-direction:column}
+  .notch{display:none}
+  .statusbar{display:flex;justify-content:space-between;align-items:center;padding:11px 16px 6px;font-size:11px;font-weight:700;color:var(--ink);flex:0 0 auto;border-bottom:1px solid var(--line)}
+  .statusbar .dots{letter-spacing:1px;font-family:var(--mono)}
+
+  .body{flex:1;overflow:hidden;position:relative}
+
+  .appbar{display:flex;align-items:center;gap:10px;padding:10px 16px 10px}
+  .appbar .back{width:34px;height:26px;background:#fff;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--ink);font-size:15px;font-weight:700}
+  .appbar .ttl{font-weight:700;font-size:15.5px}
+  .appbar .sp{flex:1}
+  .appbar .ic{height:26px;padding:0 14px;background:#fff;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--ink);font-size:11px;font-weight:700}
+
+  .h-hello{font-family:var(--display);font-weight:600;font-size:19px;padding:8px 16px 2px}
+  .h-sub{font-size:12px;color:var(--muted);padding:0 16px 10px}
+  .search{margin:2px 16px 12px;background:#fff;border:1px solid var(--line);padding:11px 13px;color:var(--muted);font-size:12.5px}
+
+  .cta{margin:2px 16px 14px;background:#fff;border:1px solid var(--line);padding:15px 16px;color:var(--ink)}
+  .cta .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .cta .t{font-size:14.5px;font-weight:700;margin-top:5px;line-height:1.35}
+  .cta .btn{margin-top:12px;display:inline-flex;align-items:center;gap:6px;background:#fff;border:1.5px solid var(--line);color:var(--ink);font-weight:700;font-size:12.5px;padding:8px 16px}
+
+  .secttl{display:flex;align-items:center;justify-content:space-between;padding:6px 16px 8px;font-size:13px;font-weight:700}
+  .secttl a{color:var(--muted);font-size:11px;font-weight:600}
+
+  .trip{margin:0 16px 14px;display:flex;gap:11px;background:#fff;border:1px solid var(--line);padding:10px}
+  .trip .thumb{width:64px;height:64px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:10px;font-weight:700;text-align:center;background:#fff;border:1px solid var(--line)}
+  .trip .meta .nm{font-weight:700;font-size:13.5px}
+  .trip .meta .dsc{font-size:11px;color:var(--muted);margin-top:3px}
+  .trip .meta .go{margin-top:7px;font-size:11px;color:var(--ink);font-weight:700}
+  .bar{height:8px;border:1px solid var(--line);background:#fff;margin-top:7px;overflow:hidden}
+  .bar i{display:block;height:100%;width:60%;background:#fff;border-right:1.5px solid var(--line)}
+
+  .hscroll{display:flex;gap:10px;padding:2px 16px 8px;overflow:hidden}
+  .dest{flex:0 0 108px;background:#fff;border:1px solid var(--line);overflow:hidden}
+  .dest .img{height:74px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-weight:700;font-size:12px;background:#fff;border-bottom:1px solid var(--line)}
+  .dest .cap{background:#fff;padding:7px 9px;font-size:10px;color:var(--muted)}
+
+  .nav{flex:0 0 auto;display:flex;justify-content:space-around;align-items:center;padding:11px 8px 14px;border-top:1px solid var(--line);background:#fff}
+  .nav .n{font-size:11px;color:var(--muted);font-weight:600}
+  .nav .n.on{color:var(--ink);font-weight:800}
+
+  .paste{margin:4px 16px 12px;border:1px dashed var(--line);background:#fff;padding:12px}
+  .paste .src{font-size:10.5px;color:var(--ink);font-weight:700;margin-bottom:7px}
+  .paste .txt{font-size:11.5px;color:var(--ink);line-height:1.55}
+  .runbtn{margin:0 16px 14px;background:#fff;border:1.5px solid var(--line);color:var(--ink);text-align:center;font-weight:700;font-size:13px;padding:12px}
+  .agentline{margin:2px 16px 10px;font-size:11px;color:var(--muted);line-height:1.5}
+  .exlist{margin:0 16px}
+  .exrow{display:flex;align-items:center;gap:9px;padding:10px 12px;border:1px solid var(--line);margin-bottom:8px;background:#fff}
+  .exrow .nm{flex:1;font-size:12.5px;font-weight:600}
+  .tag-ok{font-size:9.5px;font-weight:700;color:var(--ink);background:#fff;padding:3px 8px;border:1px solid var(--line)}
+  .tag-warn{font-size:9.5px;font-weight:700;color:var(--ink);background:#fff;padding:3px 8px;border:1px dashed var(--line)}
+
+  .hero-img{height:120px;display:flex;flex-direction:column;justify-content:flex-end;padding:14px 16px;color:var(--ink);background:#fff;border:1px solid var(--line);margin:12px 16px 0}
+  .hero-img .nm{font-family:var(--display);font-weight:600;font-size:20px;line-height:1.15}
+  .hero-img .en{font-size:11px;color:var(--muted);margin-top:2px}
+  .metarow{display:flex;gap:8px;padding:12px 16px 8px;flex-wrap:wrap}
+  .chip{font-size:10.5px;font-weight:600;color:var(--ink);background:#fff;padding:5px 10px;border:1px solid var(--line)}
+  .desc{padding:2px 16px 12px;font-size:11.5px;color:var(--ink-70);line-height:1.6}
+  .cmt-h{padding:2px 16px 8px;font-weight:700;font-size:12.5px}
+  .cmt{margin:0 16px 9px;display:flex;gap:9px}
+  .cmt .ava{width:26px;height:26px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;color:var(--ink);font-size:11px;font-weight:700;background:#fff;border:1px solid var(--line)}
+  .cmt .c-nm{font-size:11px;font-weight:700}
+  .cmt .c-st{font-family:var(--mono);font-size:10px;color:var(--muted);font-weight:700}
+  .cmt .c-tx{font-size:11px;color:var(--ink-70);margin-top:2px;line-height:1.5}
+  .writebtn{margin:2px 16px 10px;border:1px solid var(--line);text-align:center;font-size:11.5px;font-weight:600;color:var(--ink);padding:9px;background:#fff}
+  .sticky{margin-top:auto;padding:11px 16px;border-top:1px solid var(--line);background:#fff}
+  .sticky .add{background:#fff;border:1.5px solid var(--line);color:var(--ink);text-align:center;font-weight:700;font-size:13.5px;padding:12px}
+
+  .aibadge{margin:4px 16px 12px;background:#fff;border:1px solid var(--line);padding:9px 12px}
+  .aibadge .t{font-size:11px;font-weight:700;color:var(--ink)}
+  .daytabs{display:flex;gap:7px;padding:0 16px 12px}
+  .daytab{font-size:11px;font-weight:700;padding:7px 14px;background:#fff;border:1px solid var(--line);color:var(--muted)}
+  .daytab.on{color:var(--ink);border-width:1.5px;font-weight:800}
+  .timeline{padding:0 16px;position:relative}
+  .tl-row{display:flex;gap:11px}
+  .tl-left{width:38px;flex:0 0 auto;display:flex;flex-direction:column;align-items:center}
+  .tl-node{width:24px;height:24px;background:#fff;border:1px solid var(--line);color:var(--ink);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;z-index:2}
+  .tl-node.cur{border-width:2px}
+  .tl-line{width:1px;flex:1;background:repeating-linear-gradient(var(--ink) 0 4px,transparent 4px 8px);min-height:26px;margin:2px 0}
+  .tl-card{flex:1;background:#fff;border:1px solid var(--line);padding:9px 11px;margin-bottom:4px}
+  .tl-card .tm{font-family:var(--mono);font-size:10px;color:var(--ink);font-weight:700}
+  .tl-card .pl{font-size:12.5px;font-weight:700;margin-top:2px}
+  .tl-card .du{font-size:10px;color:var(--muted);margin-top:2px}
+  .tl-travel{font-size:9.5px;color:var(--muted);padding:3px 0 5px}
+  .rt-actions{margin-top:auto;padding:11px 16px;border-top:1px solid var(--line);background:#fff;display:flex;gap:8px}
+  .rt-actions .pri{flex:1;background:#fff;border:1.5px solid var(--line);color:var(--ink);text-align:center;font-weight:700;font-size:12.5px;padding:11px}
+  .rt-actions .sec{flex:1;background:#fff;color:var(--ink);text-align:center;font-weight:700;font-size:12.5px;padding:11px;border:1px solid var(--line)}
+
+  .mapwrap{flex:1;position:relative;overflow:hidden}
+  .mapwrap svg{width:100%;height:100%;display:block}
+  .map-pill{position:absolute;top:12px;left:50%;transform:translateX(-50%);background:#fff;padding:6px 14px;font-size:11px;font-weight:700;display:flex;gap:10px;border:1px solid var(--line)}
+  .map-pill span{color:var(--muted)}.map-pill span.on{color:var(--ink)}
+  .sheet{position:absolute;left:0;right:0;bottom:0;background:#fff;padding:12px 16px 14px;border-top:1px solid var(--line)}
+  .sheet .grab{width:34px;height:3px;background:var(--line);margin:0 auto 10px}
+  .sheet .st{display:flex;justify-content:space-between;align-items:baseline}
+  .sheet .st .d{font-weight:700;font-size:13px}
+  .sheet .st .n{font-family:var(--mono);font-size:11px;color:var(--ink);font-weight:700}
+  .sheet .mini{display:flex;gap:6px;margin-top:9px}
+  .sheet .mini b{flex:1;text-align:center;font-size:9px;color:var(--muted);background:#fff;border:1px solid var(--line);padding:6px 4px;font-weight:600}
+  .sheet .mini b i{display:block;font-style:normal;color:var(--ink);font-size:12px;font-weight:700;margin-bottom:1px}
+
+  .hint{margin:4px 16px 12px;font-size:10.5px;color:var(--muted);background:#fff;border:1px solid var(--line);padding:9px 11px;line-height:1.5}
+  .edrow{display:flex;align-items:center;gap:10px;margin:0 16px 9px;background:#fff;border:1px solid var(--line);padding:11px}
+  .edrow .grip{color:var(--muted);font-size:15px}
+  .edrow .num{width:22px;height:22px;background:#fff;color:var(--ink);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;border:1px solid var(--line)}
+  .edrow .nm{flex:1;font-size:12.5px;font-weight:600}
+  .edrow .tm{font-family:var(--mono);font-size:10px;color:var(--muted)}
+  .edrow .del{color:var(--ink);font-size:14px;font-weight:700}
+  .addbtn{margin:2px 16px 10px;border:1.5px dashed var(--line);text-align:center;color:var(--ink);font-weight:700;font-size:12px;padding:11px;background:#fff}
+
+  .cap-num{margin-top:16px;width:30px;height:30px;background:#fff;border:1.5px solid var(--line);color:var(--ink);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-weight:700;font-size:13px}
+  .cap-t{margin-top:9px;font-weight:700;font-size:14.5px;text-align:center}
+  .cap-en{font-family:var(--mono);font-size:10px;letter-spacing:.05em;color:var(--muted);text-align:center;margin-top:3px}
+  .cap-tags{display:flex;flex-wrap:wrap;gap:5px;justify-content:center;margin-top:9px;max-width:260px}
+  .ctag{font-size:9.5px;font-weight:700;padding:3px 8px;background:#fff;border:1px solid var(--line);color:var(--ink)}
+
+  .browser{background:#fff;border:1px solid var(--line);overflow:hidden}
+  .chrome{display:flex;align-items:center;gap:8px;padding:11px 14px;background:#fff;border-bottom:1px solid var(--line)}
+  .chrome .dot{width:10px;height:10px;background:#fff;border:1px solid var(--line)}
+  .chrome .url{margin-left:10px;flex:1;background:#fff;padding:6px 12px;font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid var(--line)}
+  .admin{display:grid;grid-template-columns:170px 1fr;min-height:420px}
+  @media(max-width:640px){.admin{grid-template-columns:1fr}}
+  .side{background:#fff;color:var(--ink);padding:18px 14px;border-right:1px solid var(--line)}
+  .side .lg{font-family:var(--display);font-weight:900;font-size:18px;color:var(--ink);margin-bottom:20px}
+  .side .mi{font-size:12.5px;padding:8px 12px;margin-bottom:6px;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:999px}
+  .side .mi.on{color:var(--ink);font-weight:700;border-width:1.5px}
+  .main{padding:20px 22px;background:#fff}
+  .main h3{font-family:var(--display);font-weight:600;font-size:19px;margin-bottom:3px}
+  .main .subh{font-size:12px;color:var(--muted);margin-bottom:18px}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+  @media(max-width:560px){.kpis{grid-template-columns:repeat(2,1fr)}}
+  .kpi{background:#fff;border:1px solid var(--line);padding:13px 14px}
+  .kpi .l{font-size:11px;color:var(--muted);font-weight:600}
+  .kpi .v{font-family:var(--display);font-weight:600;font-size:24px;margin-top:5px}
+  .kpi .t{font-family:var(--mono);font-size:10px;font-weight:700;margin-top:4px;color:var(--muted)}
+  .panels{display:grid;grid-template-columns:1.5fr 1fr;gap:14px}
+  @media(max-width:560px){.panels{grid-template-columns:1fr}}
+  .panel{background:#fff;border:1px solid var(--line);padding:15px}
+  .panel .pt{font-weight:700;font-size:13px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center}
+  .panel .pt .lgd{font-family:var(--mono);font-size:10px;color:var(--muted)}
+  .chart{display:flex;align-items:flex-end;gap:9px;height:120px}
+  .chart .col{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px}
+  .chart .col .bk{width:100%;background:#fff;border:1px solid var(--line)}
+  .chart .col .bk.amb{border-width:1.5px}
+  .chart .col .lb{font-family:var(--mono);font-size:9px;color:var(--muted)}
+  .rows .r{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:12px}
+  .rows .r:last-child{border-bottom:0}
+  .rows .r .nm{flex:1;font-weight:600}
+  .rows .r .mut{color:var(--muted);font-size:11px;font-weight:400}
+  .rows .r .ok{font-size:10px;font-weight:700;color:var(--ink);background:#fff;padding:4px 11px;border:1px solid var(--line);border-radius:999px}
+  .rows .r .rj{font-size:10px;font-weight:700;color:var(--ink);background:#fff;padding:4px 11px;border:1px dashed var(--line);border-radius:999px}
+
+  .legend{margin-top:52px;background:#fff;border:1px solid var(--line);padding:24px 26px}
+  .legend h4{font-family:var(--display);font-weight:600;font-size:18px;margin-bottom:4px}
+  .legend .sh{font-size:12.5px;color:var(--muted);margin-bottom:18px}
+  .legrid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
+  @media(max-width:820px){.legrid{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:480px){.legrid{grid-template-columns:1fr}}
+  .leg{border-left:3px solid var(--line);padding-left:12px}
+  .leg .tt{font-weight:800;font-size:13px}
+  .leg .en{font-family:var(--mono);font-size:9.5px;color:var(--muted);letter-spacing:.04em;margin:2px 0 6px}
+  .leg .ds{font-size:11.5px;color:var(--ink-70);line-height:1.5}
+
+  .foot{margin-top:30px;text-align:center;font-size:12px;color:var(--muted)}
+  .foot b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="kicker">Sprint 0 · Prototype Screens · UI Wireframes</div>
+    <div class="brandrow"><div class="brand">Yántú</div></div>
+    <p class="lede">Paste a travel post and AI <b>extracts the places, pins them on a map, and threads them into an optimized route</b> — then edit it live and share in a tap. Below is the core user journey; each screen maps to one use case from the diagram.</p>
+    <div class="techstrip">
+      <span class="tech"><i>◆</i>Mobile · Android</span>
+      <span class="tech"><i>◆</i>Web · Admin</span>
+      <span class="tech"><i>◆</i>Agentic AI</span>
+      <span class="tech"><i>◆</i>Machine Learning</span>
+      <span class="tech"><i>◆</i>Data Visualisation</span>
+    </div>
+    <svg class="ribbon" viewBox="0 0 1100 52" fill="none" preserveAspectRatio="none">
+      <path d="M10 40 C 180 40, 220 12, 380 12 S 620 40, 780 40 S 1000 14, 1090 14" stroke="#161616" stroke-width="1.5" stroke-dasharray="2 7" stroke-linecap="round"/>
+      <rect x="5" y="35" width="10" height="10" fill="#fff" stroke="#161616"/>
+      <rect x="375" y="7" width="10" height="10" fill="#fff" stroke="#161616"/>
+      <rect x="775" y="35" width="10" height="10" fill="#fff" stroke="#161616"/>
+      <rect x="1085" y="9" width="10" height="10" fill="#fff" stroke="#161616"/>
+    </svg>
+  </header>
+
+  <div class="band"><h2>Traveler App</h2><span class="en2">Mobile · Traveler App</span><span class="rule"></span></div>
+
+  <div class="grid">
+
+    <!-- 1 HOME -->
+    <div class="stop">
+      <div class="phone"><div class="screen"><div class="notch"></div>
+        <div class="statusbar"><span>9:41</span><span class="dots">4G ▮</span></div>
+        <div class="body">
+          <div class="h-hello">Where to next?</div>
+          <div class="h-sub">Singapore · Sunny 31°</div>
+          <div class="search">Search destinations or places</div>
+          <div class="cta">
+            <div class="k">AI Planner</div>
+            <div class="t">Paste a post, AI builds your itinerary</div>
+            <div class="btn pill">+ Import guide</div>
+          </div>
+          <div class="secttl"><span>My trips</span><a>All</a></div>
+          <div class="trip">
+            <div class="thumb">Chiang<br>Mai</div>
+            <div class="meta">
+              <div class="nm">Chiang Mai · 3 days</div>
+              <div class="dsc">Day 1 / 4 stops · planning</div>
+              <div class="bar"><i></i></div>
+              <div class="go">Resume planning →</div>
+            </div>
+          </div>
+          <div class="secttl"><span>Popular destinations</span></div>
+          <div class="hscroll">
+            <div class="dest"><div class="img">Chiang Mai</div><div class="cap">Temples · Markets</div></div>
+            <div class="dest"><div class="img">Bangkok</div><div class="cap">City · River</div></div>
+            <div class="dest"><div class="img">Bali</div><div class="cap">Island</div></div>
+          </div>
+        </div>
+        <div class="nav">
+          <div class="n on">Home</div><div class="n">Trips</div><div class="n">Map</div><div class="n">Me</div>
+        </div>
+      </div></div>
+      <div class="cap-num">1</div>
+      <div class="cap-t">Home</div>
+      <div class="cap-en">Home / Discover</div>
+      <div class="cap-tags"><span class="ctag">Entry point</span></div>
+    </div>
+
+    <!-- 2 IMPORT -->
+    <div class="stop">
+      <div class="phone"><div class="screen"><div class="notch"></div>
+        <div class="statusbar"><span>9:41</span><span class="dots">4G ▮</span></div>
+        <div class="body">
+          <div class="appbar"><div class="back">‹</div><div class="ttl">Import guide</div></div>
+          <div class="paste">
+            <div class="src">Pasted · travel blog</div>
+            <div class="txt">Chiang Mai in 3 days — full guide. Day 1: Wat Chedi Luang → Tha Phae Gate → Nimman → Sunday Market. A must for temple lovers…</div>
+          </div>
+          <div class="runbtn pill">Extract places with AI</div>
+          <div class="agentline">AI Agent found 4 places, validating locations…</div>
+          <div class="exlist">
+            <div class="exrow"><span class="nm">Wat Chedi Luang</span><span class="tag-ok">Located</span></div>
+            <div class="exrow"><span class="nm">Tha Phae Gate</span><span class="tag-ok">Located</span></div>
+            <div class="exrow"><span class="nm">Nimman Road</span><span class="tag-ok">Located</span></div>
+            <div class="exrow"><span class="nm">Sunday Market</span><span class="tag-warn">Check hours</span></div>
+          </div>
+        </div>
+      </div></div>
+      <div class="cap-num">2</div>
+      <div class="cap-t">Import + AI extract</div>
+      <div class="cap-en">Import Guide · Extract · Validate</div>
+      <div class="cap-tags"><span class="ctag">Import Guide</span><span class="ctag">Extract Travel</span><span class="ctag">Validate Locations</span></div>
+    </div>
+
+    <!-- 3 ATTRACTION -->
+    <div class="stop">
+      <div class="phone"><div class="screen"><div class="notch"></div>
+        <div class="statusbar"><span>9:41</span><span class="dots">4G ▮</span></div>
+        <div class="body" style="display:flex;flex-direction:column">
+          <div class="hero-img">
+            <div class="nm">Wat Chedi Luang</div>
+            <div class="en">Temple · Old City, Chiang Mai</div>
+          </div>
+          <div class="metarow">
+            <span class="chip">4.7 / 5</span>
+            <span class="chip">Temple</span>
+            <span class="chip">Free</span>
+            <span class="chip">~1.5h</span>
+          </div>
+          <div class="desc">An ancient temple at the heart of Chiang Mai's Old City. This 14th-century Lanna-era ruin is known for its massive chedi and the evening chanting. Open 08:00–17:00.</div>
+          <div class="cmt-h">Reviews · 128</div>
+          <div class="cmt"><span class="ava circle">L</span><div><div class="c-nm">Lin <span class="c-st">5.0</span></div><div class="c-tx">Go at dusk — fewer people and beautiful light.</div></div></div>
+          <div class="cmt"><span class="ava circle">A</span><div><div class="c-nm">Aiko <span class="c-st">4.0</span></div><div class="c-tx">Shoes off inside; wear long trousers.</div></div></div>
+          <div class="writebtn pill">+ Write a review</div>
+          <div class="sticky"><div class="add pill">+ Add to trip</div></div>
+        </div>
+      </div></div>
+      <div class="cap-num">3</div>
+      <div class="cap-t">Attraction + reviews</div>
+      <div class="cap-en">Attraction Info · Comment</div>
+      <div class="cap-tags"><span class="ctag">View Attraction</span><span class="ctag">Comment</span></div>
+    </div>
+
+    <!-- 4 ROUTE -->
+    <div class="stop">
+      <div class="phone"><div class="screen"><div class="notch"></div>
+        <div class="statusbar"><span>9:41</span><span class="dots">4G ▮</span></div>
+        <div class="body" style="display:flex;flex-direction:column">
+          <div class="appbar"><div class="back">‹</div><div class="ttl">Chiang Mai · 3 days</div><div class="sp"></div><div class="ic pill">Share</div></div>
+          <div class="aibadge"><span class="t">AI-optimized route · saves 40 min of travel vs. the original order</span></div>
+          <div class="daytabs"><span class="daytab pill on">Day 1</span><span class="daytab pill">Day 2</span><span class="daytab pill">Day 3</span></div>
+          <div class="timeline">
+            <div class="tl-row"><div class="tl-left"><div class="tl-node cur">1</div><div class="tl-line"></div></div><div class="tl-card"><div class="tm">09:00</div><div class="pl">Wat Chedi Luang</div><div class="du">Visit ~1.5h</div></div></div>
+            <div class="tl-travel" style="padding-left:49px">Walk · 8 min</div>
+            <div class="tl-row"><div class="tl-left"><div class="tl-node">2</div><div class="tl-line"></div></div><div class="tl-card"><div class="tm">11:00</div><div class="pl">Tha Phae Gate</div><div class="du">Visit ~1h</div></div></div>
+            <div class="tl-travel" style="padding-left:49px">Taxi · 12 min</div>
+            <div class="tl-row"><div class="tl-left"><div class="tl-node">3</div><div class="tl-line"></div></div><div class="tl-card"><div class="tm">13:00</div><div class="pl">Nimman · Lunch</div><div class="du">~1.5h</div></div></div>
+            <div class="tl-travel" style="padding-left:49px">Taxi · 15 min</div>
+            <div class="tl-row"><div class="tl-left"><div class="tl-node">4</div></div><div class="tl-card"><div class="tm">17:00</div><div class="pl">Sunday Market</div><div class="du">~2h</div></div></div>
+          </div>
+          <div class="rt-actions"><div class="pri pill">View on map</div><div class="sec pill">Edit trip</div></div>
+        </div>
+      </div></div>
+      <div class="cap-num">4</div>
+      <div class="cap-t">Generate + optimize route</div>
+      <div class="cap-en">Generate · Optimise Route</div>
+      <div class="cap-tags"><span class="ctag">ML · route optimization</span><span class="ctag">AI Agent</span></div>
+    </div>
+
+    <!-- 5 MAP -->
+    <div class="stop">
+      <div class="phone"><div class="screen"><div class="notch"></div>
+        <div class="statusbar"><span>9:41</span><span class="dots">4G ▮</span></div>
+        <div class="body" style="display:flex;flex-direction:column">
+          <div class="mapwrap">
+            <svg viewBox="0 0 296 500" preserveAspectRatio="xMidYMid slice">
+              <rect width="296" height="500" fill="#fff"/>
+              <path d="M-20 60 Q 120 40 320 90" fill="none" stroke="#CFCFCF" stroke-width="10"/>
+              <path d="M40 -10 L120 520" stroke="#DADADA" stroke-width="8" fill="none"/>
+              <path d="M250 -10 L180 520" stroke="#DADADA" stroke-width="8" fill="none"/>
+              <path d="M-10 300 L310 250" stroke="#DADADA" stroke-width="7" fill="none"/>
+              <path d="M78 150 C 120 180, 150 190, 190 210 S 200 300, 150 330 S 120 400, 200 420"
+                    fill="none" stroke="#161616" stroke-width="2.5" stroke-dasharray="3 8" stroke-linecap="round"/>
+              <g font-family="'Space Mono',monospace" font-weight="700" font-size="13" fill="#161616" text-anchor="middle">
+                <rect x="64" y="136" width="28" height="28" fill="#fff" stroke="#161616" stroke-width="2.5"/><text x="78" y="155">1</text>
+                <rect x="177" y="197" width="26" height="26" fill="#fff" stroke="#161616"/><text x="190" y="215">2</text>
+                <rect x="137" y="317" width="26" height="26" fill="#fff" stroke="#161616"/><text x="150" y="335">3</text>
+                <rect x="187" y="407" width="26" height="26" fill="#fff" stroke="#161616"/><text x="200" y="425">4</text>
+              </g>
+            </svg>
+            <div class="map-pill"><span class="on">Day 1</span><span>Day 2</span><span>Day 3</span></div>
+            <div class="sheet">
+              <div class="grab"></div>
+              <div class="st"><span class="d">Day 1 route</span><span class="n">4 stops</span></div>
+              <div class="mini">
+                <b><i>12.3</i>km total</b>
+                <b><i>~3.2</i>h transit</b>
+                <b><i>35</i>min drive</b>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+      <div class="cap-num">5</div>
+      <div class="cap-t">Route on map</div>
+      <div class="cap-en">Visualize on Map · Calculate Route</div>
+      <div class="cap-tags"><span class="ctag">Visualize on Map</span><span class="ctag">Data Viz</span></div>
+    </div>
+
+    <!-- 6 EDIT -->
+    <div class="stop">
+      <div class="phone"><div class="screen"><div class="notch"></div>
+        <div class="statusbar"><span>9:41</span><span class="dots">4G ▮</span></div>
+        <div class="body" style="display:flex;flex-direction:column">
+          <div class="appbar"><div class="back">‹</div><div class="ttl">Edit · Day 1</div></div>
+          <div class="hint">Hold ☰ to reorder. When you add or remove a stop, AI recalculates the route and timing.</div>
+          <div class="edrow"><span class="grip">☰</span><span class="num">1</span><span class="nm">Wat Chedi Luang</span><span class="tm">09:00</span><span class="del">✕</span></div>
+          <div class="edrow"><span class="grip">☰</span><span class="num">2</span><span class="nm">Tha Phae Gate</span><span class="tm">11:00</span><span class="del">✕</span></div>
+          <div class="edrow"><span class="grip">☰</span><span class="num">3</span><span class="nm">Nimman · Lunch</span><span class="tm">13:00</span><span class="del">✕</span></div>
+          <div class="edrow"><span class="grip">☰</span><span class="num">4</span><span class="nm">Sunday Market</span><span class="tm">17:00</span><span class="del">✕</span></div>
+          <div class="addbtn pill">+ Add a place</div>
+          <div class="rt-actions"><div class="pri pill">Save trip</div><div class="sec pill">Share</div></div>
+        </div>
+      </div></div>
+      <div class="cap-num">6</div>
+      <div class="cap-t">Edit + share</div>
+      <div class="cap-en">Edit Itinerary · Share Plans</div>
+      <div class="cap-tags"><span class="ctag">Edit Itinerary</span><span class="ctag">Share Plans</span></div>
+    </div>
+
+  </div>
+
+  <div class="band"><h2>Admin Console</h2><span class="en2">Web · Admin Console</span><span class="rule"></span></div>
+
+  <div class="browser">
+    <div class="chrome">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="url">admin.yantu.app / dashboard</span>
+    </div>
+    <div class="admin">
+      <div class="side">
+        <div class="lg">Yántú · Admin</div>
+        <div class="mi on">Overview</div>
+        <div class="mi">Users</div>
+        <div class="mi">Content review</div>
+        <div class="mi">Places</div>
+        <div class="mi">Reports</div>
+      </div>
+      <div class="main">
+        <h3>Platform overview</h3>
+        <div class="subh">Monitor platform activity · Manage users &amp; content · Last 7 days</div>
+        <div class="kpis">
+          <div class="kpi"><div class="l">Active users</div><div class="v">3,482</div><div class="t">▲ 12.4%</div></div>
+          <div class="kpi"><div class="l">Trips generated</div><div class="v">1,207</div><div class="t">▲ 8.1%</div></div>
+          <div class="kpi"><div class="l">Guides imported</div><div class="v">964</div><div class="t">▲ 20.6%</div></div>
+          <div class="kpi"><div class="l">Pending review</div><div class="v">23</div><div class="t">Needs action</div></div>
+        </div>
+        <div class="panels">
+          <div class="panel">
+            <div class="pt">Active users · last 7 days <span class="lgd">Data Visualisation</span></div>
+            <div class="chart">
+              <div class="col"><div class="bk" style="height:52%"></div><div class="lb">Mo</div></div>
+              <div class="col"><div class="bk" style="height:63%"></div><div class="lb">Tu</div></div>
+              <div class="col"><div class="bk" style="height:48%"></div><div class="lb">We</div></div>
+              <div class="col"><div class="bk" style="height:78%"></div><div class="lb">Th</div></div>
+              <div class="col"><div class="bk" style="height:70%"></div><div class="lb">Fr</div></div>
+              <div class="col"><div class="bk amb" style="height:96%"></div><div class="lb">Sa</div></div>
+              <div class="col"><div class="bk amb" style="height:88%"></div><div class="lb">Su</div></div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="pt">Content to review</div>
+            <div class="rows">
+              <div class="r"><span class="nm">Chiang Mai city guide<div class="mut">Guide · @lin</div></span><span class="ok">Approve</span></div>
+              <div class="r"><span class="nm">Wat Suan Dok (new place)<div class="mut">Place · needs geocoding</div></span><span class="ok">Approve</span></div>
+              <div class="r"><span class="nm">Spam ad comment<div class="mut">Comment · 3 reports</div></span><span class="rj">Reject</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div style="text-align:center;margin-top:14px;font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;color:var(--muted)">
+    Admin · Monitor Platform Activities · Manage Users &amp; Content Data
+  </div>
+
+  <div class="legend">
+    <h4>Screens ↔ AD tech requirements</h4>
+    <div class="sh">The brief (p.7) requires integrating 5 technologies through one common backend. Here's how each screen covers them:</div>
+    <div class="legrid">
+      <div class="leg"><div class="tt">Mobile / Web</div><div class="en">Android + Admin Web</div><div class="ds">Traveler mobile app (screens 1–6) + admin web. Users split naturally into travelers on mobile and operators on desktop.</div></div>
+      <div class="leg"><div class="tt">Agentic AI</div><div class="en">AI Agent</div><div class="ds">Extracts places from guides, validates locations, optimizes routes (screens 2, 4) — the AI Agent from the use case diagram.</div></div>
+      <div class="leg"><div class="tt">Machine Learning</div><div class="en">Route / NLP</div><div class="ds">NLP place extraction, route-order optimization, travel-time prediction (screens 2, 4).</div></div>
+      <div class="leg"><div class="tt">Data Visualisation</div><div class="en">Map + Dashboard</div><div class="ds">Route on map (screen 5) + admin charts. Note: the demo must distinguish report vs. dashboard.</div></div>
+      <div class="leg"><div class="tt">Common Backend</div><div class="en">Spring Boot + MySQL</div><div class="ds">All clients share one backend API — a work-as-a-whole, with one component deployed on the cloud.</div></div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <b>Yántú</b> · Sprint 0 wireframe — layout only, not the final visual design or build.<br>
+    Use for the "Prototype Screens" item in the Product Vision Showcase, and carry into Sprint 1 UI design.
+  </div>
+
+</div>
+</body>
+</html>
