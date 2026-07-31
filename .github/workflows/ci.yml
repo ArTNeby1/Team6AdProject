@@ -1,0 +1,42 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ DevOpsTest, main ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-security:
+    name: Test & Security Scan
+    runs-on: ubuntu-latest
+      
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip' 
+
+      - name: 安装依赖
+        run: |
+          pip install pytest
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+
+      - name: 测试
+        run: python3 -m pytest test_app.py --junit-xml=results.xml -v
+
+      - name: 发布测试报告
+        if: always()  # 测试失败也上传
+        uses: mikepenz/action-junit-report@v4
+        with:
+          report_paths: 'results.xml'
+
