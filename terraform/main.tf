@@ -12,7 +12,7 @@ terraform {
     }
   }
 
-  # 使用 S3 存储 Terraform 状态（多团队协作必需）
+  # 使用 S3 存储 Terraform 状态
   # 修改 region 时需与 provider 保持同步
   backend "s3" {
     bucket         = "adproject-terraform-998976076574-ap-southeast-1-an"
