@@ -137,6 +137,9 @@ jobs:
 
       - name: 设置 Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container   # ← 关键：切换到支持 GHA cache 的 driver
+          install: true
         
       - name: Docker 镜像元数据
         id: meta
