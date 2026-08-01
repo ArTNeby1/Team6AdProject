@@ -35,9 +35,10 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.11.4"
-
-      - name: Debug ARN
-        run: echo "The ARN is ${{ secrets.AWS_IAC_ROLE_ARN }}"
+      - name: Debug OIDC Token
+        run: |
+          echo "The OIDC token audience is:"
+          echo $ACTIONS_ID_TOKEN_REQUEST_TOKEN | jq -R 'split(".") | .[1] | @base64d | fromjson | .aud'
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -101,8 +102,23 @@ jobs:
         with:
           terraform_version: "1.11.4"
 
-      - name: Debug ARN
-        run: echo "The ARN is ${{ secrets.AWS_IAC_ROLE_ARN }}"
+      - name: DEBUG - print OIDC token claims
+        run: |
+            RESP=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")
+            TOKEN=$(echo "$RESP" | jq -r .value)
+            echo "=== TOKEN LENGTH: ${#TOKEN} ==="
+            if [ "${#TOKEN}" -lt 10 ]; then
+              echo "=== TOKEN NOT ISSUED! Check permissions/environment ==="
+              echo "=== RAW RESPONSE: $RESP ==="
+              exit 1
+            fi
+            PAYLOAD=$(echo "$TOKEN" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null)
+            echo "=== iss: $(echo "$PAYLOAD" | jq -r .iss) ==="
+            echo "=== aud: $(echo "$PAYLOAD" | jq -r .aud) ==="
+            echo "=== sub: $(echo "$PAYLOAD" | jq -r .sub) ==="
+            echo "=== ROLE ARN length: ${{ length(secrets.AWS_IAC_ROLE_ARN) }} ==="
+            echo "=== ROLE ARN set: ${{ secrets.AWS_IAC_ROLE_ARN && 'YES' || 'NO' }} ==="
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
