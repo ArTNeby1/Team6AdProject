@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.5.0"
+  required_version = ">= 1.9.0"
 
   required_providers {
     aws = {
@@ -15,9 +15,9 @@ terraform {
   # 使用 S3 存储 Terraform 状态（多团队协作必需）
   # 修改 region 时需与 provider 保持同步
   backend "s3" {
-    bucket         = "ADPROJECT-Terraform-590183790873-US-East-1-an"
+    bucket         = "adproject-terraform-998976076574-ap-southeast-1-an"
     key            = "prod/terraform.tfstate"
-    region         = "us-east-1"
+    region         = "ap-southeast-1"
     encrypt        = true
     use_lockfile   = true
   }

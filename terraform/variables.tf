@@ -1,13 +1,13 @@
 variable "aws_region" {
   description = "AWS 区域"
   type        = string
-  default     = "us-east-1"
+  default     = "ap-southeast-1"
 }
 
 variable "aws_account_id" {
   description = "AWS 账户 ID（12 位数字），用于防止误操作到其他账户"
   type        = string
-  default     = "590183790873"
+  default     = "998976076574"
 }
 
 variable "project_name" {
