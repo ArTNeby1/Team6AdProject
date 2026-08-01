@@ -117,7 +117,6 @@ jobs:
             echo "=== iss: $(echo "$PAYLOAD" | jq -r .iss) ==="
             echo "=== aud: $(echo "$PAYLOAD" | jq -r .aud) ==="
             echo "=== sub: $(echo "$PAYLOAD" | jq -r .sub) ==="
-            echo "=== ROLE ARN length: ${{ length(secrets.AWS_IAC_ROLE_ARN) }} ==="
             echo "=== ROLE ARN set: ${{ secrets.AWS_IAC_ROLE_ARN && 'YES' || 'NO' }} ==="
 
       - uses: aws-actions/configure-aws-credentials@v4
