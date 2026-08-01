@@ -27,11 +27,13 @@
 
     <dependencies>
 
+        <!-- Spring Web for REST API development -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <!-- Spring Boot testing framework -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
@@ -42,10 +44,25 @@
 
     <build>
         <plugins>
+
+            <!-- Run and package the Spring Boot application -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
+
+            <!-- Scan Maven dependencies for known security vulnerabilities -->
+            <plugin>
+                <groupId>org.owasp</groupId>
+                <artifactId>dependency-check-maven</artifactId>
+                <version>12.2.2</version>
+
+                <configuration>
+                    <format>HTML</format>
+                    <failBuildOnCVSS>7</failBuildOnCVSS>
+                </configuration>
+            </plugin>
+
         </plugins>
     </build>
 
