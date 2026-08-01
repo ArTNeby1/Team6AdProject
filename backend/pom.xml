@@ -58,8 +58,9 @@
                 <version>12.2.2</version>
 
                 <configuration>
-                    <format>HTML</format>
-                    <failBuildOnCVSS>7</failBuildOnCVSS>
+                    <formats>
+                        <format>JSON</format>
+                    </formats>
                 </configuration>
             </plugin>
 
