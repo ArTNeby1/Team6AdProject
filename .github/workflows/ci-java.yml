@@ -65,6 +65,8 @@ jobs:
       - name: SCA 依赖漏洞扫描
         run: mvn dependency-check:check -Dformat=JSON
         continue-on-error: true
+        env:
+         NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
 
       - name: 上传 SCA 报告
         if: always()
