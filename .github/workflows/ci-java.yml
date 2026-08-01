@@ -18,6 +18,7 @@ env:
   AWS_REGION: ap-southeast-1
   ECR_REPOSITORY: ad-project-java-service
   S3_BUCKET: ad-project-java-artifacts-dev
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
 
 jobs:
   build:
