@@ -45,13 +45,19 @@
     <build>
         <plugins>
 
-            <!-- Run and package the Spring Boot application -->
+            <!-- Spring Boot Maven Plugin -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+
+                <configuration>
+                    <mainClass>
+                        com.loomytrip.backend.LoomyTripApplication
+                    </mainClass>
+                </configuration>
             </plugin>
 
-            <!-- Scan Maven dependencies for known security vulnerabilities -->
+            <!-- OWASP Dependency Check -->
             <plugin>
                 <groupId>org.owasp</groupId>
                 <artifactId>dependency-check-maven</artifactId>
@@ -61,6 +67,8 @@
                     <formats>
                         <format>JSON</format>
                     </formats>
+
+                    <failBuildOnCVSS>7</failBuildOnCVSS>
                 </configuration>
             </plugin>
 
