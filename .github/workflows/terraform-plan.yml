@@ -132,6 +132,12 @@ jobs:
           echo "$RESP" | jq -r '.value' | cut -d. -f2 | \
             sed 's/-/+/g;s/_/\//g' | base64 -d 2>/dev/null | jq '{sub, aud, iss}'
 
+      - name: Print Role ARN
+        run: |
+          echo "length: ${#AWS_ROLE_ARN}"
+          echo "prefix: ${AWS_ROLE_ARN:0:40}"
+          echo "suffix: ${AWS_ROLE_ARN: -50}"  
+
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_IAC_ROLE_ARN }}
