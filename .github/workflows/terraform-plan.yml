@@ -67,7 +67,7 @@ jobs:
       - name: 生成可读 Plan 文本
         run: terraform show -no-color tfplan > plan.txt
 
-      - name: 把 Plan 结果写到 PR 评论
+      - name: 把 Plan 结果写到 PR 评论里
         uses: actions/github-script@v7
         with:
           script: |
