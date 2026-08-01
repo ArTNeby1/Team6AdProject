@@ -64,6 +64,7 @@
                 <version>12.2.2</version>
 
                 <configuration>
+<!--                <API Key-->
                     <nvdApiKey>${env.NVD_API_KEY}</nvdApiKey>
                     <formats>
                         <format>JSON</format>
