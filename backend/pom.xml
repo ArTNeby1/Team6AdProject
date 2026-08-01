@@ -70,7 +70,7 @@
                         <format>JSON</format>
                     </formats>
 
-                    <failBuildOnCVSS>7</failBuildOnCVSS>
+                    <failBuildOnCVSS>7.0</failBuildOnCVSS>
                 </configuration>
             </plugin>
 
