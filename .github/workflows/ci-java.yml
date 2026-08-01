@@ -47,7 +47,8 @@ jobs:
           java-version: '21'
           distribution: 'corretto'
           cache: 'maven'
-      - name: 🔍 诊断 JDK 环境
+          
+      - name: 诊断 JDK 环境
         run: |
          echo "=== JAVA_HOME ==="
          echo $JAVA_HOME
@@ -57,6 +58,7 @@ jobs:
          javac -version 2>&1
          echo "=== mvn -version ==="
          mvn -version 2>&1
+         
       # ============================================================
       # SCA：依赖漏洞扫描
       # ============================================================
