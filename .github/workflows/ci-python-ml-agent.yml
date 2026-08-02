@@ -9,6 +9,10 @@ on:
     branches: [ main ]
     paths:
       - 'ML/**'
+      -
+permissions:
+  id-token: write
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -18,9 +22,6 @@ jobs:
   test-and-security:
     name: Test & Security Scan
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
     defaults:
       run:
         working-directory: ./ML
