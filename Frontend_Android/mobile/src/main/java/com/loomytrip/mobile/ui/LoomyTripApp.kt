@@ -21,6 +21,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,7 +37,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.loomytrip.mobile.data.model.ExtractedPlace
+import com.loomytrip.mobile.data.model.TripActivity
 import com.loomytrip.mobile.data.repository.MockPlanningRepository
+import com.loomytrip.mobile.data.repository.MockTripRepository
 import com.loomytrip.mobile.ui.screen.AttractionScreen
 import com.loomytrip.mobile.ui.screen.EditTripScreen
 import com.loomytrip.mobile.ui.screen.HomeScreen
@@ -70,8 +73,14 @@ private data class BottomItem(
 fun LoomyTripApp() {
     val navController = rememberNavController()
     val planningRepository = remember { MockPlanningRepository() }
+    val tripRepository = remember { MockTripRepository() }
     val extractedPlaces = remember { mutableStateListOf<ExtractedPlace>() }
+    val tripActivities = remember {
+        mutableStateListOf<TripActivity>().apply { addAll(tripRepository.initialItinerary()) }
+    }
     var signedInEmail by remember { mutableStateOf<String?>(null) }
+    var selectedMapDay by remember { mutableIntStateOf(1) }
+    var selectedEditDay by remember { mutableIntStateOf(1) }
 
     val backStackEntry = navController.currentBackStackEntryAsState().value
     val route = backStackEntry?.destination?.route ?: Destination.Login.route
@@ -100,6 +109,11 @@ fun LoomyTripApp() {
             launchSingleTop = true
             restoreState = true
         }
+    }
+
+    fun replaceTripActivities(updated: List<TripActivity>) {
+        tripActivities.clear()
+        tripActivities.addAll(updated)
     }
 
     Scaffold(
@@ -197,14 +211,49 @@ fun LoomyTripApp() {
             }
             composable(Destination.Route.route) {
                 RouteScreen(
-                    onViewMap = { navController.navigate(Destination.Map.route) },
-                    onEdit = { navController.navigate(Destination.Edit.route) }
+                    activities = tripActivities,
+                    onViewMap = { day ->
+                        selectedMapDay = day
+                        navController.navigate(Destination.Map.route)
+                    },
+                    onEdit = { day ->
+                        selectedEditDay = day
+                        navController.navigate(Destination.Edit.route)
+                    }
                 )
             }
             composable(Destination.Map.route) {
-                MapScreen(onEdit = { navController.navigate(Destination.Edit.route) })
+                MapScreen(
+                    activities = tripActivities,
+                    initialDay = selectedMapDay,
+                    onEdit = { day ->
+                        selectedEditDay = day
+                        navController.navigate(Destination.Edit.route)
+                    }
+                )
             }
-            composable(Destination.Edit.route) { EditTripScreen() }
+            composable(Destination.Edit.route) {
+                EditTripScreen(
+                    activities = tripActivities,
+                    initialDay = selectedEditDay,
+                    onMove = { id, direction ->
+                        replaceTripActivities(
+                            tripRepository.moveActivity(tripActivities.toList(), id, direction)
+                        )
+                    },
+                    onDelete = { id ->
+                        replaceTripActivities(
+                            tripRepository.deleteActivity(tripActivities.toList(), id)
+                        )
+                    },
+                    onAdd = { day, title, time ->
+                        replaceTripActivities(
+                            tripRepository.addActivity(tripActivities.toList(), day, title, time)
+                        )
+                    },
+                    onSave = { navController.popBackStack() }
+                )
+            }
             composable(Destination.Profile.route) {
                 ProfileScreen(
                     email = signedInEmail.orEmpty(),

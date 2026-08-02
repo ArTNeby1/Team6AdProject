@@ -4,19 +4,11 @@ on:
   push:
     branches: [main, feature/mobile-app]
     paths:
-      - "mobile/**"
-      - "build.gradle.kts"
-      - "settings.gradle.kts"
-      - "gradle/**"
-      - "gradle.properties"
+      - "Frontend_Android/**"
       - ".github/workflows/ci-android.yml"
   pull_request:
     paths:
-      - "mobile/**"
-      - "build.gradle.kts"
-      - "settings.gradle.kts"
-      - "gradle/**"
-      - "gradle.properties"
+      - "Frontend_Android/**"
       - ".github/workflows/ci-android.yml"
 
 permissions:
@@ -25,6 +17,9 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Frontend_Android
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
