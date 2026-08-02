@@ -4,14 +4,12 @@
 
 -r requirements.txt
 
+-r requirements.txt
+
 # --- 测试框架 ---
 pytest>=7.0,<9.0
-pytest-cov>=4.0,<6.0       
-bandit==1.7.8
+pytest-cov>=4.0,<6.0
+bandit>=1.7,<2.0
 
-# --- 测试辅助工具 ---
-# faker>=22.0               # 生成模拟数据
-# pytest-mock>=3.12         # Mock 支持
-# httpx>=0.27               # FastAPI/异步接口测试
 # --- SCA ---
 pip-audit>=2.7,<3.0
