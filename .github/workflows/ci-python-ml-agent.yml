@@ -49,11 +49,9 @@ jobs:
 
       - name: 安装依赖
         run: |
-          pip install uv
-          uv pip install --system \
+          pip install --no-cache-dir \
             --index-url https://pypi.org/simple \
             --extra-index-url https://download.pytorch.org/whl/cpu \
-            --index-strategy unsafe-best-match \
             -r requirements_ml_ci.txt \
             -r requirements_test.txt
        
