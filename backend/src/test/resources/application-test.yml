@@ -1,0 +1,19 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:loomytrip;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+  flyway:
+    enabled: false
+
+loomytrip:
+  jwt:
+    secret: test-secret-key-at-least-thirty-two-bytes-long
+    expiration-ms: 3600000
+  cors:
+    allowed-origins: http://localhost:3000
