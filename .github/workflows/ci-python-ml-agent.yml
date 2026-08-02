@@ -49,10 +49,11 @@ jobs:
 
       - name: 安装依赖
         run: |
-         pip install uv
-         uv pip install --system \
-           -r requirements_ml_ci.txt \
-           -r requirements_test.txt
+          pip install uv
+          uv pip install --system \
+            --extra-index-url https://download.pytorch.org/whl/cpu \
+            -r requirements_ml_ci.txt \
+            -r requirements_test.txt
          
       - name: SCA 依赖漏洞扫描
         run: |
