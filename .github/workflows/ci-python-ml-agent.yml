@@ -18,6 +18,9 @@ jobs:
   test-and-security:
     name: Test & Security Scan
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     defaults:
       run:
         working-directory: ./ML
