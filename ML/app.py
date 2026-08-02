@@ -1,10 +1,8 @@
-from flask import Flask, jsonify
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 
-app = Flask(__name__)
+app = FastAPI()
 
-@app.route('/health')
-def health():
-    return jsonify({"status": "ok", "service": "DevOpsTest"})
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8000)
+@app.get('/health')
+async def health():
+    return JSONResponse({"status": "ok", "service": "DevOpsTest"})
