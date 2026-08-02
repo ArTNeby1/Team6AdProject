@@ -1,15 +1,12 @@
 import pytest
+from fastapi.testclient import TestClient
 from app import app
 
-@pytest.fixture
-def client():
-    app.config['TESTING'] = True
-    with app.test_client() as test_client:
-        yield test_client
+client = TestClient(app)
 
-def test_health_endpoint(client):
+def test_health_endpoint():
     response = client.get('/health')
     assert response.status_code == 200
-    data = response.get_json()
+    data = response.json()
     assert data['status'] == 'ok'
     assert data['service'] == 'DevOpsTest'
