@@ -38,7 +38,7 @@ jobs:
             HASH=$(cat requirements_ml.txt requirements.txt requirements_test.txt | sha256sum | cut -d' ' -f1)
             echo "hash=$HASH" >> $GITHUB_OUTPUT
 
-      - name: 缓存 pip 依赖
+      - name: 缓存pip依赖
         uses: actions/cache@v4
         id: pip-cache
         with:
