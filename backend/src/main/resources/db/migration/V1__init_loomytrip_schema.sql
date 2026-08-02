@@ -1,4 +1,5 @@
--- LoomyTrip initial schema (table design aligned with DATA_DICTIONARY; DB name: LoomyTrip)
+-- LoomyTrip initial schema (aligned with DATA_DICTIONARY_zh.md; DB name: LoomyTrip)
+-- Product flow: rough brief + AI chat planning -> confirm -> formal trip
 
 CREATE TABLE users (
     id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -126,38 +127,39 @@ CREATE TABLE comment (
     CONSTRAINT chk_comment_rating CHECK (rating >= 0 AND rating <= 5)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE user_preference (
-    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    user_id         BIGINT UNSIGNED NOT NULL,
-    preference_key  VARCHAR(64)     NOT NULL,
-    preference_value VARCHAR(255)   NOT NULL,
-    created_at      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (id),
-    UNIQUE KEY uq_user_preference (user_id, preference_key),
-    CONSTRAINT fk_user_preference_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- ===== AI planning domain =====
 
-CREATE TABLE imported_source (
-    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    user_id         BIGINT UNSIGNED NOT NULL,
-    source_type     VARCHAR(32)     NOT NULL,
-    title           VARCHAR(255)    NULL,
-    raw_content     MEDIUMTEXT      NULL,
-    source_url      VARCHAR(1024)   NULL,
-    status          VARCHAR(32)     NOT NULL DEFAULT 'PENDING',
-    error_message   TEXT            NULL,
-    created_at      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (id),
-    KEY idx_imported_source_user (user_id),
-    KEY idx_imported_source_status (status),
-    CONSTRAINT fk_imported_source_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE extracted_place (
+CREATE TABLE planning_session (
     id                  BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    import_id           BIGINT UNSIGNED NOT NULL,
+    user_id             BIGINT UNSIGNED NOT NULL,
+    title               VARCHAR(255)    NULL,
+    initial_brief       TEXT            NULL,
+    status              VARCHAR(32)     NOT NULL DEFAULT 'ACTIVE',
+    confirmed_trip_id   BIGINT UNSIGNED NULL,
+    created_at          TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_planning_session_user (user_id),
+    KEY idx_planning_session_status (status),
+    KEY idx_planning_session_trip (confirmed_trip_id),
+    CONSTRAINT fk_planning_session_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_planning_session_trip FOREIGN KEY (confirmed_trip_id) REFERENCES trip (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE chat_message (
+    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    session_id      BIGINT UNSIGNED NOT NULL,
+    role            VARCHAR(32)     NOT NULL,
+    content         MEDIUMTEXT      NOT NULL,
+    created_at      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_chat_message_session (session_id),
+    CONSTRAINT fk_chat_message_session FOREIGN KEY (session_id) REFERENCES planning_session (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE draft_place (
+    id                  BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    session_id          BIGINT UNSIGNED NOT NULL,
     name                VARCHAR(255)    NOT NULL,
     address             VARCHAR(255)    NULL,
     latitude            DECIMAL(10, 7)  NULL,
@@ -169,18 +171,17 @@ CREATE TABLE extracted_place (
     created_at          TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
-    KEY idx_extracted_place_import (import_id),
-    KEY idx_extracted_place_destination (destination_id),
-    CONSTRAINT fk_extracted_place_import FOREIGN KEY (import_id) REFERENCES imported_source (id) ON DELETE CASCADE,
-    CONSTRAINT fk_extracted_place_destination FOREIGN KEY (destination_id) REFERENCES destination (id) ON DELETE SET NULL
+    KEY idx_draft_place_session (session_id),
+    KEY idx_draft_place_destination (destination_id),
+    CONSTRAINT fk_draft_place_session FOREIGN KEY (session_id) REFERENCES planning_session (id) ON DELETE CASCADE,
+    CONSTRAINT fk_draft_place_destination FOREIGN KEY (destination_id) REFERENCES destination (id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE extracted_activity (
+CREATE TABLE draft_activity (
     id                  BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    import_id           BIGINT UNSIGNED NOT NULL,
-    extracted_place_id  BIGINT UNSIGNED NULL,
+    session_id          BIGINT UNSIGNED NOT NULL,
+    draft_place_id      BIGINT UNSIGNED NULL,
     title               VARCHAR(255)    NOT NULL,
-    description         TEXT            NULL,
     suggested_day       INT UNSIGNED    NULL,
     start_time          TIME            NULL,
     end_time            TIME            NULL,
@@ -188,10 +189,10 @@ CREATE TABLE extracted_activity (
     created_at          TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
-    KEY idx_extracted_activity_import (import_id),
-    KEY idx_extracted_activity_place (extracted_place_id),
-    CONSTRAINT fk_extracted_activity_import FOREIGN KEY (import_id) REFERENCES imported_source (id) ON DELETE CASCADE,
-    CONSTRAINT fk_extracted_activity_place FOREIGN KEY (extracted_place_id) REFERENCES extracted_place (id) ON DELETE SET NULL
+    KEY idx_draft_activity_session (session_id),
+    KEY idx_draft_activity_place (draft_place_id),
+    CONSTRAINT fk_draft_activity_session FOREIGN KEY (session_id) REFERENCES planning_session (id) ON DELETE CASCADE,
+    CONSTRAINT fk_draft_activity_place FOREIGN KEY (draft_place_id) REFERENCES draft_place (id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE OR REPLACE VIEW v_trip_day_calendar AS

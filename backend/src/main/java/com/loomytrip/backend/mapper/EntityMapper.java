@@ -1,13 +1,11 @@
 package com.loomytrip.backend.mapper;
 
 import com.loomytrip.backend.dto.response.DestinationResponse;
-import com.loomytrip.backend.dto.response.ImportSummaryResponse;
-import com.loomytrip.backend.dto.response.PreferenceResponse;
+import com.loomytrip.backend.dto.response.PlanningSessionSummaryResponse;
 import com.loomytrip.backend.dto.response.TripSummaryResponse;
 import com.loomytrip.backend.entity.Destination;
-import com.loomytrip.backend.entity.ImportedSource;
+import com.loomytrip.backend.entity.PlanningSession;
 import com.loomytrip.backend.entity.Trip;
-import com.loomytrip.backend.entity.UserPreference;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -23,13 +21,15 @@ public class EntityMapper {
         );
     }
 
-    public ImportSummaryResponse toImportSummary(ImportedSource source) {
-        return new ImportSummaryResponse(
-                source.getId(),
-                source.getSourceType(),
-                source.getTitle(),
-                source.getStatus(),
-                source.getCreatedAt()
+    public PlanningSessionSummaryResponse toPlanningSessionSummary(PlanningSession session) {
+        Long tripId = session.getConfirmedTrip() == null ? null : session.getConfirmedTrip().getId();
+        return new PlanningSessionSummaryResponse(
+                session.getId(),
+                session.getTitle(),
+                session.getInitialBrief(),
+                session.getStatus(),
+                tripId,
+                session.getUpdatedAt()
         );
     }
 
@@ -42,9 +42,5 @@ public class EntityMapper {
                 destination.getLongitude(),
                 destination.getCategory()
         );
-    }
-
-    public PreferenceResponse toPreference(UserPreference preference) {
-        return new PreferenceResponse(preference.getPreferenceKey(), preference.getPreferenceValue());
     }
 }

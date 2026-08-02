@@ -19,16 +19,16 @@ import lombok.Setter;
 @Getter
 @Setter
 @Entity
-@Table(name = "extracted_place")
-public class ExtractedPlace {
+@Table(name = "draft_place")
+public class DraftPlace {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "import_id", nullable = false)
-    private ImportedSource importedSource;
+    @JoinColumn(name = "session_id", nullable = false)
+    private PlanningSession session;
 
     @Column(nullable = false, length = 255)
     private String name;

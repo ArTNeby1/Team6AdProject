@@ -43,11 +43,10 @@ All business APIs are under `/api/v1`:
 | Module | Path | Notes |
 |--------|------|-------|
 | Auth | `/api/v1/auth/register`, `/login` | Implemented (JWT) |
+| Planning | `/api/v1/planning-sessions` | Create/list/chat; AI refine/confirm placeholders |
 | Trips | `/api/v1/trips` | Create/list/get; generate is placeholder |
-| Imports | `/api/v1/imports` | Create/list; extract/validate placeholders |
 | Destinations | `/api/v1/destinations` | Search |
-| Recommendations | `/api/v1/recommendations` | Stub ranking |
-| Preferences | `/api/v1/preferences` | User-level prefs (F-19) |
+| Recommendations | `/api/v1/recommendations` | Stub (uses trip context later) |
 
 Protected routes require `Authorization: Bearer <token>`.
 

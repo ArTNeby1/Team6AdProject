@@ -2,8 +2,6 @@ package com.loomytrip.backend.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -12,41 +10,42 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.time.LocalTime;
 import lombok.Getter;
 import lombok.Setter;
 
 @Getter
 @Setter
 @Entity
-@Table(name = "imported_source")
-public class ImportedSource {
+@Table(name = "draft_activity")
+public class DraftActivity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user;
+    @JoinColumn(name = "session_id", nullable = false)
+    private PlanningSession session;
 
-    @Column(name = "source_type", nullable = false, length = 32)
-    private String sourceType;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "draft_place_id")
+    private DraftPlace draftPlace;
 
-    @Column(length = 255)
+    @Column(nullable = false, length = 255)
     private String title;
 
-    @Column(name = "raw_content", columnDefinition = "MEDIUMTEXT")
-    private String rawContent;
+    @Column(name = "suggested_day")
+    private Integer suggestedDay;
 
-    @Column(name = "source_url", length = 1024)
-    private String sourceUrl;
+    @Column(name = "start_time")
+    private LocalTime startTime;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 32)
-    private ImportStatus status = ImportStatus.PENDING;
+    @Column(name = "end_time")
+    private LocalTime endTime;
 
-    @Column(name = "error_message", columnDefinition = "TEXT")
-    private String errorMessage;
+    @Column(name = "duration_minutes")
+    private Integer durationMinutes;
 
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private Instant createdAt;

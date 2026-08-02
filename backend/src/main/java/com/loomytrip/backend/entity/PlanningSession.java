@@ -2,6 +2,8 @@ package com.loomytrip.backend.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -10,45 +12,36 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.Instant;
-import java.time.LocalTime;
 import lombok.Getter;
 import lombok.Setter;
 
 @Getter
 @Setter
 @Entity
-@Table(name = "extracted_activity")
-public class ExtractedActivity {
+@Table(name = "planning_session")
+public class PlanningSession {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "import_id", nullable = false)
-    private ImportedSource importedSource;
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "extracted_place_id")
-    private ExtractedPlace extractedPlace;
-
-    @Column(nullable = false, length = 255)
+    @Column(length = 255)
     private String title;
 
-    @Column(columnDefinition = "TEXT")
-    private String description;
+    @Column(name = "initial_brief", columnDefinition = "TEXT")
+    private String initialBrief;
 
-    @Column(name = "suggested_day")
-    private Integer suggestedDay;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 32)
+    private PlanningSessionStatus status = PlanningSessionStatus.ACTIVE;
 
-    @Column(name = "start_time")
-    private LocalTime startTime;
-
-    @Column(name = "end_time")
-    private LocalTime endTime;
-
-    @Column(name = "duration_minutes")
-    private Integer durationMinutes;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "confirmed_trip_id")
+    private Trip confirmedTrip;
 
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private Instant createdAt;
