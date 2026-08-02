@@ -25,7 +25,10 @@ jobs:
     defaults:
       run:
         working-directory: ./ML
-      
+    env:
+      AWS_REGION: ap-southeast-1
+      ECR_REPOSITORY: adproject-ml-service
+
     steps:
       - name: 拉取代码
         uses: actions/checkout@v4
@@ -122,6 +125,7 @@ jobs:
           install: true
 
       - name: Docker 镜像元数据
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         id: meta
         uses: docker/metadata-action@v5
         with:
