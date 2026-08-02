@@ -1,13 +1,14 @@
 name: ML CI Pipeline
 
 on:
-  push:
-    branches: [ ML, main ]
-    paths:
-      - 'ML/**'            
-      - '.github/workflows/ci-python-ml-agen.yml' 
   pull_request:
     branches: [ main ]
+    paths:
+      - 'ML/**'
+  push:
+    branches: [ main ]
+    paths:
+      - 'ML/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
