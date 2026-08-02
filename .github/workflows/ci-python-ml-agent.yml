@@ -105,12 +105,12 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_IAC_ROLE_ARN }}
-          aws-region: ap-southeast-1
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: 登录 ECR
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          aws ecr get-login-password --region ap-southeast-1 | \
+          aws ecr get-login-password --region ${{ env.AWS_REGION }} | \
             docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-southeast-1.amazonaws.com
           
       - name: 设置 Docker Buildx
@@ -127,9 +127,9 @@ jobs:
         with:
           images: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-southeast-1.amazonaws.com/adproject-ml-service
           tags: |
-              type=sha,prefix=
-              type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-              type=ref,event=branch
+            type=sha,prefix=
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=ref,event=branch
 
       - name: 构建并推送 Docker 镜像
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
