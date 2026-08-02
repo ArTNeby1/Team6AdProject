@@ -1,0 +1,169 @@
+name: Java CI Pipeline
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'backend/**'
+  push:
+    branches: [ main ]
+    paths:
+      - 'backend/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AWS_REGION: ap-southeast-1
+  ECR_REPOSITORY: ad-project-java-service
+  S3_BUCKET: ad-project-java-artifacts-dev
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+
+jobs:
+  build:
+    name: Build, Test & Scan
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        working-directory: ./backend
+
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+      - name: 缓存 NVD 数据
+        uses: actions/cache@v4
+        with:
+         path: ~/.dependency-check/data
+         key: nvd-${{ runner.os }}-${{ hashFiles('backend/pom.xml') }}
+         restore-keys: |
+          nvd-${{ runner.os }}-
+
+      - name: 设置 JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'corretto'
+          cache: 'maven'
+          
+      - name: 诊断 JDK 环境
+        run: |
+         echo "=== JAVA_HOME ==="
+         echo $JAVA_HOME
+         echo "=== java -version ==="
+         java -version 2>&1
+         echo "=== javac -version ==="
+         javac -version 2>&1
+         echo "=== mvn -version ==="
+         mvn -version 2>&1
+         
+      # ============================================================
+      # SCA：依赖漏洞扫描
+      # ============================================================
+      - name: SCA 依赖漏洞扫描
+        run: mvn dependency-check:check -Dformat=JSON
+        continue-on-error: true
+        env:
+         NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+
+      - name: 上传 SCA 报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: java-sca-report
+          path: backend/target/dependency-check-report.json
+
+      # ============================================================
+      # SAST：静态代码扫描
+      # ============================================================
+      - name: SAST 静态代码扫描
+        run: |
+          mvn spotbugs:check -Dspotbugs.failOnError=false
+          mvn spotbugs:spotbugs -Dspotbugs.outputFormat=xml
+        continue-on-error: true
+
+      - name: 上传 SAST 报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: java-sast-report
+          path: backend/target/spotbugs*.xml
+
+      # ============================================================
+      # 单元测试
+      # ============================================================
+      - name: 单元测试
+        run: mvn test
+
+      - name: 发布测试报告
+        if: always()
+        uses: mikepenz/action-junit-report@v4
+        with:
+          report_paths: '**/target/surefire-reports/*.xml'
+
+      # ============================================================
+      # 打包
+      # ============================================================
+      - name: 打包构建
+        run: mvn package -DskipTests
+
+      # ============================================================
+      # 配置 AWS 凭证（OIDC）
+      # ============================================================
+      - name: 配置 AWS 凭证
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_IAC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # ============================================================
+      # 上传 JAR 到 S3
+      # ============================================================
+      - name: 上传 JAR 到 S3
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          aws s3 cp target/*.jar s3://${{ env.S3_BUCKET }}/backend/${{ github.sha }}/
+          aws s3 cp target/*.jar s3://${{ env.S3_BUCKET }}/backend/latest/
+
+      # ============================================================
+      # 构建并推送 Docker 镜像到 ECR
+      # ============================================================
+      - name: 登录 ECR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          aws ecr get-login-password --region ${{ env.AWS_REGION }} | \
+            docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+
+      - name: 设置 Docker Buildx
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container   # ← 关键：切换到支持 GHA cache 的 driver
+          install: true
+        
+      - name: Docker 镜像元数据
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=ref,event=branch
+
+      - name: 构建并推送 Docker 镜像
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
