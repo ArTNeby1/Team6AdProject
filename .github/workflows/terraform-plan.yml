@@ -2,15 +2,13 @@ name: Terraform IaC
 
 on:
   pull_request:
-    branches: [main]
+    branches: [ main ]
     paths:
       - 'terraform/**'
-      - '.github/workflows/terraform-plan.yml'
   push:
-    branches: [main]
+    branches: [ main ]
     paths:
       - 'terraform/**'
-      - '.github/workflows/terraform-plan.yml'
 
 permissions:
   id-token: write
