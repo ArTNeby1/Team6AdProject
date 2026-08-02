@@ -1,0 +1,11 @@
+{
+  "destination": "Singapore",
+  "dates": [],
+  "places": [
+    {
+      "name": "Thian Hock Keng Temple",
+      "type": "temple",
+      "activities": ["photos at sunset"]
+    }
+  ]
+}
