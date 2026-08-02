@@ -20,3 +20,7 @@ pytest-cache-files-*/
 .env.*
 !.env.example
 *.log
+
+# local-only learning context (not shared, not for repo history)
+CLAUDE.md
+notes/
