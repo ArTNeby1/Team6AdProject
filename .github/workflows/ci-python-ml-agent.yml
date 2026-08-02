@@ -130,15 +130,13 @@ jobs:
           install: true
 
       - name: Docker 镜像元数据
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-southeast-1.amazonaws.com/adproject-ml-service
+          images: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}
           tags: |
-            type=sha,prefix=
+            type=sha,prefix=   
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=ref,event=branch
 
       - name: 构建并推送 Docker 镜像
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
