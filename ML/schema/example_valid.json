@@ -1,0 +1,54 @@
+{
+  "destination": "Singapore",
+  "dates": ["2025-08-12", "2025-08-13", "2025-08-14"],
+  "places": [
+    {
+      "name": "Gardens by the Bay",
+      "type": "attraction",
+      "address": null,
+      "coords": null,
+      "activities": ["Cloud Forest dome", "Flower Dome", "Super Tree Grove light show"],
+      "source": "sample_1.txt"
+    },
+    {
+      "name": "Satay by the Bay",
+      "type": "restaurant",
+      "address": null,
+      "coords": null,
+      "activities": ["dinner"],
+      "source": "sample_1.txt"
+    },
+    {
+      "name": "Merlion Park",
+      "type": "attraction",
+      "address": null,
+      "coords": null,
+      "activities": ["photos"],
+      "source": "sample_1.txt"
+    },
+    {
+      "name": "Marina Bay Sands SkyPark Observation Deck",
+      "type": "attraction",
+      "address": null,
+      "coords": null,
+      "activities": ["360 view of the city"],
+      "source": "sample_1.txt"
+    },
+    {
+      "name": "Chinatown Complex Food Centre",
+      "type": "restaurant",
+      "address": null,
+      "coords": null,
+      "activities": ["tried Michelin-recommended chicken rice"],
+      "source": "sample_1.txt"
+    },
+    {
+      "name": "Universal Studios Singapore",
+      "type": "attraction",
+      "address": null,
+      "coords": null,
+      "activities": ["full day theme park"],
+      "source": "sample_1.txt"
+    }
+  ]
+}

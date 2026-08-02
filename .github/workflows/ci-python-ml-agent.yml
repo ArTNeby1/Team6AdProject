@@ -1,13 +1,14 @@
 name: ML CI Pipeline
 
 on:
-  push:
-    branches: [ ML, main ]
-    paths:
-      - 'ML/**'            
-      - '.github/workflows/ci-python-ml-agen.yml' 
   pull_request:
     branches: [ main ]
+    paths:
+      - 'ML/**'
+  push:
+    branches: [ main ]
+    paths:
+      - 'ML/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -17,6 +18,12 @@ jobs:
   test-and-security:
     name: Test & Security Scan
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        working-directory: ./ML
       
     steps:
       - name: 拉取代码
@@ -34,7 +41,7 @@ jobs:
             HASH=$(cat requirements_ml.txt requirements.txt requirements_test.txt | sha256sum | cut -d' ' -f1)
             echo "hash=$HASH" >> $GITHUB_OUTPUT
 
-      - name: 缓存 pip 依赖
+      - name: 缓存pip依赖
         uses: actions/cache@v4
         id: pip-cache
         with:
@@ -45,14 +52,17 @@ jobs:
 
       - name: 安装依赖
         run: |
-         pip install uv
-         uv pip install --system \
-           -r requirements_ml_ci.txt \
-           -r requirements_test.txt
+          pip install --no-cache-dir \
+            --index-url https://pypi.org/simple \
+            --extra-index-url https://download.pytorch.org/whl/cpu \
+            -r requirements_ml_ci.txt \
+            -r requirements_test.txt
+       
          
       - name: SCA 依赖漏洞扫描
         run: |
           python3 -m pip_audit \
+             --requirement requirements_ml_ci.txt \
              --requirement requirements.txt \
              --format json \
              --output sca-report.json || true
@@ -65,7 +75,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
          name: sca-report
-         path: sca-report.json
+         path: ML/sca-report.json
 
       - name: SAST
         run: |
@@ -79,10 +89,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sast-report
-          path: sast-report.json
+          path: ML/sast-report.json
 
-      - name: 测试
-        run: python3 -m pytest test_app.py --junit-xml=results.xml -v
       - name: 测试
         run: python3 -m pytest test_app.py --junit-xml=results.xml -v
 
@@ -90,5 +98,47 @@ jobs:
         if: always()  # 测试失败也上传
         uses: mikepenz/action-junit-report@v4
         with:
-          report_paths: 'results.xml'
+          report_paths: 'ML/results.xml'
 
+      - name: 配置 AWS 凭证
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_IAC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 登录 ECR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          aws ecr get-login-password --region ${{ env.AWS_REGION }} | \
+            docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-southeast-1.amazonaws.com
+          
+      - name: 设置 Docker Buildx
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container
+          install: true
+
+      - name: Docker 镜像元数据
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-southeast-1.amazonaws.com/adproject-ml-service
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=ref,event=branch
+
+      - name: 构建并推送 Docker 镜像
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./ML
+          file: ./ML/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
