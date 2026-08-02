@@ -10,7 +10,7 @@
 """
 
 # ========== 第一部分：借工具 ==========
-# boto3 = AWS 官方的 Python 工具包,专门用来跟 AWS 各种服务(包括 Bedrock)对话
+# boto3 = AWS 官方的 Python 工具包,专门用来跟 AWS 各种服务(包括 Bedrock)对话1
 # jsonschema = 用来检查"一段 JSON 格式对不对"的工具
 # json/time/Path = Python 自带的工具,分别处理 JSON、计时、文件路径
 import json
