@@ -1,8 +1,35 @@
-.gradle/
+# IDE / OS
 .idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Android / Gradle
+.gradle/
+.kotlin/
 **/build/
 local.properties
-*.iml
 captures/
 .externalNativeBuild/
 .cxx/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+pytest-cache-files-*/
+
+# Java / Maven (also ignored under backend/)
+**/target/
+
+# Local env / secrets
+.env
+.env.*
+!.env.example
+*.log
+
+# local-only learning context (not shared, not for repo history)
+CLAUDE.md
+notes/
