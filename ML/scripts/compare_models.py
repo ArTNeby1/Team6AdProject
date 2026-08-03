@@ -115,7 +115,7 @@ def strip_code_fence(raw_text):
     return text.strip()
 
 
-def validate_output(raw_text, schema, source_name):
+def validate_output(raw_text, schema):
     """
     检查模型答得对不对。
     第一步：能不能被当成合法 JSON 读进来(格式关)。
@@ -128,11 +128,6 @@ def validate_output(raw_text, schema, source_name):
         data = json.loads(text)
     except json.JSONDecodeError as e:
         return None, f"JSON 解析失败: {e}"
-
-    # source 字段按 schema 说明是由代码填入的,不是模型该生成的内容,
-    # 补字段：校验前先补上,避免误判模型"漏了必填字段"
-    for place in data.get("places", []):
-        place.setdefault("source", source_name)
 
     try:
         validate(instance=data, schema=schema)#检查内容（是否符合 Schema 规则）
@@ -178,7 +173,7 @@ def main():
                 print(f"[{sample_path.name}] 调用失败: {e}")
                 continue
 
-            data, status = validate_output(raw_text, schema, sample_path.name)
+            data, status = validate_output(raw_text, schema)
             cost = estimate_cost(model_name, usage) or 0.0
             total_time += elapsed
             total_cost += cost

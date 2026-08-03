@@ -25,7 +25,7 @@
       "description": "文本中提到的所有地点",
       "items": {
         "type": "object",
-        "required": ["name", "type", "source"],
+        "required": ["name", "type"],
         "additionalProperties": false,
         "properties": {
           "name": {
@@ -36,11 +36,6 @@
             "type": "string",
             "enum": ["attraction", "restaurant", "hotel", "market", "other"],
             "description": "地点类型"
-          },
-          "address": {
-            "type": ["string", "null"],
-            "default": null,
-            "description": "文本中提到的地址，没有就填 null，不要编造"
           },
           "coords": {
             "type": ["object", "null"],
@@ -58,10 +53,6 @@
             "default": [],
             "description": "在这个地点做的事情",
             "items": { "type": "string" }
-          },
-          "source": {
-            "type": "string",
-            "description": "该地点信息来自哪份输入文本，由我们的代码在模型返回结果后填入，不由模型生成"
           }
         }
       }

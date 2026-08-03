@@ -38,18 +38,14 @@ def mock_extract(text: str, source_name: str = "mock") -> str:
             {
                 "name": "Gardens by the Bay",
                 "type": "attraction",
-                "address": None,
                 "coords": None,
                 "activities": ["Cloud Forest dome", "Super Tree Grove light show"],
-                "source": source_name,
             },
             {
                 "name": "Satay by the Bay",
                 "type": "restaurant",
-                "address": None,
                 "coords": None,
                 "activities": ["dinner"],
-                "source": source_name,
             },
         ],
     }
@@ -66,7 +62,7 @@ def mock_extract_missing_field(text: str, source_name: str = "mock") -> str:
     data = {
         "destination": "Singapore",
         "places": [
-            {"type": "attraction", "source": source_name}
+            {"type": "attraction"}
         ],
     }
     return json.dumps(data, ensure_ascii=False)
@@ -80,7 +76,6 @@ def mock_extract_bad_coords(text: str, source_name: str = "mock") -> str:
             {
                 "name": "Gardens by the Bay",
                 "type": "attraction",
-                "source": source_name,
                 "coords": {"lat": "大概在北边", "lng": 103.8198},
             }
         ],

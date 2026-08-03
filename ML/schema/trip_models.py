@@ -7,6 +7,13 @@ Python 类来写，而不是手写 JSON Schema 语法。好处：
 2. 能直接喂给 LangChain 的 with_structured_output()，不用手动转换格式
 3. 只有一份"真相来源"，以后改字段只改这一个文件，JSON 版可以用
    trip_schema_from_pydantic() 自动生成，不用手动同步两份文件
+
+字段设计原则（见 field_notes.md 更新说明）：这份 JSON 是「抽取 Agent -> 推荐/分析
+Agent」内部流转用的中间结构，不要求跟后端 `destination`/`draft_place` 表的列一一对应。
+所以去掉了两个曾经想拿去落库的字段：
+- `address`：原文很少写门牌地址，真要落库靠下游地图 API 反查，不需要模型抽取阶段猜
+- `source`：整条请求本来就带 source_name/source_url（一次请求一份输入文本，不需要
+  精确到每个地点），放在 place 级别是冗余信息
 """
 from typing import Literal, Optional
 
@@ -23,18 +30,12 @@ class Place(BaseModel):
     type: Literal["attraction", "restaurant", "hotel", "market", "other"] = Field(
         description="地点类型"
     )
-    address: Optional[str] = Field(
-        default=None, description="文本中提到的地址，没有就填 null，不要编造"
-    )
     coords: Optional[Coords] = Field(
         default=None,
         description="经纬度。文本里基本不会出现坐标，禁止模型编造，缺失填 null，"
         "真实坐标由下游地理编码步骤补全",
     )
     activities: list[str] = Field(default_factory=list, description="在这个地点做的事情")
-    source: str = Field(
-        description="该地点信息来自哪份输入文本，由我们的代码在模型返回结果后填入，不由模型生成"
-    )
 
 
 class TripExtraction(BaseModel):

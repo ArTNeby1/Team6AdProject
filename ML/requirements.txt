@@ -13,4 +13,4 @@ uvicorn[standard]>=0.29,<1.0
 pandas>=2.0,<3.0
 
 # --- 其他业务依赖 ---
-# requests>=2.31,<3.0
+requests>=2.31,<3.0  # local_llm_client.py 调用本地 Ollama 的 HTTP API 要用
