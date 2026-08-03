@@ -12,3 +12,8 @@ output "github_actions_role_arn" {
   value       = aws_iam_role.github_actions.arn
   description = "GitHub Actions 使用的 IAM 角色 ARN"
 }
+
+output "frontend_android_bucket" {
+  value       = aws_s3_bucket.frontend_android.bucket
+  description = "S3 存储桶名，前端静态文件和安卓 APK 存放处"
+}

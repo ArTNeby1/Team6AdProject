@@ -10,6 +10,10 @@ on:
     paths:
       - 'ML/**'
 
+permissions:
+  id-token: write
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -21,7 +25,10 @@ jobs:
     defaults:
       run:
         working-directory: ./ML
-      
+    env:
+      AWS_REGION: ap-southeast-1
+      ECR_REPOSITORY: adproject-ml-service
+
     steps:
       - name: 拉取代码
         uses: actions/checkout@v4
@@ -38,7 +45,7 @@ jobs:
             HASH=$(cat requirements_ml.txt requirements.txt requirements_test.txt | sha256sum | cut -d' ' -f1)
             echo "hash=$HASH" >> $GITHUB_OUTPUT
 
-      - name: 缓存 pip 依赖
+      - name: 缓存pip依赖
         uses: actions/cache@v4
         id: pip-cache
         with:
@@ -49,10 +56,12 @@ jobs:
 
       - name: 安装依赖
         run: |
-         pip install uv
-         uv pip install --system \
-           -r requirements_ml_ci.txt \
-           -r requirements_test.txt
+          pip install --no-cache-dir \
+            --index-url https://pypi.org/simple \
+            --extra-index-url https://download.pytorch.org/whl/cpu \
+            -r requirements_ml_ci.txt \
+            -r requirements_test.txt
+       
          
       - name: SCA 依赖漏洞扫描
         run: |
@@ -95,3 +104,44 @@ jobs:
         with:
           report_paths: 'ML/results.xml'
 
+      - name: 配置 AWS 凭证
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_IAC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 登录 ECR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          aws ecr get-login-password --region ${{ env.AWS_REGION }} | \
+            docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-southeast-1.amazonaws.com
+          
+      - name: 设置 Docker Buildx
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container
+          install: true
+
+      - name: Docker 镜像元数据
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}
+          tags: |
+            type=sha,prefix=   
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: 构建并推送 Docker 镜像
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./ML
+          file: ./ML/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

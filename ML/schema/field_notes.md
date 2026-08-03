@@ -2,13 +2,13 @@
 
 来源：用 sample_1/2/3.txt 人工标注 + 对齐 `Documents/Shared Documents/DATA_DICTIONARY_zh.md` 里的 `destination` 表。
 
-## 顶层字段
+##  顶层字段
 
-| 字段 | 类型 | 必填 | 说明 |
-|---|---|---|---|
-| `destination` | string | 是 | 整趟行程的目的地城市/地区，如 "Singapore" |
+| 字段 | 类型 | 必填 | 说明                                                                     |
+|---|---|---|------------------------------------------------------------------------|
+| `destination` | string | 是 | 整趟行程的目的地城市/地区，如 "Singapore"                                            |
 | `dates` | string[] | 否，默认 `[]` | 文本里明确写出的日历日期（YYYY-MM-DD）。很多攻略只写 "Day 1/Day 2" 没有真实日期，这种情况留空数组，不要让模型瞎编年份 |
-| `places` | object[] | 是，至少 1 项 | 见下表 |
+| `places` | object[] | 是，至少 1 项 | 见下表                                                                    |
 
 ## `places[]` 里每个地点的字段
 
