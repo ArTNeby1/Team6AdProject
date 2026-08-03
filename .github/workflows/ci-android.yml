@@ -1,0 +1,84 @@
+name: CI Android Mobile
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "Frontend_Android/**"
+      - ".github/workflows/ci-android.yml"
+  pull_request:
+    branches: [ main ]
+    paths:
+      - "Frontend_Android/**"
+      - ".github/workflows/ci-android.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build:
+    name: Build, Test & Scan
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Frontend_Android
+    env:
+      AWS_REGION: ap-southeast-1
+
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: 设置 Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: 赋予 gradlew 执行权限
+        run: chmod +x gradlew
+
+      - name: SAST 静态代码扫描
+        run: ./gradlew :mobile:lintDebug --continue || true
+        continue-on-error: true
+
+      - name: 上传 SAST 报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-sast-report
+          path: Frontend_Android/mobile/build/reports/lint-results-debug.xml
+
+      - name: 单元测试
+        run: ./gradlew :mobile:testDebugUnitTest --continue
+
+      - name: 上传测试报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+         name: android-test-report
+         path: Frontend_Android/mobile/build/reports/tests/
+
+      - name: Build debug APK
+        run: ./gradlew :mobile:assembleDebug
+
+      - name: 配置 AWS 凭证
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_IAC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 上传 APK 到 S3
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+            aws s3 cp mobile/build/outputs/apk/debug/ s3://ad-project-frontend-android-dev/android/${{ github.sha }}/ --recursive --exclude "*" --include "*.apk"
+            aws s3 cp mobile/build/outputs/apk/debug/ s3://ad-project-frontend-android-dev/android/latest/ --recursive --exclude "*" --include "*.apk"

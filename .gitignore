@@ -5,6 +5,15 @@
 .DS_Store
 Thumbs.db
 
+# Android / Gradle
+.gradle/
+.kotlin/
+**/build/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
 # Python
 .venv/
 __pycache__/
