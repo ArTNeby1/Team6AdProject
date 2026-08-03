@@ -17,6 +17,14 @@ class MockTripRepositoryTest {
     }
 
     @Test
+    fun savedTrips_containsRoutesForMapSelection() {
+        val trips = repository.savedTrips()
+
+        assertEquals(listOf("Chiang Mai", "Bangkok Weekend", "Phuket Coast"), trips.map { it.title })
+        assertEquals(2, trips.first { it.id == "bangkok-weekend" }.totalDays)
+    }
+
+    @Test
     fun moveActivity_changesOrderOnlyWithinItsDay() {
         val original = repository.initialItinerary()
         val moved = repository.moveActivity(original, "tha-phae-gate", -1)
@@ -37,5 +45,31 @@ class MockTripRepositoryTest {
         val deleted = repository.deleteActivity(added, custom.id)
         assertFalse(deleted.any { it.id == custom.id })
         assertEquals(original.size, deleted.size)
+    }
+
+    @Test
+    fun reorderActivity_movesStopAcrossDaysAtRequestedPosition() {
+        val original = repository.initialItinerary()
+        val moved = repository.reorderActivity(
+            activities = original,
+            id = "sunday-market",
+            targetDay = 2,
+            targetIndex = 1
+        )
+
+        assertFalse(moved.filter { it.day == 1 }.any { it.id == "sunday-market" })
+        assertEquals("sunday-market", moved.filter { it.day == 2 }[1].id)
+        assertEquals(2, moved.first { it.id == "sunday-market" }.day)
+    }
+
+    @Test
+    fun restoreActivity_returnsDeletedStopToOriginalDay() {
+        val original = repository.initialItinerary()
+        val activity = original.first { it.id == "tha-phae-gate" }
+        val deleted = repository.deleteActivity(original, activity.id)
+        val restored = repository.restoreActivity(deleted, activity, targetIndex = 1)
+
+        assertEquals(activity, restored.filter { it.day == 1 }[1])
+        assertEquals(original.size, restored.size)
     }
 }

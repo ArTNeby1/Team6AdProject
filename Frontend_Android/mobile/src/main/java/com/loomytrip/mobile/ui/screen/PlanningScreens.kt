@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,7 +14,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Science
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -30,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -37,9 +44,9 @@ import com.loomytrip.mobile.data.model.ExtractedPlace
 
 @Composable
 fun ImportGuideScreen(onExtract: (String) -> Unit) {
-    var guide by remember {
-        mutableStateOf("Chiang Mai in 3 days — Wat Chedi Luang, Tha Phae Gate, Nimman Road and Sunday Market.")
-    }
+    val sampleGuide = "Chiang Mai in 3 days — Wat Chedi Luang, Tha Phae Gate, Nimman Road and Sunday Walking Street."
+    var guide by remember { mutableStateOf("") }
+    val clipboard = LocalClipboardManager.current
 
     Column(
         modifier = Modifier
@@ -47,20 +54,59 @@ fun ImportGuideScreen(onExtract: (String) -> Unit) {
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text("Import a travel guide", fontSize = 27.sp, fontWeight = FontWeight.Bold)
+        Text("Turn notes into a trip", style = MaterialTheme.typography.headlineMedium)
         Text(
-            "Paste a travel post or your own notes. Loomytrip will turn the useful places into a reviewable list.",
+            "Paste a travel post or your own notes. Loomytrip will extract the places and build a day-by-day route.",
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
             lineHeight = 21.sp
         )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            AssistChip(
+                onClick = {
+                    clipboard.getText()?.text?.takeIf { it.isNotBlank() }?.let { guide = it }
+                },
+                label = { Text("Paste") },
+                leadingIcon = {
+                    Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(17.dp))
+                },
+                colors = AssistChipDefaults.assistChipColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            )
+            AssistChip(
+                onClick = { guide = sampleGuide },
+                label = { Text("Sample") },
+                leadingIcon = {
+                    Icon(Icons.Default.Science, contentDescription = null, modifier = Modifier.size(17.dp))
+                },
+                colors = AssistChipDefaults.assistChipColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            )
+            AssistChip(
+                onClick = { guide = "" },
+                enabled = guide.isNotEmpty(),
+                label = { Text("Clear") },
+                leadingIcon = {
+                    Icon(Icons.Default.Clear, contentDescription = null, modifier = Modifier.size(17.dp))
+                },
+                colors = AssistChipDefaults.assistChipColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            )
+        }
         OutlinedTextField(
             value = guide,
             onValueChange = { guide = it },
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f),
-            minLines = 8,
+                .height(230.dp),
+            minLines = 6,
             label = { Text("Travel text") },
+            placeholder = { Text("Paste a post, list of places, or rough travel notes here…") },
             supportingText = { Text("${guide.length} characters") },
             shape = RoundedCornerShape(18.dp)
         )
@@ -77,7 +123,7 @@ fun ImportGuideScreen(onExtract: (String) -> Unit) {
             ) {
                 Icon(Icons.Default.AutoAwesome, contentDescription = null)
                 Text(
-                    "For this demo, places are extracted from the text above.",
+                    "This prototype uses local demo data. The same flow can connect to the extraction API later.",
                     fontSize = 12.sp,
                     lineHeight = 17.sp
                 )
@@ -90,7 +136,7 @@ fun ImportGuideScreen(onExtract: (String) -> Unit) {
         ) {
             Icon(Icons.Default.AutoAwesome, contentDescription = null)
             Spacer(Modifier.size(8.dp))
-            Text("Extract places with AI", fontWeight = FontWeight.Bold)
+            Text("Extract places and build trip", fontWeight = FontWeight.Bold)
         }
     }
 }

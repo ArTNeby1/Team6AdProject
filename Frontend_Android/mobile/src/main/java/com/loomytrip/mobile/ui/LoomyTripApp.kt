@@ -15,6 +15,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -38,6 +39,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.loomytrip.mobile.data.model.ExtractedPlace
 import com.loomytrip.mobile.data.model.TripActivity
+import com.loomytrip.mobile.data.model.TripPlan
 import com.loomytrip.mobile.data.repository.MockPlanningRepository
 import com.loomytrip.mobile.data.repository.MockTripRepository
 import com.loomytrip.mobile.ui.screen.AttractionScreen
@@ -76,12 +78,14 @@ fun LoomyTripApp() {
     val planningRepository = remember { MockPlanningRepository() }
     val tripRepository = remember { MockTripRepository() }
     val extractedPlaces = remember { mutableStateListOf<ExtractedPlace>() }
-    val tripActivities = remember {
-        mutableStateListOf<TripActivity>().apply { addAll(tripRepository.initialItinerary()) }
+    val savedTripPlans = remember {
+        mutableStateListOf<TripPlan>().apply { addAll(tripRepository.savedTrips()) }
     }
     var signedInEmail by remember { mutableStateOf<String?>(null) }
+    var activeTripId by remember { mutableStateOf(savedTripPlans.first().id) }
     var selectedMapDay by remember { mutableIntStateOf(1) }
     var selectedEditDay by remember { mutableIntStateOf(1) }
+    val activeTrip = savedTripPlans.first { it.id == activeTripId }
 
     val backStackEntry = navController.currentBackStackEntryAsState().value
     val route = backStackEntry?.destination?.route ?: Destination.Login.route
@@ -112,9 +116,9 @@ fun LoomyTripApp() {
         }
     }
 
-    fun replaceTripActivities(updated: List<TripActivity>) {
-        tripActivities.clear()
-        tripActivities.addAll(updated)
+    fun updateActiveTrip(transform: (TripPlan) -> TripPlan) {
+        val index = savedTripPlans.indexOfFirst { it.id == activeTripId }
+        if (index >= 0) savedTripPlans[index] = transform(savedTripPlans[index])
     }
 
     Scaffold(
@@ -138,7 +142,7 @@ fun LoomyTripApp() {
         },
         bottomBar = {
             if (showBottomBar) {
-                BottomAppBar {
+                BottomAppBar(containerColor = MaterialTheme.colorScheme.surface) {
                     bottomItems.forEach { item ->
                         NavigationBarItem(
                             selected = backStackEntry?.destination?.hierarchy?.any {
@@ -146,7 +150,14 @@ fun LoomyTripApp() {
                             } == true,
                             onClick = { navigateToRoot(item.destination) },
                             icon = { Icon(item.icon, contentDescription = item.destination.label) },
-                            label = { Text(item.destination.label) }
+                            label = { Text(item.destination.label) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.primary,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.56f),
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.56f)
+                            )
                         )
                     }
                 }
@@ -183,14 +194,22 @@ fun LoomyTripApp() {
                 )
             }
             composable(Destination.Home.route) {
-                HomeScreen(onStartPlanning = { navController.navigate(Destination.Import.route) })
+                HomeScreen(
+                    currentTripTitle = activeTrip.title,
+                    currentTripDays = activeTrip.totalDays,
+                    currentTripStops = activeTrip.activities.size,
+                    onStartPlanning = { navController.navigate(Destination.Import.route) },
+                    onOpenTrip = { navController.navigate(Destination.Route.route) }
+                )
             }
             composable(Destination.Import.route) {
                 ImportGuideScreen(
                     onExtract = { sourceText ->
                         extractedPlaces.clear()
                         extractedPlaces.addAll(planningRepository.extractPlaces(sourceText))
-                        navController.navigate(Destination.Review.route)
+                        activeTripId = "chiang-mai"
+                        selectedMapDay = 1
+                        navController.navigate(Destination.Route.route)
                     }
                 )
             }
@@ -212,7 +231,9 @@ fun LoomyTripApp() {
             }
             composable(Destination.Route.route) {
                 RouteScreen(
-                    activities = tripActivities,
+                    tripTitle = activeTrip.title,
+                    activities = activeTrip.activities,
+                    totalDays = activeTrip.totalDays,
                     onViewMap = { day ->
                         selectedMapDay = day
                         navController.navigate(Destination.Map.route)
@@ -225,32 +246,63 @@ fun LoomyTripApp() {
             }
             composable(Destination.Map.route) {
                 MapScreen(
-                    activities = tripActivities,
+                    trips = savedTripPlans,
+                    activeTripId = activeTripId,
                     initialDay = selectedMapDay,
-                    onEdit = { day ->
-                        selectedEditDay = day
-                        navController.navigate(Destination.Edit.route)
+                    onOpenTrip = { trip, day ->
+                        activeTripId = trip.id
+                        selectedMapDay = day
+                        navigateToRoot(Destination.Route)
                     }
                 )
             }
             composable(Destination.Edit.route) {
                 EditTripScreen(
-                    activities = tripActivities,
+                    activities = activeTrip.activities,
                     initialDay = selectedEditDay,
-                    onMove = { id, direction ->
-                        replaceTripActivities(
-                            tripRepository.moveActivity(tripActivities.toList(), id, direction)
-                        )
+                    totalDays = activeTrip.totalDays,
+                    onReorder = { id, day, index ->
+                        updateActiveTrip { trip ->
+                            trip.copy(
+                                activities = tripRepository.reorderActivity(
+                                    trip.activities,
+                                    id,
+                                    day,
+                                    index
+                                )
+                            )
+                        }
                     },
                     onDelete = { id ->
-                        replaceTripActivities(
-                            tripRepository.deleteActivity(tripActivities.toList(), id)
-                        )
+                        updateActiveTrip { trip ->
+                            trip.copy(activities = tripRepository.deleteActivity(trip.activities, id))
+                        }
+                    },
+                    onRestore = { activity, index ->
+                        updateActiveTrip { trip ->
+                            trip.copy(
+                                activities = tripRepository.restoreActivity(
+                                    trip.activities,
+                                    activity,
+                                    index
+                                )
+                            )
+                        }
                     },
                     onAdd = { day, title, time ->
-                        replaceTripActivities(
-                            tripRepository.addActivity(tripActivities.toList(), day, title, time)
-                        )
+                        updateActiveTrip { trip ->
+                            trip.copy(
+                                activities = tripRepository.addActivity(
+                                    trip.activities,
+                                    day,
+                                    title,
+                                    time
+                                )
+                            )
+                        }
+                    },
+                    onAddDay = {
+                        updateActiveTrip { trip -> trip.copy(totalDays = trip.totalDays + 1) }
                     },
                     onSave = { navController.popBackStack() }
                 )

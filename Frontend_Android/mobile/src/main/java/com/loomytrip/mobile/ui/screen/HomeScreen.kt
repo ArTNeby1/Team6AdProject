@@ -30,6 +30,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -74,7 +75,13 @@ private val destinationPreviews = listOf(
 )
 
 @Composable
-fun HomeScreen(onStartPlanning: () -> Unit) {
+fun HomeScreen(
+    currentTripTitle: String,
+    currentTripDays: Int,
+    currentTripStops: Int,
+    onStartPlanning: () -> Unit,
+    onOpenTrip: () -> Unit
+) {
     var searchQuery by remember { mutableStateOf("") }
 
     LazyColumn(
@@ -101,8 +108,8 @@ fun HomeScreen(onStartPlanning: () -> Unit) {
                     text = "Where will your story take you?",
                     color = MaterialTheme.colorScheme.onBackground,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 30.sp,
-                    lineHeight = 36.sp
+                    fontSize = 24.sp,
+                    lineHeight = 29.sp
                 )
             }
         }
@@ -134,7 +141,12 @@ fun HomeScreen(onStartPlanning: () -> Unit) {
         }
 
         item {
-            CurrentTripCard(onClick = onStartPlanning)
+            CurrentTripCard(
+                title = currentTripTitle,
+                totalDays = currentTripDays,
+                stopCount = currentTripStops,
+                onClick = onOpenTrip
+            )
         }
 
         item {
@@ -173,12 +185,12 @@ private fun AiPlannerCard(onStartPlanning: () -> Unit) {
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary)
     ) {
         Column(
-            modifier = Modifier.padding(22.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(11.dp)
         ) {
             Box(
                 modifier = Modifier
-                    .size(42.dp)
+                    .size(38.dp)
                     .clip(CircleShape)
                     .background(Color.White.copy(alpha = 0.16f)),
                 contentAlignment = Alignment.Center
@@ -201,14 +213,14 @@ private fun AiPlannerCard(onStartPlanning: () -> Unit) {
                     text = "Paste a travel post.\nWe will build the route.",
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 23.sp,
-                    lineHeight = 29.sp
+                    fontSize = 20.sp,
+                    lineHeight = 25.sp
                 )
                 Text(
-                    text = "Extract places, validate stops and optimize your itinerary in one flow.",
+                    text = "Extract places and turn rough notes into a day-by-day itinerary.",
                     color = Color.White.copy(alpha = 0.78f),
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
                 )
             }
             Button(
@@ -248,7 +260,12 @@ private fun SectionHeader(title: String, action: String) {
 }
 
 @Composable
-private fun CurrentTripCard(onClick: () -> Unit) {
+private fun CurrentTripCard(
+    title: String,
+    totalDays: Int,
+    stopCount: Int,
+    onClick: () -> Unit
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -284,7 +301,7 @@ private fun CurrentTripCard(onClick: () -> Unit) {
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text("Chiang Mai", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text(title, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         Icons.Default.CalendarMonth,
@@ -294,11 +311,17 @@ private fun CurrentTripCard(onClick: () -> Unit) {
                     )
                     Spacer(Modifier.width(5.dp))
                     Text(
-                        "3 days · 4 saved stops",
+                        "$totalDays days · $stopCount saved stops",
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
                         fontSize = 13.sp
                     )
                 }
+                LinearProgressIndicator(
+                    progress = { 0.75f },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.secondary,
+                    trackColor = MaterialTheme.colorScheme.primaryContainer
+                )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier

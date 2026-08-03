@@ -5,8 +5,10 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Paint
 import android.net.Uri
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -25,25 +27,30 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Directions
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Luggage
 import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Route
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -72,38 +79,87 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.loomytrip.mobile.data.model.TripActivity
+import com.loomytrip.mobile.data.model.TripPlan
 import kotlin.math.hypot
 
 @Composable
 fun RouteScreen(
+    tripTitle: String,
     activities: List<TripActivity>,
+    totalDays: Int,
     onViewMap: (Int) -> Unit,
     onEdit: (Int) -> Unit
 ) {
     var selectedDay by rememberSaveable { mutableIntStateOf(1) }
     val dayActivities = activities.filter { it.day == selectedDay }
+    val totalMinutes = dayActivities.sumOf { it.durationMinutes }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .padding(horizontal = 18.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Chiang Mai · 3 days", fontSize = 27.sp, fontWeight = FontWeight.Bold)
-        Text(
-            "${activities.size} stops in this trip",
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(tripTitle, style = MaterialTheme.typography.headlineMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.CalendarMonth,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    "$totalDays days  •  ${activities.size} saved stops",
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+        Surface(
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(19.dp))
+                Spacer(Modifier.width(9.dp))
+                Column {
+                    Text("Route ready", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text("Stops are grouped by day and ready to fine-tune.", fontSize = 11.sp)
+                }
+            }
+        }
+        DaySelector(
+            selectedDay = selectedDay,
+            totalDays = totalDays,
+            onDaySelected = { selectedDay = it }
         )
-        DaySelector(selectedDay = selectedDay, onDaySelected = { selectedDay = it })
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Day $selectedDay plan", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "${dayActivities.size} stops  •  ${durationSummary(totalMinutes)}",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+            )
+        }
         if (dayActivities.isEmpty()) {
             EmptyDay(modifier = Modifier.weight(1f))
         } else {
             LazyColumn(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(0.dp)
             ) {
                 itemsIndexed(dayActivities, key = { _, activity -> activity.id }) { index, activity ->
-                    ItineraryActivityCard(index = index, activity = activity)
+                    ItineraryActivityCard(
+                        index = index,
+                        activity = activity,
+                        showConnector = index < dayActivities.lastIndex
+                    )
                 }
             }
         }
@@ -134,180 +190,88 @@ fun RouteScreen(
 }
 
 @Composable
-private fun ItineraryActivityCard(index: Int, activity: TripActivity) {
+private fun ItineraryActivityCard(index: Int, activity: TripActivity, showConnector: Boolean) {
     val context = LocalContext.current
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
-        Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.Top) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Box(
                 modifier = Modifier
-                    .size(34.dp)
+                    .size(32.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary),
+                    .background(if (index == 0) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary),
                 contentAlignment = Alignment.Center
             ) {
-                Text("${index + 1}", color = Color.White, fontWeight = FontWeight.Bold)
+                Text("${index + 1}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
             }
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(activity.title, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                Text(
-                    activity.category,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold
+            if (showConnector) {
+                Box(
+                    modifier = Modifier
+                        .width(2.dp)
+                        .height(86.dp)
+                        .background(MaterialTheme.colorScheme.primaryContainer)
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.Top) {
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(activity.startTime, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        Text(activity.title, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text(
+                            "${activity.category}  •  ${activity.durationLabel}",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f)
+                        )
+                        Text(
+                            activity.address,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.52f)
+                        )
+                    }
+                    IconButton(onClick = { openExternalNavigation(context, activity) }) {
+                        Icon(
+                            Icons.Default.Directions,
+                            contentDescription = "Navigate to ${activity.title}",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+            if (showConnector) {
+                Row(
+                    modifier = Modifier.padding(vertical = 7.dp, horizontal = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Icon(
-                        Icons.Default.Schedule,
+                        Icons.Default.Directions,
                         contentDescription = null,
-                        modifier = Modifier.size(15.dp),
-                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.secondary
                     )
                     Spacer(Modifier.width(5.dp))
                     Text(
-                        "${activity.startTime} · ${activity.durationLabel}",
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+                        "About 15 min to the next stop",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
                     )
                 }
-                Text(
-                    activity.address,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f)
-                )
-            }
-            IconButton(
-                onClick = { openExternalNavigation(context, activity) }
-            ) {
-                Icon(
-                    Icons.Default.Directions,
-                    contentDescription = "Navigate to ${activity.title}",
-                    tint = MaterialTheme.colorScheme.primary
-                )
             }
         }
     }
 }
 
 @Composable
-fun EditTripScreen(
-    activities: List<TripActivity>,
-    initialDay: Int,
-    onMove: (String, Int) -> Unit,
-    onDelete: (String) -> Unit,
-    onAdd: (Int, String, String) -> Unit,
-    onSave: () -> Unit
-) {
-    var selectedDay by rememberSaveable { mutableIntStateOf(initialDay) }
-    var showAddDialog by remember { mutableStateOf(false) }
-    val dayActivities = activities.filter { it.day == selectedDay }
-
-    LaunchedEffect(initialDay) { selectedDay = initialDay }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Text("Edit itinerary", fontSize = 27.sp, fontWeight = FontWeight.Bold)
-        Text(
-            "Add, remove, or change the order for this day.",
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
-            lineHeight = 20.sp
-        )
-        DaySelector(selectedDay = selectedDay, onDaySelected = { selectedDay = it })
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(9.dp)
-        ) {
-            itemsIndexed(dayActivities, key = { _, item -> item.id }) { index, activity ->
-                EditActivityCard(
-                    activity = activity,
-                    canMoveUp = index > 0,
-                    canMoveDown = index < dayActivities.lastIndex,
-                    onMoveUp = { onMove(activity.id, -1) },
-                    onMoveDown = { onMove(activity.id, 1) },
-                    onDelete = { onDelete(activity.id) }
-                )
-            }
-        }
-        OutlinedButton(
-            onClick = { showAddDialog = true },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Icon(Icons.Default.Add, contentDescription = null)
-            Spacer(Modifier.width(6.dp))
-            Text("Add activity to Day $selectedDay")
-        }
-        Button(onClick = onSave, modifier = Modifier.fillMaxWidth()) {
-            Text("Save changes", fontWeight = FontWeight.Bold)
-        }
-    }
-
-    if (showAddDialog) {
-        AddActivityDialog(
-            day = selectedDay,
-            onDismiss = { showAddDialog = false },
-            onAdd = { title, time ->
-                onAdd(selectedDay, title, time)
-                showAddDialog = false
-            }
-        )
-    }
-}
-
-@Composable
-private fun EditActivityCard(
-    activity: TripActivity,
-    canMoveUp: Boolean,
-    canMoveDown: Boolean,
-    onMoveUp: () -> Unit,
-    onMoveDown: () -> Unit,
-    onDelete: () -> Unit
-) {
-    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
-        Row(
-            modifier = Modifier.padding(start = 14.dp, top = 10.dp, bottom = 10.dp, end = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(activity.title, fontWeight = FontWeight.Bold)
-                Text(
-                    "${activity.startTime} · ${activity.durationLabel}",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f)
-                )
-            }
-            IconButton(onClick = onMoveUp, enabled = canMoveUp) {
-                Icon(Icons.Default.ArrowUpward, contentDescription = "Move ${activity.title} up")
-            }
-            IconButton(onClick = onMoveDown, enabled = canMoveDown) {
-                Icon(Icons.Default.ArrowDownward, contentDescription = "Move ${activity.title} down")
-            }
-            IconButton(onClick = onDelete) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = "Delete ${activity.title}",
-                    tint = MaterialTheme.colorScheme.error
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun AddActivityDialog(
+internal fun AddActivityDialog(
     day: Int,
     onDismiss: () -> Unit,
     onAdd: (String, String) -> Unit
@@ -344,15 +308,21 @@ private fun AddActivityDialog(
 
 @Composable
 fun MapScreen(
-    activities: List<TripActivity>,
+    trips: List<TripPlan>,
+    activeTripId: String,
     initialDay: Int,
-    onEdit: (Int) -> Unit
+    onOpenTrip: (TripPlan, Int) -> Unit
 ) {
+    var selectedTripId by rememberSaveable { mutableStateOf(activeTripId) }
     var selectedDay by rememberSaveable { mutableIntStateOf(initialDay) }
-    val dayActivities = activities.filter { it.day == selectedDay }
+    val selectedTrip = trips.firstOrNull { it.id == selectedTripId } ?: trips.first()
+    val dayActivities = selectedTrip.activities.filter { it.day == selectedDay }
     val context = LocalContext.current
 
-    LaunchedEffect(initialDay) { selectedDay = initialDay }
+    LaunchedEffect(activeTripId, initialDay) {
+        selectedTripId = activeTripId
+        selectedDay = initialDay.coerceIn(1, selectedTrip.totalDays)
+    }
 
     Column(
         modifier = Modifier
@@ -360,7 +330,19 @@ fun MapScreen(
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        DaySelector(selectedDay = selectedDay, onDaySelected = { selectedDay = it })
+        TripSelector(
+            trips = trips,
+            selectedTrip = selectedTrip,
+            onTripSelected = { trip ->
+                selectedTripId = trip.id
+                selectedDay = 1
+            }
+        )
+        DaySelector(
+            selectedDay = selectedDay,
+            totalDays = selectedTrip.totalDays,
+            onDaySelected = { selectedDay = it }
+        )
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -370,7 +352,7 @@ fun MapScreen(
             InteractiveRouteMap(activities = dayActivities)
         }
         Text(
-            "Day $selectedDay route · ${dayActivities.size} stops",
+            "${selectedTrip.title} · Day $selectedDay · ${dayActivities.size} stops",
             fontWeight = FontWeight.Bold,
             fontSize = 16.sp
         )
@@ -388,12 +370,12 @@ fun MapScreen(
                     Text("Navigate")
                 }
                 OutlinedButton(
-                    onClick = { onEdit(selectedDay) },
+                    onClick = { onOpenTrip(selectedTrip, selectedDay) },
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.Edit, contentDescription = null)
+                    Icon(Icons.Default.Route, contentDescription = null)
                     Spacer(Modifier.width(6.dp))
-                    Text("Edit day")
+                    Text("Open itinerary")
                 }
             }
         }
@@ -406,18 +388,149 @@ fun MapScreen(
 }
 
 @Composable
-private fun DaySelector(selectedDay: Int, onDaySelected: (Int) -> Unit) {
+private fun DaySelector(
+    selectedDay: Int,
+    totalDays: Int,
+    onDaySelected: (Int) -> Unit
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        (1..3).forEach { day ->
+        (1..totalDays).forEach { day ->
             FilterChip(
                 selected = selectedDay == day,
                 onClick = { onDaySelected(day) },
                 label = { Text("Day $day") },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(14.dp),
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.tertiary,
+                    selectedLabelColor = MaterialTheme.colorScheme.onTertiary,
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                ),
+                border = FilterChipDefaults.filterChipBorder(
+                    enabled = true,
+                    selected = selectedDay == day,
+                    borderColor = Color.Transparent,
+                    selectedBorderColor = Color.Transparent
+                )
             )
+        }
+    }
+}
+
+@Composable
+private fun TripSelector(
+    trips: List<TripPlan>,
+    selectedTrip: TripPlan,
+    onTripSelected: (TripPlan) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded = true }
+                .semantics {
+                    contentDescription = "Choose trip. Currently ${selectedTrip.title}"
+                },
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            shape = RoundedCornerShape(18.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Luggage,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(21.dp)
+                    )
+                }
+                Spacer(Modifier.width(11.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "VIEWING TRIP",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.8.sp
+                    )
+                    Text(
+                        selectedTrip.title,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        "${selectedTrip.dateLabel} · ${selectedTrip.activities.size} stops",
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Icon(
+                    Icons.Default.KeyboardArrowDown,
+                    contentDescription = "Show saved trips",
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                )
+            }
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.fillMaxWidth(0.9f),
+            shape = RoundedCornerShape(16.dp),
+            containerColor = MaterialTheme.colorScheme.surface
+        ) {
+            trips.forEach { trip ->
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(trip.title, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "${trip.totalDays} days · ${trip.activities.size} stops",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f)
+                            )
+                        }
+                    },
+                    onClick = {
+                        onTripSelected(trip)
+                        expanded = false
+                    },
+                    leadingIcon = {
+                        if (trip.id == selectedTrip.id) {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.LocationOn,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f)
+                            )
+                        }
+                    }
+                )
+            }
         }
     }
 }

@@ -28,22 +28,18 @@ class SprintOneFlowTest {
     }
 
     @Test
-    fun loginImportAndReview_completesSprintOneFlow() {
+    fun loginImportAndBuildTrip_completesPlanningFlow() {
         composeRule.onNodeWithText("Sign in").performClick()
         composeRule.onNodeWithText("AI TRIP PLANNER").assertIsDisplayed()
 
         composeRule.onNodeWithText("Start planning")
             .performScrollTo()
             .performClick()
-        composeRule.onNodeWithText("Import a travel guide").assertIsDisplayed()
+        composeRule.onNodeWithText("Turn notes into a trip").assertIsDisplayed()
 
-        composeRule.onNodeWithText("Extract places with AI").performClick()
-        composeRule.onNodeWithText("Review extracted places").assertIsDisplayed()
+        composeRule.onNodeWithText("Sample").performClick()
+        composeRule.onNodeWithText("Extract places and build trip").performClick()
+        composeRule.onNodeWithText("Route ready").assertIsDisplayed()
         composeRule.onNodeWithText("Wat Chedi Luang").assertIsDisplayed()
-        composeRule.onNodeWithText("4 of 4 places selected. Remove anything that should not enter the itinerary.")
-            .assertIsDisplayed()
-
-        composeRule.onNodeWithText("Confirm itinerary").performClick()
-        composeRule.onNodeWithText("Chiang Mai · 3 days").assertIsDisplayed()
     }
 }
