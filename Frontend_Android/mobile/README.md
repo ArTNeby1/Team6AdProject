@@ -1,35 +1,27 @@
 # Loomytrip Mobile
 
-Android client built with Kotlin and Jetpack Compose.
+Android app for Loomytrip, built with Kotlin and Jetpack Compose.
 
-## Sprint 1 prototype
+## Current progress
 
-The implemented Sprint 1 mobile scope is:
+Sprint 1:
 
-- local mock sign in and account registration
-- traveler home and AI planner entry point
-- paste travel-guide text (`F-02`)
-- deterministic mock extraction through a replaceable repository
-- review and include/exclude extracted places (`F-06`)
-- confirm the reviewed result into the existing trip prototype
+- local sign in and registration
+- home page and trip planner entry
+- paste travel guide text (`F-02`)
+- review the extracted places (`F-06`)
+- confirm the selected places as a trip
 
-The end-to-end flow is:
+Sprint 2:
 
-`Sign in/Register -> Home -> Import guide -> Review extracted places -> Confirm itinerary`
+- browse the itinerary by day (`F-10`)
+- add, delete and reorder activities (`F-11`)
+- route map with numbered stops (`F-13`)
+- open external navigation (`F-15`)
 
-All authentication and extraction content is local mock data. The mock planning repository is intentionally isolated so it can later be replaced by the Spring Boot/FastAPI contract without rewriting the screens.
+## Notes
 
-## Sprint 2 implementation
-
-The local Sprint 2 work adds:
-
-- day-by-day itinerary browsing (`F-10`)
-- shared itinerary state across trip, edit, and map screens
-- add, delete, and reorder itinerary activities (`F-11`)
-- an interactive native route map with numbered markers and route lines (`F-13`)
-- external walking navigation through Google Maps with a `geo:` fallback (`F-15`)
-
-The route map supports pinch-to-zoom, drag-to-pan, and tappable stop details. It is rendered locally, so it does not require an API key or network access.
+The backend connection is not finished yet. Login, place extraction and itinerary data currently use local mock data. The map is also drawn locally, so it does not need a map API key.
 
 ## Run
 

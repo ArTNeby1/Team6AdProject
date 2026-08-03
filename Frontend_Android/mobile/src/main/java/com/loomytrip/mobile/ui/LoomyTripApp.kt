@@ -72,6 +72,7 @@ private data class BottomItem(
 @Composable
 fun LoomyTripApp() {
     val navController = rememberNavController()
+    // Backend APIs are not connected yet, so the app uses local data for now.
     val planningRepository = remember { MockPlanningRepository() }
     val tripRepository = remember { MockTripRepository() }
     val extractedPlaces = remember { mutableStateListOf<ExtractedPlace>() }
@@ -281,7 +282,7 @@ private fun ProfileScreen(email: String, onSignOut: () -> Unit) {
         Text("Traveler account", fontSize = 27.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
         Text(email.ifBlank { "traveler@loomytrip.com" })
         Text(
-            "Authentication is represented with local state for the Sprint 1 prototype.",
+            "Demo account. Sign-in data is saved only for this session.",
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
         )
         androidx.compose.material3.OutlinedButton(

@@ -92,7 +92,7 @@ fun LoginScreen(
             Text("Create an account")
         }
         Text(
-            text = "Sprint 1 prototype: authentication is local mock state until the backend branch is integrated.",
+            text = "Demo login: any email and password will work.",
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
             fontSize = 12.sp,
             lineHeight = 17.sp

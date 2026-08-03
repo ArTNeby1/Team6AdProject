@@ -77,7 +77,7 @@ fun ImportGuideScreen(onExtract: (String) -> Unit) {
             ) {
                 Icon(Icons.Default.AutoAwesome, contentDescription = null)
                 Text(
-                    "Sprint 1 uses a deterministic mock extractor. The repository interface can later be replaced by the FastAPI endpoint.",
+                    "For this demo, places are extracted from the text above.",
                     fontSize = 12.sp,
                     lineHeight = 17.sp
                 )

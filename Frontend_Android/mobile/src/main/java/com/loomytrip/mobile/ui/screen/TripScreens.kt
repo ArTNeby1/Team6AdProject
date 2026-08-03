@@ -91,7 +91,7 @@ fun RouteScreen(
     ) {
         Text("Chiang Mai · 3 days", fontSize = 27.sp, fontWeight = FontWeight.Bold)
         Text(
-            "${activities.size} stops · AI-optimized day-by-day itinerary",
+            "${activities.size} stops in this trip",
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
         )
         DaySelector(selectedDay = selectedDay, onDaySelected = { selectedDay = it })
@@ -222,7 +222,7 @@ fun EditTripScreen(
     ) {
         Text("Edit itinerary", fontSize = 27.sp, fontWeight = FontWeight.Bold)
         Text(
-            "Reorder, add, or remove activities. Changes are shared with the itinerary and map.",
+            "Add, remove, or change the order for this day.",
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
             lineHeight = 20.sp
         )
@@ -398,7 +398,7 @@ fun MapScreen(
             }
         }
         Text(
-            "Interactive route map. Pinch to zoom, drag to move, and tap a stop for details.",
+            "Drag to move. Pinch to zoom. Tap a stop for details.",
             fontSize = 11.sp,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
         )
@@ -453,6 +453,7 @@ private fun InteractiveRouteMap(activities: List<TripActivity>) {
             .fillMaxSize()
             .background(Color(0xFFF2EFE7))
     ) {
+        // Draw the route locally because the map API is not connected yet.
         Canvas(
             modifier = Modifier
                 .fillMaxSize()

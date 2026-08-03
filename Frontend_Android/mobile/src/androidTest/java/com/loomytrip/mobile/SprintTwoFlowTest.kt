@@ -37,7 +37,7 @@ class SprintTwoFlowTest {
         composeRule.onNodeWithContentDescription("View Day 2 map").performClick()
         composeRule.onNodeWithText("Day 2 route · 4 stops").assertIsDisplayed()
         composeRule.onNodeWithText(
-            "Interactive route map. Pinch to zoom, drag to move, and tap a stop for details."
+            "Drag to move. Pinch to zoom. Tap a stop for details."
         ).assertIsDisplayed()
     }
 }
