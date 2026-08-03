@@ -1,0 +1,99 @@
+name: Web CI Pipeline
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'Frontend_Web/**'
+  push:
+    branches: [ main ]
+    paths:
+      - 'Frontend_Web/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build:
+    name: Build & Scan
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./Frontend_Web
+    env:
+      AWS_REGION: ap-southeast-1
+
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.20.0'
+          cache: 'npm'
+          cache-dependency-path: Frontend_Web/package-lock.json
+
+      - name: 安装依赖
+        run: npm ci
+
+      # ============================================================
+      # SCA：依赖漏洞扫描
+      # ============================================================
+      - name: SCA 依赖漏洞扫描
+        run: npm audit --json > sca-report.json || true
+        continue-on-error: true
+
+      - name: 上传 SCA 报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-sca-report
+          path: Frontend_Web/sca-report.json
+
+      # ============================================================
+      # SAST：静态代码扫描
+      # ============================================================
+      - name: SAST 静态代码扫描
+        run: npx eslint . --format json --output-file sast-report.json || true
+        continue-on-error: true
+
+      - name: 上传 SAST 报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-sast-report
+          path: Frontend_Web/sast-report.json
+
+      # ============================================================
+      # 构建
+      # ============================================================
+      - name: 构建项目
+        run: npm run build
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: Frontend_Web/build/
+
+      # ============================================================
+      # 以下步骤仅在 Merge 到 main 时执行（部署到 S3）
+      # ============================================================
+
+      - name: 配置 AWS 凭证
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_IAC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 上传静态文件到 S3
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          aws s3 sync build/ s3://ad-project-frontend-android-dev/web/ --delete
