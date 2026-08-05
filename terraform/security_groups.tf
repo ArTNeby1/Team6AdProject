@@ -3,8 +3,8 @@
 # ============================================================
 
 resource "aws_security_group" "alb" {
-  name        = "${var.project_name}-alb-${var.environment}"
-  description = "ALB:对公网开放 80 端口"
+  name = "${var.project_name}-alb-${var.environment}"
+  description = "ALB security group: allow public HTTP on port 80"
   vpc_id      = aws_vpc.main.id
 
   ingress {
@@ -28,12 +28,13 @@ resource "aws_security_group" "alb" {
 }
 
 resource "aws_security_group" "ecs_tasks" {
-  name        = "${var.project_name}-ecs-tasks-${var.environment}"
-  description = "ECS 任务:容器端口只允许来自 ALB 的流量"
+  name = "${var.project_name}-ecs-tasks-${var.environment}"
+  # SecurityGroup 的 description 系列字段（包括 ingress/egress 的 description）
+  description = "ECS tasks security group: only allow traffic from the ALB"
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description     = "Java 后端端口,仅 ALB 可访问"
+    description     = "Java backend port, ALB only"
     from_port       = 8080
     to_port         = 8080
     protocol        = "tcp"
@@ -41,7 +42,7 @@ resource "aws_security_group" "ecs_tasks" {
   }
 
   ingress {
-    description     = "ML 服务端口,仅 ALB 可访问"
+    description     = "ML service port, ALB only"
     from_port       = 8000
     to_port         = 8000
     protocol        = "tcp"
