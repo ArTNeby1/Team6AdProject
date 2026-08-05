@@ -1,0 +1,49 @@
+{
+  "destination": "Singapore",
+  "dates": [
+    "2023-04-14",
+    "2023-04-15"
+  ],
+  "places": [
+    {
+      "name": "Thian Hock Keng Temple",
+      "type": "attraction",
+      "coords": null,
+      "activities": [
+        "Visit"
+      ]
+    },
+    {
+      "name": "Sri Mariamman Temple",
+      "type": "attraction",
+      "coords": null,
+      "activities": [
+        "Visit"
+      ]
+    },
+    {
+      "name": "Maxwell Food Centre",
+      "type": "market",
+      "coords": null,
+      "activities": [
+        "Eat at Tian Tian Hainanese Chicken Rice"
+      ]
+    },
+    {
+      "name": "Tiong Bahru Market",
+      "type": "market",
+      "coords": null,
+      "activities": [
+        "Browse"
+      ]
+    },
+    {
+      "name": "1-Altitude",
+      "type": "attraction",
+      "coords": null,
+      "activities": [
+        "Rooftop drinks"
+      ]
+    }
+  ]
+}
