@@ -3,7 +3,7 @@
 # ============================================================
 
 resource "aws_security_group" "alb" {
-  name = "${var.project_name}-alb-${var.environment}"
+  name        = "${var.project_name}-alb-${var.environment}"
   description = "ALB security group: allow public HTTP on port 80"
   vpc_id      = aws_vpc.main.id
 

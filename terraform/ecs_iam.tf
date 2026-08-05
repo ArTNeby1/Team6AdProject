@@ -31,6 +31,27 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+# ECS Agent 启动容器前要从 Secrets Manager 取值注入环境变量，
+# 这个权限必须挂在 Execution Role 上（不是 Task Role）。
+resource "aws_iam_role_policy" "ecs_task_execution_secrets" {
+  name = "read-secrets"
+  role = aws_iam_role.ecs_task_execution.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = ["secretsmanager:GetSecretValue"]
+        Resource = [
+          aws_secretsmanager_secret.db.arn,
+          aws_secretsmanager_secret.jwt.arn
+        ]
+      }
+    ]
+  })
+}
+
 # ------------------------------------------------------------
 # Task Role：Java 后端 —— 目前应用代码不调用别的 AWS 服务，先给空权限，
 # 以后要用（比如传文件到 S3）再往这个角色上加 policy。

@@ -47,6 +47,17 @@ resource "aws_ecs_task_definition" "java" {
           protocol      = "tcp"
         }
       ]
+      environment = [
+        { name = "SPRING_PROFILES_ACTIVE", value = "prod" }
+      ]
+      secrets = [
+        { name = "DB_HOST", valueFrom = "${aws_secretsmanager_secret.db.arn}:host::" },
+        { name = "DB_PORT", valueFrom = "${aws_secretsmanager_secret.db.arn}:port::" },
+        { name = "DB_NAME", valueFrom = "${aws_secretsmanager_secret.db.arn}:dbname::" },
+        { name = "DB_USERNAME", valueFrom = "${aws_secretsmanager_secret.db.arn}:username::" },
+        { name = "DB_PASSWORD", valueFrom = "${aws_secretsmanager_secret.db.arn}:password::" },
+        { name = "JWT_SECRET", valueFrom = aws_secretsmanager_secret.jwt.arn }
+      ]
       logConfiguration = {
         logDriver = "awslogs"
         options = {
@@ -57,6 +68,13 @@ resource "aws_ecs_task_definition" "java" {
       }
     }
   ])
+
+  # secrets 里引用的是 secret 的具体 key，Terraform 光看 ARN 引用看不出
+  # 依赖 secret_version，这里显式声明，确保密码先写进 Secrets Manager
+  depends_on = [
+    aws_secretsmanager_secret_version.db,
+    aws_secretsmanager_secret_version.jwt
+  ]
 }
 
 # ------------------------------------------------------------

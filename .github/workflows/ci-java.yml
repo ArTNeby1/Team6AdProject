@@ -167,3 +167,15 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # ============================================================
+      # 触发 ECS 部署：让服务拉刚推上去的 :latest 镜像
+      # ============================================================
+      - name: 部署到 ECS
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          aws ecs update-service \
+            --cluster ad-project-dev \
+            --service ad-project-java-dev \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }}

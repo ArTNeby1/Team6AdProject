@@ -42,3 +42,13 @@ output "ecs_ml_service_name" {
   value       = aws_ecs_service.ml.name
   description = "ML 服务 ECS Service 名"
 }
+
+output "rds_endpoint" {
+  value       = aws_db_instance.main.address
+  description = "RDS 地址（不含密码，密码在 Secrets Manager 里）"
+}
+
+output "db_secret_name" {
+  value       = aws_secretsmanager_secret.db.name
+  description = "数据库连接信息存放的 Secrets Manager 名称"
+}
