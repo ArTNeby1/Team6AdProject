@@ -33,3 +33,8 @@ pytest-cache-files-*/
 # local-only learning context (not shared, not for repo history)
 CLAUDE.md
 notes/
+
+# Node
+node_modules/
+dist/
+.eslintcache
