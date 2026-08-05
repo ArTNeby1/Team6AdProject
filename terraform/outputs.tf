@@ -22,3 +22,23 @@ output "frontend_android_bucket" {
   value       = aws_s3_bucket.frontend_android.bucket
   description = "S3 存储桶名，前端静态文件和安卓 APK 存放处"
 }
+
+output "alb_dns_name" {
+  value       = aws_lb.main.dns_name
+  description = "ALB 公网地址，/api/* 转发给 Java 后端，其余转发给 ML 服务"
+}
+
+output "ecs_cluster_name" {
+  value       = aws_ecs_cluster.main.name
+  description = "ECS 集群名，CI 里 update-service 要用"
+}
+
+output "ecs_java_service_name" {
+  value       = aws_ecs_service.java.name
+  description = "Java 后端 ECS Service 名"
+}
+
+output "ecs_ml_service_name" {
+  value       = aws_ecs_service.ml.name
+  description = "ML 服务 ECS Service 名"
+}

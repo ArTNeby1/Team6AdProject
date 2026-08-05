@@ -112,6 +112,34 @@ resource "aws_iam_role_policy" "github_actions_ecr" {
 # ci-web.yml 的 `aws s3 sync` 和 ci-android.yml 的 `aws s3 cp` 都要写这个桶，
 # 之前的策略里完全没有授权到它，push 到 main 时会 AccessDenied。
 
+# ============================================================
+# 权限策略：触发 ECS 部署
+# ============================================================
+# CI 推完镜像到 ECR 后，调用 update-service --force-new-deployment
+# 让服务滚动拉取新镜像，这就是"部署"这一步的落地方式。
+
+resource "aws_iam_role_policy" "github_actions_ecs_deploy" {
+  name = "ecs-deploy"
+  role = aws_iam_role.github_actions.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ecs:UpdateService",
+          "ecs:DescribeServices"
+        ]
+        Resource = [
+          aws_ecs_service.java.id,
+          aws_ecs_service.ml.id
+        ]
+      }
+    ]
+  })
+}
+
 resource "aws_iam_role_policy" "github_actions_frontend_s3" {
   name = "frontend-s3-access"
   role = aws_iam_role.github_actions.id
