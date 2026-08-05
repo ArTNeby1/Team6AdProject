@@ -10,6 +10,9 @@ import ItineraryDetailPage from './pages/ItineraryDetailPage';
 import MapPage from './pages/MapPage';
 import EditPage from './pages/EditPage';
 import ProfilePage from './pages/ProfilePage';
+import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
   return (
@@ -18,14 +21,31 @@ function App() {
       <main>
         <div className="container">
           <Routes>
+            {/* Public Routes */}
             <Route path="/" element={<HomePage />} />
-            <Route path="/import" element={<ImportPage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
             <Route path="/attraction" element={<AttractionPage />} />
-            <Route path="/route" element={<ItineraryListPage />} />
-            <Route path="/itinerary/:id" element={<ItineraryDetailPage />} />
-            <Route path="/map" element={<MapPage />} />
-            <Route path="/edit" element={<EditPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
+
+            {/* Protected Routes */}
+            <Route path="/import" element={
+              <ProtectedRoute><ImportPage /></ProtectedRoute>
+            } />
+            <Route path="/route" element={
+              <ProtectedRoute><ItineraryListPage /></ProtectedRoute>
+            } />
+            <Route path="/itinerary/:id" element={
+              <ProtectedRoute><ItineraryDetailPage /></ProtectedRoute>
+            } />
+            <Route path="/map" element={
+              <ProtectedRoute><MapPage /></ProtectedRoute>
+            } />
+            <Route path="/edit" element={
+              <ProtectedRoute><EditPage /></ProtectedRoute>
+            } />
+            <Route path="/profile" element={
+              <ProtectedRoute><ProfilePage /></ProtectedRoute>
+            } />
           </Routes>
         </div>
       </main>

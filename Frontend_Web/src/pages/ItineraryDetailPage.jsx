@@ -1,12 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTrip } from '../context/TripContext';
 
 const ItineraryDetailPage = () => {
   const navigate = useNavigate();
-  const { getActiveTrip, addDayToTrip } = useTrip();
+  const { getActiveTrip, addDayToTrip, updateTripTitle } = useTrip();
   const trip = getActiveTrip();
   const [selectedDay, setSelectedDay] = useState(1);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editTitleValue, setEditTitleValue] = useState('');
+
+  useEffect(() => {
+    if (trip) {
+      setEditTitleValue(trip.title);
+    }
+  }, [trip]);
 
   if (!trip) return <div>Trip not found</div>;
 
@@ -14,28 +22,76 @@ const ItineraryDetailPage = () => {
     addDayToTrip(trip.id);
   };
 
+  const handleSaveTitle = () => {
+    if (editTitleValue.trim()) {
+      updateTripTitle(trip.id, editTitleValue.trim());
+      setIsEditingTitle(false);
+    }
+  };
+
   const dayLocations = trip.locations.filter(loc => loc.day === selectedDay);
 
   return (
     <div className="route-page">
       <header className="page-header" style={{marginBottom: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end'}}>
-        <div>
+        <div style={{ flex: 1 }}>
           <button className="btn-secondary" style={{padding: '6px 16px', marginBottom: '12px', fontSize: '14px'}} onClick={() => navigate('/route')}>
             ← 返回列表
           </button>
           <div className="kicker" style={{color: 'var(--muted)', fontSize: '14px', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '2px'}}>My Trip Itinerary</div>
-          <h1>{trip.title}</h1>
+
+          <div className="title-area" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {isEditingTitle ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input
+                  type="text"
+                  value={editTitleValue}
+                  onChange={(e) => setEditTitleValue(e.target.value)}
+                  style={{
+                    fontSize: '32px', fontWeight: 'bold', border: '2px solid var(--jade)',
+                    borderRadius: '8px', padding: '4px 12px', outline: 'none',
+                    fontFamily: 'var(--display)'
+                  }}
+                  autoFocus
+                  onBlur={handleSaveTitle}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSaveTitle()}
+                />
+              </div>
+            ) : (
+              <>
+                <h1 style={{ margin: 0 }}>{trip.title}</h1>
+                {trip.status !== 'FINISHED' && (
+                  <button
+                    onClick={() => setIsEditingTitle(true)}
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      fontSize: '20px', color: 'var(--jade)', padding: '4px',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      opacity: 0.6, transition: 'opacity 0.2s'
+                    }}
+                    onMouseOver={(e) => e.currentTarget.style.opacity = '1'}
+                    onMouseOut={(e) => e.currentTarget.style.opacity = '0.6'}
+                    title="修改行程名称"
+                  >
+                    ✏️
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         </div>
+
         <div className="header-actions" style={{display: 'flex', gap: '12px'}}>
           {trip.status !== 'FINISHED' ? (
             <>
               <button className="btn-secondary" onClick={() => navigate('/edit')}>编辑行程</button>
-              <button className="btn-primary">保存并分享</button>
+              <button className="btn-secondary" onClick={() => navigate('/route')}>保存</button>
+              <button className="btn-primary">分享</button>
             </>
           ) : (
             <>
               <button className="btn-secondary" onClick={() => navigate('/map')}>在地图上查看</button>
-              <button className="btn-primary">分享行程</button>
+              <button className="btn-primary">分享</button>
             </>
           )}
         </div>

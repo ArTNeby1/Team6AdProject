@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 const HomePage = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [query, setQuery] = useState('');
 
   const allPlaces = ["新加坡滨海湾", "圣淘沙岛", "牛车水 (Chinatown)", "小印度", "乌节路", "新加坡环球影城", "清迈古城", "契迪龙寺", "素贴山", "宁曼路"];
@@ -27,7 +29,7 @@ const HomePage = () => {
                 onChange={(e) => setQuery(e.target.value)}
               />
             </div>
-            <button className="btn-primary">智能规划</button>
+            <button className="btn-primary" onClick={() => navigate(user ? '/import' : '/login')}>智能规划</button>
 
             {searchResults.length > 0 && (
               <div className="search-dropdown" style={{
@@ -50,28 +52,30 @@ const HomePage = () => {
         </div>
       </section>
 
-      <section className="featured-trips">
-        <div className="section-title">
-          <h2>正在进行的行程</h2>
-          <a href="#" className="link-more">查看全部</a>
-        </div>
-        <div className="destination-grid">
-          <div className="destination-card" onClick={() => navigate('/route')}>
-            <div className="dest-img" style={{backgroundImage: 'linear-gradient(rgba(0,0,0,0),rgba(0,0,0,0.6)), url(https://images.unsplash.com/photo-1528181304800-2f1738b9cdc1?w=600&h=400&fit=crop)'}}>
-              <h3>清迈深度文化之旅</h3>
-            </div>
-            <div className="dest-info">
-              <p>3天 · 12个景点 · 24日出发</p>
-              <div className="progress-bar">
-                <div className="progress" style={{width: '60%'}}></div>
+      {user && (
+        <section className="featured-trips">
+          <div className="section-title">
+            <h2>正在进行的行程</h2>
+            <a href="#" className="link-more" onClick={(e) => { e.preventDefault(); navigate('/route'); }}>查看全部</a>
+          </div>
+          <div className="destination-grid">
+            <div className="destination-card" onClick={() => navigate('/route')}>
+              <div className="dest-img" style={{backgroundImage: 'linear-gradient(rgba(0,0,0,0),rgba(0,0,0,0.6)), url(https://images.unsplash.com/photo-1528181304800-2f1738b9cdc1?w=600&h=400&fit=crop)'}}>
+                <h3>清迈深度文化之旅</h3>
               </div>
-              <a className="go-link">继续规划 ➔</a>
+              <div className="dest-info">
+                <p>3天 · 12个景点 · 24日出发</p>
+                <div className="progress-bar">
+                  <div className="progress" style={{width: '60%'}}></div>
+                </div>
+                <a className="go-link">继续规划 ➔</a>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
-      <section className="popular-destinations" style={{marginTop: '60px'}}>
+      <section className="popular-destinations" style={{marginTop: user ? '60px' : '20px'}}>
         <div className="section-title">
           <h2>热门目的地</h2>
         </div>

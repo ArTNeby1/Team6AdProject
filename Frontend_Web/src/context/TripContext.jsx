@@ -141,6 +141,40 @@ export const TripProvider = ({ children }) => {
     }));
   };
 
+  const createNewTrip = (locationNames) => {
+    const newId = `trip-${Date.now()}`;
+    const newTrip = {
+      id: newId,
+      title: '新导入的行程',
+      date: new Date().toLocaleDateString('zh-CN').replace(/\//g, '.'),
+      status: 'NOT_STARTED',
+      desc: `1 天 ${locationNames.length} 站`,
+      shortName: '新',
+      dayCount: 1,
+      color: 'var(--jade)',
+      locations: locationNames.map((name, index) => ({
+        id: `ext-loc-${Date.now()}-${index}`,
+        name,
+        day: 1,
+        time: '09:00',
+        duration: '1.5h',
+        transport: '🚕 待定'
+      }))
+    };
+    setTrips(prev => [...prev, newTrip]);
+    setActiveTripId(newId);
+    return newId;
+  };
+
+  const updateTripTitle = (tripId, newTitle) => {
+    setTrips(prev => prev.map(trip => {
+      if (trip.id === tripId) {
+        return { ...trip, title: newTitle };
+      }
+      return trip;
+    }));
+  };
+
   return (
     <TripContext.Provider value={{
       trips,
@@ -151,7 +185,9 @@ export const TripProvider = ({ children }) => {
       addLocationToActive,
       removeLocationFromActive,
       moveLocation,
-      saveTripEdits
+      saveTripEdits,
+      createNewTrip,
+      updateTripTitle
     }}>
       {children}
     </TripContext.Provider>
