@@ -5,7 +5,12 @@ output "java_artifacts_bucket" {
 
 output "java_ecr_repository_url" {
   value       = aws_ecr_repository.java_service.repository_url
-  description = "ECR 仓库地址"
+  description = "Java 后端 ECR 仓库地址"
+}
+
+output "ml_ecr_repository_url" {
+  value       = aws_ecr_repository.ml_service.repository_url
+  description = "ML 服务 ECR 仓库地址"
 }
 
 output "github_actions_role_arn" {
