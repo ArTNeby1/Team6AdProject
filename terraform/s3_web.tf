@@ -30,15 +30,12 @@ resource "aws_s3_bucket_website_configuration" "frontend_web" {
     suffix = "index.html"
   }
 
-  # React Router 是前端路由，直接访问 /trips/123 这种深链接时 S3 上并没有
-  # 这个 key，会 404；把 404 也导回 index.html，交给前端路由自己处理。
   error_document {
     key = "index.html"
   }
 }
 
 # 只关闭"公开访问"里跟 bucket policy 相关的两项，ACL 相关的两项保持开启
-# （不用 ACL，只用下面这条 bucket policy 授权公开只读）
 resource "aws_s3_bucket_public_access_block" "frontend_web_public_access" {
   bucket                  = aws_s3_bucket.frontend_web.id
   block_public_acls       = true
