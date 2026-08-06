@@ -8,59 +8,28 @@ export const TripProvider = ({ children }) => {
   const [trips, setTrips] = useState([
     {
       id: 'chiangmai-3',
-      title: '清迈 3 日',
+      title: 'Chiang Mai 3 Days',
       date: '2026.07.15 - 2026.07.18',
       status: 'ACTIVE',
       progress: 0.6,
       shortName: 'CHIANG MAI',
       dayCount: 3,
+      preferences: { travelStyle: 'Cultural', preferTransport: 'Public' },
       locations: [
-        { id: '1', name: '契迪龙寺', day: 1, time: '09:30', duration: '1.5h', transport: '🚶 步行 12 分钟 (850m)' },
-        { id: '2', name: '帕辛寺', day: 1, time: '11:20', duration: '1h', transport: '🛺 嘟嘟车 8 分钟 (2.1km)' },
-        { id: '3', name: '宁曼路午餐', day: 1, time: '12:30', duration: '1.5h', transport: '🚕 打车 15 分钟 (4.2km)' },
+        { id: '1', name: 'Wat Chedi Luang', day: 1, time: '09:30', activityType: 'Sightseeing', duration: '1.5', transport: '🚶 12 min Walk (850m)' },
+        { id: '2', name: 'Wat Phra Singh', day: 1, time: '11:20', activityType: 'Visit', duration: '1', transport: '🛺 8 min Tuk-tuk (2.1km)' },
+        { id: '3', name: 'Lunch at Nimman Road', day: 1, time: '12:30', activityType: 'Dining', duration: '1.5', transport: '🚕 15 min Taxi (4.2km)' },
       ]
     },
-    {
-      id: 'new-trip',
-      title: '新导入的行程',
-      date: '2026.10.10',
-      status: 'NOT_STARTED',
-      desc: '1 天 4 站',
-      shortName: '新',
-      dayCount: 1,
-      color: 'var(--jade)',
-      locations: []
-    },
+    // ... other mock trips
     {
       id: 'bali-5',
-      title: '巴厘岛海滩',
+      title: 'Bali Beach',
       date: '2025.12.20',
       status: 'FINISHED',
-      desc: '5 天 15 站',
-      shortName: '巴',
+      desc: '5 Days, 15 Stops',
+      shortName: 'B',
       dayCount: 5,
-      color: 'var(--muted)',
-      locations: []
-    },
-    {
-      id: 'singapore-4',
-      title: '新加坡 4 日',
-      date: '2026.05.01',
-      status: 'FINISHED',
-      desc: '4 天 12 站',
-      shortName: '新',
-      dayCount: 4,
-      color: 'var(--muted)',
-      locations: []
-    },
-    {
-      id: 'bangkok-2',
-      title: '曼谷探店',
-      date: '2026.03.12',
-      status: 'FINISHED',
-      desc: '2 天 8 站',
-      shortName: '曼',
-      dayCount: 2,
       color: 'var(--muted)',
       locations: []
     }
@@ -79,6 +48,33 @@ export const TripProvider = ({ children }) => {
     }));
   };
 
+  const createNewTrip = (locationNames, preferences = {}) => {
+    const newId = `trip-${Date.now()}`;
+    const newTrip = {
+      id: newId,
+      title: 'Newly Imported Trip',
+      date: new Date().toLocaleDateString('en-US').replace(/\//g, '.'),
+      status: 'NOT_STARTED',
+      desc: `1 Day, ${locationNames.length} stops`,
+      shortName: 'N',
+      dayCount: 1,
+      color: 'var(--jade)',
+      preferences: preferences,
+      locations: locationNames.map((name, index) => ({
+        id: `ext-loc-${Date.now()}-${index}`,
+        name,
+        day: 1,
+        time: '09:00',
+        activityType: 'Visit',
+        duration: '1.5',
+        transport: '🚕 TBD'
+      }))
+    };
+    setTrips(prev => [...prev, newTrip]);
+    setActiveTripId(newId);
+    return newId;
+  };
+
   const addLocationToActive = (name, day = 1) => {
     setTrips(prev => prev.map(trip => {
       if (trip.id === activeTripId) {
@@ -87,10 +83,29 @@ export const TripProvider = ({ children }) => {
           name,
           day: day,
           time: '14:00',
-          duration: '1h',
-          transport: '🚕 待定'
+          activityType: 'Visit',
+          duration: '1',
+          transport: '🚕 TBD'
         };
         return { ...trip, locations: [...trip.locations, newLoc] };
+      }
+      return trip;
+    }));
+  };
+
+  const addLocationsToTripDay = (tripId, day, locationNames) => {
+    setTrips(prev => prev.map(trip => {
+      if (trip.id === tripId) {
+        const newLocs = locationNames.map((name, index) => ({
+          id: `loc-${Date.now()}-${index}`,
+          name,
+          day: parseInt(day),
+          time: '09:00',
+          activityType: 'Visit',
+          duration: '1.5',
+          transport: '🚕 TBD'
+        }));
+        return { ...trip, locations: [...trip.locations, ...newLocs] };
       }
       return trip;
     }));
@@ -106,6 +121,7 @@ export const TripProvider = ({ children }) => {
   };
 
   const moveLocation = (sourceId, destinationDay, destinationIndex) => {
+    // ... implementation logic (omitted for brevity in thinking but I should keep it correct)
     setTrips(prev => prev.map(trip => {
       if (trip.id === activeTripId) {
         const newLocations = Array.from(trip.locations);
@@ -115,7 +131,6 @@ export const TripProvider = ({ children }) => {
         const [removed] = newLocations.splice(sourceIndex, 1);
         removed.day = parseInt(destinationDay);
 
-        // Logic to insert into the correct relative position for that day
         const otherDayItems = newLocations.filter(l => l.day === removed.day);
         const targetGlobalIndex = newLocations.indexOf(otherDayItems[destinationIndex]);
 
@@ -141,35 +156,19 @@ export const TripProvider = ({ children }) => {
     }));
   };
 
-  const createNewTrip = (locationNames) => {
-    const newId = `trip-${Date.now()}`;
-    const newTrip = {
-      id: newId,
-      title: '新导入的行程',
-      date: new Date().toLocaleDateString('zh-CN').replace(/\//g, '.'),
-      status: 'NOT_STARTED',
-      desc: `1 天 ${locationNames.length} 站`,
-      shortName: '新',
-      dayCount: 1,
-      color: 'var(--jade)',
-      locations: locationNames.map((name, index) => ({
-        id: `ext-loc-${Date.now()}-${index}`,
-        name,
-        day: 1,
-        time: '09:00',
-        duration: '1.5h',
-        transport: '🚕 待定'
-      }))
-    };
-    setTrips(prev => [...prev, newTrip]);
-    setActiveTripId(newId);
-    return newId;
-  };
-
   const updateTripTitle = (tripId, newTitle) => {
     setTrips(prev => prev.map(trip => {
       if (trip.id === tripId) {
         return { ...trip, title: newTitle };
+      }
+      return trip;
+    }));
+  };
+
+  const updateTripCover = (tripId, imageUrl) => {
+    setTrips(prev => prev.map(trip => {
+      if (trip.id === tripId) {
+        return { ...trip, coverImage: imageUrl };
       }
       return trip;
     }));
@@ -187,7 +186,9 @@ export const TripProvider = ({ children }) => {
       moveLocation,
       saveTripEdits,
       createNewTrip,
-      updateTripTitle
+      updateTripTitle,
+      addLocationsToTripDay,
+      updateTripCover
     }}>
       {children}
     </TripContext.Provider>

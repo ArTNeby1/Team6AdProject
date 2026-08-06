@@ -1,21 +1,25 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useTrip } from '../context/TripContext';
 
 const HomePage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { getActiveTrip } = useTrip();
   const [query, setQuery] = useState('');
 
-  const allPlaces = ["新加坡滨海湾", "圣淘沙岛", "牛车水 (Chinatown)", "小印度", "乌节路", "新加坡环球影城", "清迈古城", "契迪龙寺", "素贴山", "宁曼路"];
+  const activeTrip = getActiveTrip();
+
+  const allPlaces = ["Marina Bay Sands, Singapore", "Sentosa Island", "Chinatown", "Little India", "Orchard Road", "Universal Studios Singapore", "Chiang Mai Old City", "Wat Chedi Luang", "Doi Suthep", "Nimman Road"];
   const searchResults = allPlaces.filter(p => p.toLowerCase().includes(query.toLowerCase()) && query !== '');
 
   return (
     <div className="home-page">
       <section className="hero">
         <div className="container">
-          <h1>你好，准备去哪儿？</h1>
-          <p>把你的游记链接粘贴在这里，沿途 AI 自动为你生成智能行程。</p>
+          <h1>Hello, where are you going?</h1>
+          <p>Paste your travel log link here, and LoomyTrip AI will automatically generate a smart itinerary for you.</p>
           <div className="hero-search-box">
             <div className="search-input">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -24,12 +28,12 @@ const HomePage = () => {
               </svg>
               <input
                 type="text"
-                placeholder="搜索目的地、游记或景点..."
+                placeholder="Search for destinations, travel logs, or attractions..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
             </div>
-            <button className="btn-primary" onClick={() => navigate(user ? '/import' : '/login')}>智能规划</button>
+            <button className="btn-primary" onClick={() => navigate(user ? '/import' : '/login')}>Smart Planning</button>
 
             {searchResults.length > 0 && (
               <div className="search-dropdown" style={{
@@ -42,7 +46,7 @@ const HomePage = () => {
                   <div key={i} className="search-result-item" style={{
                     padding: '12px 16px', borderBottom: i === searchResults.length - 1 ? 'none' : '1px solid var(--line-soft)',
                     cursor: 'pointer'
-                  }} onClick={() => { setQuery(res); navigate('/attraction'); }}>
+                  }} onClick={() => { setQuery(res); navigate(`/attraction/${encodeURIComponent(res)}`); }}>
                     {res}
                   </div>
                 ))}
@@ -52,23 +56,28 @@ const HomePage = () => {
         </div>
       </section>
 
-      {user && (
+      {user && activeTrip && (
         <section className="featured-trips">
           <div className="section-title">
-            <h2>正在进行的行程</h2>
-            <a href="#" className="link-more" onClick={(e) => { e.preventDefault(); navigate('/route'); }}>查看全部</a>
+            <h2>Active Itinerary</h2>
+            <a href="#" className="link-more" onClick={(e) => { e.preventDefault(); navigate('/route'); }}>View All</a>
           </div>
           <div className="destination-grid">
-            <div className="destination-card" onClick={() => navigate('/route')}>
-              <div className="dest-img" style={{backgroundImage: 'linear-gradient(rgba(0,0,0,0),rgba(0,0,0,0.6)), url(https://images.unsplash.com/photo-1528181304800-2f1738b9cdc1?w=600&h=400&fit=crop)'}}>
-                <h3>清迈深度文化之旅</h3>
+            <div className="destination-card" onClick={() => navigate(`/itinerary/${activeTrip.id}`)}>
+              <div
+                className="dest-img"
+                style={{
+                  backgroundImage: `linear-gradient(rgba(0,0,0,0),rgba(0,0,0,0.7)), url(${activeTrip.coverImage || 'https://images.unsplash.com/photo-1528181304800-2f1738b9cdc1?w=600&h=400&fit=crop'})`
+                }}
+              >
+                <h3>{activeTrip.title}</h3>
               </div>
               <div className="dest-info">
-                <p>3天 · 12个景点 · 24日出发</p>
+                <p>{activeTrip.dayCount} Days · {activeTrip.locations.length} Attractions · {activeTrip.date.split(' - ')[0]}</p>
                 <div className="progress-bar">
-                  <div className="progress" style={{width: '60%'}}></div>
+                  <div className="progress" style={{ width: `${(activeTrip.progress || 0) * 100}%` }}></div>
                 </div>
-                <a className="go-link">继续规划 ➔</a>
+                <a className="go-link">Continue Planning ➔</a>
               </div>
             </div>
           </div>
@@ -77,20 +86,20 @@ const HomePage = () => {
 
       <section className="popular-destinations" style={{marginTop: user ? '60px' : '20px'}}>
         <div className="section-title">
-          <h2>热门目的地</h2>
+          <h2>Popular Destinations</h2>
         </div>
         <div className="destination-grid">
           {[
-            { name: "曼谷", count: "8.2k", img: "https://images.unsplash.com/photo-1552465011-b4e21bf6e79a" },
-            { name: "普吉岛", count: "5.4k", img: "https://images.unsplash.com/photo-1537996194471-e657df975ab4" },
-            { name: "京都", count: "12.1k", img: "https://images.unsplash.com/photo-1513415277900-a62401e19be4" }
+            { name: "Bangkok", count: "8.2k", img: "https://images.unsplash.com/photo-1552465011-b4e21bf6e79a" },
+            { name: "Phuket", count: "5.4k", img: "https://images.unsplash.com/photo-1537996194471-e657df975ab4" },
+            { name: "Kyoto", count: "12.1k", img: "https://images.unsplash.com/photo-1513415277900-a62401e19be4" }
           ].map((dest, i) => (
-            <div key={i} className="destination-card" onClick={() => navigate('/attraction')}>
+            <div key={i} className="destination-card" onClick={() => navigate(`/attraction/${encodeURIComponent(dest.name)}`)}>
               <div className="dest-img" style={{backgroundImage: `linear-gradient(rgba(0,0,0,0),rgba(0,0,0,0.6)), url(${dest.img}?w=600&h=400&fit=crop)`}}>
                 <h3>{dest.name}</h3>
               </div>
               <div className="dest-info">
-                <p>{dest.count} 人收藏</p>
+                <p>{dest.count} Saved</p>
               </div>
             </div>
           ))}

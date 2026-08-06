@@ -4,8 +4,8 @@ const MapPage = () => {
   return (
     <div className="map-page">
       <header className="page-header" style={{marginBottom: '32px'}}>
-        <h1>探索地图</h1>
-        <p>可视化查看你的行程路线与周边推荐。</p>
+        <h1>Explore Map</h1>
+        <p>Visualize your itinerary routes and surrounding recommendations.</p>
       </header>
 
       <div className="map-container">
@@ -21,41 +21,41 @@ const MapPage = () => {
             {/* Markers */}
             <g transform="translate(200, 200)">
               <circle r="12" fill="#0E9E8E" />
-              <text y="30" textAnchor="middle" style={{fontSize: '14px', fontWeight: 700}}>契迪龙寺</text>
+              <text y="30" textAnchor="middle" style={{fontSize: '14px', fontWeight: 700}}>Wat Chedi Luang</text>
             </g>
             <g transform="translate(350, 250)">
               <circle r="12" fill="#0E9E8E" />
-              <text y="30" textAnchor="middle" style={{fontSize: '14px', fontWeight: 700}}>帕辛寺</text>
+              <text y="30" textAnchor="middle" style={{fontSize: '14px', fontWeight: 700}}>Wat Phra Singh</text>
             </g>
             <g transform="translate(300, 400)">
               <circle r="12" fill="#F0A038" />
-              <text y="30" textAnchor="middle" style={{fontSize: '14px', fontWeight: 700}}>宁曼路午餐</text>
+              <text y="30" textAnchor="middle" style={{fontSize: '14px', fontWeight: 700}}>Lunch at Nimman Road</text>
             </g>
           </svg>
 
           <div className="map-controls">
             <div className="control-group">
-              <button className="active">路线顺序</button>
-              <button>周边景点</button>
-              <button>交通热力</button>
+              <button className="active">Route Order</button>
+              <button>Nearby Attractions</button>
+              <button>Traffic Heatmap</button>
             </div>
           </div>
         </div>
 
         <div className="map-sidebar">
-          <h3>Day 1 行程概览</h3>
+          <h3>Day 1 Trip Overview</h3>
           <div className="route-meta-web">
             <div className="meta-item">
-              <strong>3 个地点</strong>
-              <span>地点总数</span>
+              <strong>3 sites</strong>
+              <span>Total Locations</span>
             </div>
             <div className="meta-item">
               <strong>5.4km</strong>
-              <span>预估里程</span>
+              <span>Estimated Distance</span>
             </div>
             <div className="meta-item">
               <strong>45min</strong>
-              <span>交通耗时</span>
+              <span>Travel Time</span>
             </div>
           </div>
 
@@ -63,28 +63,28 @@ const MapPage = () => {
             <div className="place-item-web">
               <div className="num">1</div>
               <div className="info">
-                <h4>契迪龙寺</h4>
+                <h4>Wat Chedi Luang</h4>
                 <p>09:30 - 11:00</p>
               </div>
             </div>
             <div className="place-item-web">
               <div className="num">2</div>
               <div className="info">
-                <h4>帕辛寺</h4>
+                <h4>Wat Phra Singh</h4>
                 <p>11:12 - 12:10</p>
               </div>
             </div>
             <div className="place-item-web active">
               <div className="num">3</div>
               <div className="info">
-                <h4>宁曼路午餐</h4>
+                <h4>Lunch at Nimman Road</h4>
                 <p>12:30 - 14:00</p>
               </div>
             </div>
           </div>
 
           <div className="sidebar-action" style={{marginTop: 'auto', paddingTop: '40px'}}>
-            <button className="btn-primary" style={{width: '100%'}}>同步到手机导航</button>
+            <button className="btn-primary" style={{width: '100%'}}>Sync to Phone Navigation</button>
           </div>
         </div>
       </div>

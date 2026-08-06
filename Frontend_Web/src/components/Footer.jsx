@@ -6,36 +6,36 @@ const Footer = () => {
       <div className="container">
         <div className="footer-grid">
           <div className="footer-info">
-            <h3 className="web-brand"><span className="cn">沿途</span> Yántú</h3>
-            <p>探索世界的每一个角落，让旅行变得更简单。</p>
+            <h3 className="web-brand">LoomyTrip</h3>
+            <p>Explore every corner of the world and make travel simpler.</p>
           </div>
           <div className="footer-links">
-            <h4>产品</h4>
+            <h4>Product</h4>
             <ul>
-              <li><a href="#">AI 行程规划</a></li>
-              <li><a href="#">热门目的地</a></li>
-              <li><a href="#">旅行社区</a></li>
+              <li><a href="#">AI Itinerary Planning</a></li>
+              <li><a href="#">Popular Destinations</a></li>
+              <li><a href="#">Travel Community</a></li>
             </ul>
           </div>
           <div className="footer-links">
-            <h4>公司</h4>
+            <h4>Company</h4>
             <ul>
-              <li><a href="#">关于我们</a></li>
-              <li><a href="#">加入我们</a></li>
-              <li><a href="#">联系我们</a></li>
+              <li><a href="#">About Us</a></li>
+              <li><a href="#">Join Us</a></li>
+              <li><a href="#">Contact Us</a></li>
             </ul>
           </div>
           <div className="footer-links">
-            <h4>支持</h4>
+            <h4>Support</h4>
             <ul>
-              <li><a href="#">帮助中心</a></li>
-              <li><a href="#">隐私政策</a></li>
-              <li><a href="#">服务条款</a></li>
+              <li><a href="#">Help Center</a></li>
+              <li><a href="#">Privacy Policy</a></li>
+              <li><a href="#">Terms of Service</a></li>
             </ul>
           </div>
         </div>
         <div className="footer-bottom">
-          <p>© 2024 Yántú 沿途. 保留所有权利。</p>
+          <p>© 2024 LoomyTrip. All rights reserved.</p>
         </div>
       </div>
     </footer>

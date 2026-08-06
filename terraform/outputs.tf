@@ -52,3 +52,8 @@ output "db_secret_name" {
   value       = aws_secretsmanager_secret.db.name
   description = "数据库连接信息存放的 Secrets Manager 名称"
 }
+
+output "web_frontend_url" {
+  value       = "http://${aws_s3_bucket_website_configuration.frontend_web.website_endpoint}"
+  description = "Web 前端访问地址（S3 静态网站托管，暂时只有 HTTP）"
+}

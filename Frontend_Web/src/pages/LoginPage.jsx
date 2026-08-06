@@ -34,18 +34,18 @@ const LoginPage = () => {
       <div className="auth-container">
         <div className="auth-card">
           <div className="auth-header">
-            <h2>欢迎回来</h2>
-            <p>登录您的沿途账号以继续规划行程</p>
+            <h2>Welcome Back</h2>
+            <p>Log in to your LoomyTrip account to continue planning your trip</p>
           </div>
 
           <form onSubmit={handleSubmit} className="auth-form">
             {error && <div className="auth-error">{error}</div>}
 
             <div className="form-group">
-              <label>电子邮箱</label>
+              <label>Email Address</label>
               <input
                 type="email"
-                placeholder="例如: 1260892734@qq.com"
+                placeholder="e.g.: 1260892734@qq.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -53,10 +53,10 @@ const LoginPage = () => {
             </div>
 
             <div className="form-group">
-              <label>密码</label>
+              <label>Password</label>
               <input
                 type="password"
-                placeholder="请输入您的密码"
+                placeholder="Please enter your password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -68,17 +68,17 @@ const LoginPage = () => {
               className="btn-primary auth-submit"
               disabled={isSubmitting}
             >
-              {isSubmitting ? '登录中...' : '登录'}
+              {isSubmitting ? 'Logging in...' : 'Login'}
             </button>
           </form>
 
           <div className="auth-footer">
-            还没有账号？ <Link to="/register">立即注册</Link>
+            Don't have an account? <Link to="/register">Register Now</Link>
           </div>
 
           <div className="auth-hint">
-             <p>演示账号: 1260892734@qq.com</p>
-             <p>演示密码: 123456</p>
+             <p>Demo Account: 1260892734@qq.com</p>
+             <p>Demo Password: 123456</p>
           </div>
         </div>
       </div>

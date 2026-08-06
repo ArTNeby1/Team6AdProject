@@ -11,15 +11,14 @@ const Header = () => {
     <header className="web-header">
       <div className="header-container">
         <Link to="/" className="web-brand">
-          <span className="cn">沿途</span>
-          <span className="en">Yántú</span>
+          <span className="en">LoomyTrip</span>
         </Link>
         <nav className="web-nav">
-          <Link to="/" className={location.pathname === '/' ? 'active' : ''}>首页</Link>
-          <Link to="/import" className={location.pathname === '/import' ? 'active' : ''}>导入行程</Link>
-          <Link to="/route" className={location.pathname === '/route' ? 'active' : ''}>我的路线</Link>
-          <Link to="/map" className={location.pathname === '/map' ? 'active' : ''}>探索地图</Link>
-          <Link to="/profile" className={location.pathname === '/profile' ? 'active' : ''}>我的</Link>
+          <Link to="/" className={location.pathname === '/' ? 'active' : ''}>Home</Link>
+          <Link to="/import" className={location.pathname === '/import' ? 'active' : ''}>Import Trip</Link>
+          <Link to="/route" className={location.pathname === '/route' ? 'active' : ''}>My Itineraries</Link>
+          <Link to="/map" className={location.pathname === '/map' ? 'active' : ''}>Explore Map</Link>
+          <Link to="/profile" className={location.pathname === '/profile' ? 'active' : ''}>Profile</Link>
         </nav>
         <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
           {user ? (
@@ -30,13 +29,13 @@ const Header = () => {
                 </div>
                 <span style={{ fontWeight: '600', color: 'var(--ink)' }}>{user.username}</span>
               </div>
-              <button className="btn-secondary" style={{ padding: '6px 16px', fontSize: '13px' }} onClick={logout}>退出</button>
-              <button className="btn-primary" onClick={() => navigate('/import')}>开始规划</button>
+              <button className="btn-secondary" style={{ padding: '6px 16px', fontSize: '13px' }} onClick={logout}>Logout</button>
+              <button className="btn-primary" onClick={() => navigate('/import')}>Start Planning</button>
             </>
           ) : (
             <>
-              <Link to="/login" style={{ fontWeight: '600', color: 'var(--muted)' }}>登录</Link>
-              <button className="btn-primary" onClick={() => navigate('/login')}>开始规划</button>
+              <Link to="/login" style={{ fontWeight: '600', color: 'var(--muted)' }}>Login</Link>
+              <button className="btn-primary" onClick={() => navigate('/login')}>Start Planning</button>
             </>
           )}
         </div>

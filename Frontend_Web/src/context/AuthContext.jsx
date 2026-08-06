@@ -8,15 +8,19 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Mock User Data
+  // Mock User Data with ERD fields
   const MOCK_USER = {
     email: '1260892734@qq.com',
     password: '123456',
-    username: 'WengYuhao'
+    username: 'WengYuhao',
+    age: 21,
+    gender: 'Male',
+    travelStyle: 'Cultural',
+    preferTransport: 'Public'
   };
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('yantu_user');
+    const savedUser = localStorage.getItem('loomytrip_user');
     if (savedUser) {
       setUser(JSON.parse(savedUser));
     }
@@ -27,35 +31,48 @@ export const AuthProvider = ({ children }) => {
     return new Promise((resolve, reject) => {
       setTimeout(() => {
         if (email === MOCK_USER.email && password === MOCK_USER.password) {
-          const userData = { email: MOCK_USER.email, username: MOCK_USER.username };
+          const userData = {
+            ...MOCK_USER
+          };
+          delete userData.password;
           setUser(userData);
-          localStorage.setItem('yantu_user', JSON.stringify(userData));
+          localStorage.setItem('loomytrip_user', JSON.stringify(userData));
           resolve(userData);
         } else {
-          reject(new Error('邮箱或密码错误'));
+          reject(new Error('Incorrect email or password'));
         }
       }, 800);
     });
   };
 
-  const register = (username, email, password) => {
+  const register = (username, email, password, age, gender) => {
     return new Promise((resolve) => {
       setTimeout(() => {
-        const userData = { username, email };
+        const userData = {
+          username, email, age, gender,
+          travelStyle: 'Cultural',
+          preferTransport: 'Public'
+        };
         setUser(userData);
-        localStorage.setItem('yantu_user', JSON.stringify(userData));
+        localStorage.setItem('loomytrip_user', JSON.stringify(userData));
         resolve(userData);
       }, 800);
     });
   };
 
+  const updatePreferences = (travelStyle, preferTransport) => {
+    const updatedUser = { ...user, travelStyle, preferTransport };
+    setUser(updatedUser);
+    localStorage.setItem('loomytrip_user', JSON.stringify(updatedUser));
+  };
+
   const logout = () => {
     setUser(null);
-    localStorage.removeItem('yantu_user');
+    localStorage.removeItem('loomytrip_user');
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, register, logout, updatePreferences, loading }}>
       {!loading && children}
     </AuthContext.Provider>
   );

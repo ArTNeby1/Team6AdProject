@@ -33,10 +33,6 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.11.4"
-      - name: Debug OIDC Token
-        run: |
-          echo "The OIDC token audience is:"
-          echo $ACTIONS_ID_TOKEN_REQUEST_TOKEN | jq -R 'split(".") | .[1] | @base64d | fromjson | .aud'
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -99,42 +95,6 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.11.4"
-
-      - name: DEBUG - print OIDC token claims
-        run: |
-          set +e
-          RESP=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")
-          TOKEN=$(echo "$RESP" | jq -r .value)
-          echo "=== TOKEN LENGTH: ${#TOKEN} ==="
-          if [ "${#TOKEN}" -lt 10 ]; then
-            echo "=== TOKEN NOT ISSUED! ==="
-            echo "=== RAW RESPONSE: $RESP ==="
-            exit 1
-          fi
-          PAYLOAD=$(echo "$TOKEN" | cut -d. -f2 | tr '_-' '/+')
-          case $((${#PAYLOAD} % 4)) in
-            2) PAYLOAD="${PAYLOAD}==" ;;
-            3) PAYLOAD="${PAYLOAD}=" ;;
-          esac
-          DECODED=$(echo "$PAYLOAD" | base64 -d)
-          echo "=== iss: $(echo "$DECODED" | jq -r .iss) ==="
-          echo "=== aud: $(echo "$DECODED" | jq -r .aud) ==="
-          echo "=== sub: $(echo "$DECODED" | jq -r .sub) ==="
-          echo "=== ROLE ARN set: ${{ secrets.AWS_IAC_ROLE_ARN && 'YES' || 'NO' }} ==="
-
-      - name: Debug OIDC
-        run: |
-          RESP=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com")
-          echo "$RESP" | jq -r '.value' | cut -d. -f2 | \
-            sed 's/-/+/g;s/_/\//g' | base64 -d 2>/dev/null | jq '{sub, aud, iss}'
-
-      - name: Print Role ARN
-        run: |
-          echo "length: ${#AWS_ROLE_ARN}"
-          echo "prefix: ${AWS_ROLE_ARN:0:40}"
-          echo "suffix: ${AWS_ROLE_ARN: -50}"  
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
