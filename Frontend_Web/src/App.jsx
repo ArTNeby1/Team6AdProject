@@ -1,57 +1,41 @@
 import React from 'react';
 import { Routes, Route } from 'react-router-dom';
-import Header from './components/Header';
-import Footer from './components/Footer';
-import HomePage from './pages/HomePage';
-import ImportPage from './pages/ImportPage';
-import AttractionPage from './pages/AttractionPage';
-import ItineraryListPage from './pages/ItineraryListPage';
-import ItineraryDetailPage from './pages/ItineraryDetailPage';
-import MapPage from './pages/MapPage';
-import EditPage from './pages/EditPage';
-import ProfilePage from './pages/ProfilePage';
-import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
-import ProtectedRoute from './components/ProtectedRoute';
+import TravelerApp from './TravelerApp';
+import { AdminAuthProvider } from './admin/AdminAuthContext';
+import AdminProtectedRoute from './admin/AdminProtectedRoute';
+import AdminLayout from './admin/AdminLayout';
+import AdminLoginPage from './admin/pages/AdminLoginPage';
+import AdminDashboardPage from './admin/pages/AdminDashboardPage';
+import AdminUsersPage from './admin/pages/AdminUsersPage';
+import './admin/admin.css';
 
+// Top-level split: the admin console (its own chrome + auth) lives under
+// /admin/*, everything else is the traveler app.
 function App() {
   return (
-    <div className="app-container">
-      <Header />
-      <main>
-        <div className="container">
-          <Routes>
-            {/* Public Routes */}
-            <Route path="/" element={<HomePage />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
-            <Route path="/attraction/:name" element={<AttractionPage />} />
-            <Route path="/attraction" element={<AttractionPage />} />
-
-            {/* Protected Routes */}
-            <Route path="/import" element={
-              <ProtectedRoute><ImportPage /></ProtectedRoute>
-            } />
-            <Route path="/route" element={
-              <ProtectedRoute><ItineraryListPage /></ProtectedRoute>
-            } />
-            <Route path="/itinerary/:id" element={
-              <ProtectedRoute><ItineraryDetailPage /></ProtectedRoute>
-            } />
-            <Route path="/map" element={
-              <ProtectedRoute><MapPage /></ProtectedRoute>
-            } />
-            <Route path="/edit" element={
-              <ProtectedRoute><EditPage /></ProtectedRoute>
-            } />
-            <Route path="/profile" element={
-              <ProtectedRoute><ProfilePage /></ProtectedRoute>
-            } />
-          </Routes>
-        </div>
-      </main>
-      <Footer />
-    </div>
+    <Routes>
+      <Route
+        path="/admin/*"
+        element={
+          <AdminAuthProvider>
+            <Routes>
+              <Route path="login" element={<AdminLoginPage />} />
+              <Route
+                element={
+                  <AdminProtectedRoute>
+                    <AdminLayout />
+                  </AdminProtectedRoute>
+                }
+              >
+                <Route index element={<AdminDashboardPage />} />
+                <Route path="users" element={<AdminUsersPage />} />
+              </Route>
+            </Routes>
+          </AdminAuthProvider>
+        }
+      />
+      <Route path="/*" element={<TravelerApp />} />
+    </Routes>
   );
 }
 
