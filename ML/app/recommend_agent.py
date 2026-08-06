@@ -20,9 +20,15 @@ from pydantic import BaseModel, Field
 
 from local_llm_client import call_local_model
 
+# 这一步走本地 Ollama 还是 Bedrock，独立于其它两段，参考 main.py 里
+# EXTRACT_PROVIDER 的说明。默认 "ollama"，显式设 RECOMMEND_PROVIDER=bedrock 才切。
+RECOMMEND_PROVIDER = os.environ.get("RECOMMEND_PROVIDER", "ollama")
+
 # 推荐这一步默认用哪个模型，独立于 EXTRACT_MODEL/FILTER_MODEL，同样是"多模型分工"的一环：
 # 推荐需要一点"发散 + 解释理由"的能力，可以换一个跟抽取阶段不同的模型试试效果。
 DEFAULT_RECOMMEND_MODEL = os.environ.get("RECOMMEND_MODEL", "llama3.1:8b-instruct-q4_K_M")
+# RECOMMEND_PROVIDER=bedrock 时用这个模型 id，不传就是 Nova Lite
+DEFAULT_RECOMMEND_MODEL_BEDROCK = os.environ.get("RECOMMEND_MODEL_BEDROCK", "amazon.nova-lite-v1:0")
 
 
 class RecommendedPlace(BaseModel):
@@ -76,12 +82,14 @@ def recommend_places(
     user_payload = {"trip_so_far": trip_extraction}
     if preference_text:
         user_payload["preferences"] = preference_text
+    user_content = json.dumps(user_payload, ensure_ascii=False)
 
-    raw_text = call_local_model(
-        system_prompt,
-        json.dumps(user_payload, ensure_ascii=False),
-        model_id or DEFAULT_RECOMMEND_MODEL,
-    )
+    if RECOMMEND_PROVIDER == "bedrock":
+        from bedrock_client import call_bedrock_model  # 延迟导入：ollama 路径不强制要求装 boto3/配好 AWS 凭证
+
+        raw_text = call_bedrock_model(system_prompt, user_content, model_id or DEFAULT_RECOMMEND_MODEL_BEDROCK)
+    else:
+        raw_text = call_local_model(system_prompt, user_content, model_id or DEFAULT_RECOMMEND_MODEL)
     return RecommendationResult.model_validate(json.loads(raw_text))
 
 

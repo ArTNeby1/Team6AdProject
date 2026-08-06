@@ -15,6 +15,7 @@ FastAPI 入口。两组接口：
 要用 /extract-travel-info、/refine，本机需要先跑起来 Ollama（默认端口 11434），
 见 local_llm_client.py 顶部的说明。
 """
+import os
 import sys
 from pathlib import Path
 
@@ -35,19 +36,25 @@ from extraction import (  # noqa: E402
 from local_llm_client import local_extract  # noqa: E402
 from orchestrator import run_pipeline  # noqa: E402
 
-app = FastAPI(title="LoomyTrip Extract Service")
+app = FastAPI(title="LoomyTrip Extract Service")#整个服务的"前台"本身
 
-# 改用本地 Ollama 模型（原来是 mock_client.mock_extract）。
-# 需要本机先跑起来 Ollama，见 local_llm_client.py 顶部的说明。
-EXTRACT_FN = local_extract
+EXTRACT_PROVIDER = os.environ.get("EXTRACT_PROVIDER", "ollama")
+if EXTRACT_PROVIDER == "bedrock":
+    from bedrock_client import bedrock_extract  # noqa: E402
+
+    EXTRACT_FN = bedrock_extract
+else:
+    EXTRACT_FN = local_extract
 
 
 class ExtractRequest(BaseModel):
+    #规定 /extract 接口收到的请求长什么样（要有text字段）
     text: str
     source_name: str = "api_input"
 
 
 def call_with_retry(text: str, source_name: str) -> TripExtraction:
+#	调用抽取函数，失败了自动重试几次
     """
     调用 EXTRACT_FN 拿结果，闯 parse_and_validate 那两道关，失败就重试，
     最多试 MAX_ATTEMPTS 次；每次都失败的话转换成 502 错误返回给调用方。
@@ -60,20 +67,21 @@ def call_with_retry(text: str, source_name: str) -> TripExtraction:
 
 
 @app.post("/extract", response_model=TripExtraction)
+#	/extract 接口对应的处理函数
 def extract(request: ExtractRequest) -> TripExtraction:
     return call_with_retry(request.text, request.source_name)
 
 
 class ExtractTravelInfoRequest(BaseModel):
     """字段名对齐 AiPlanningClient.extractTravelInfo(rawContent, sourceUrl)。"""
-
+#规定 /extract-travel-info 接口收到的请求长什么样
     raw_content: str
     source_url: str | None = None
 
 
 class ChatMessageIn(BaseModel):
     """字段名对齐 chat_message 表：role（user/assistant/system）+ content。"""
-
+#规定 /refine 接口收到的聊天记录长什么样
     role: str
     content: str
 
@@ -84,6 +92,7 @@ class RefineRequest(BaseModel):
 
 
 def _pipeline_response(result) -> dict:
+    #把 pipeline 跑完的结果整理成统一格式返回
     if result.error:
         raise HTTPException(status_code=502, detail=result.error)
     return {
@@ -96,6 +105,7 @@ def _pipeline_response(result) -> dict:
 
 
 @app.post("/extract-travel-info")
+#    /extract-travel-info 接口对应的处理函数
 def extract_travel_info(request: ExtractTravelInfoRequest) -> dict:
     """
     单次粗略路线场景（对应 planning_session.initial_brief）：不经过 chat_filter
@@ -109,6 +119,7 @@ def extract_travel_info(request: ExtractTravelInfoRequest) -> dict:
 
 
 @app.post("/refine")
+#    /refine 接口对应的处理函数
 def refine(request: RefineRequest) -> dict:
     """
     多轮聊天完善场景（对应 PlanningController.refine，chat_message 表的全部历史）：

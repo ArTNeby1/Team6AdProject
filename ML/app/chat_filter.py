@@ -15,10 +15,18 @@ import os
 
 from local_llm_client import call_local_model
 
+# 这一步走本地 Ollama 还是 Bedrock，独立于抽取阶段的 EXTRACT_PROVIDER——
+# 三段各自能单独选，参考 main.py/orchestrator.py 里 EXTRACT_PROVIDER 的说明。
+# 默认还是 "ollama"：这步任务简单（判断相关/不相关），本地小模型够用，没必要
+# 默认就占用 Bedrock 调用额度/费用，想切的话显式设 FILTER_PROVIDER=bedrock。
+FILTER_PROVIDER = os.environ.get("FILTER_PROVIDER", "ollama")
+
 # 过滤这一步默认用哪个模型，独立于抽取阶段的 EXTRACT_MODEL，
 # 体现"多个模型分工"：这步任务简单（判断相关/不相关），可以配一个更轻量的模型，
 # 不用跟抽取阶段共用同一个大模型。本机已有 llama3:latest 可以直接用。
 DEFAULT_FILTER_MODEL = os.environ.get("FILTER_MODEL", "llama3:latest")
+# FILTER_PROVIDER=bedrock 时用这个模型 id，不传就是 Nova Lite（跟抽取阶段选型一致）
+DEFAULT_FILTER_MODEL_BEDROCK = os.environ.get("FILTER_MODEL_BEDROCK", "amazon.nova-lite-v1:0")
 
 SYSTEM_PROMPT = """You clean up a travel-planning chat transcript before it is
 handed to a downstream extraction step.
@@ -43,6 +51,10 @@ def filter_chat_noise(messages: list[dict], model_id: str | None = None) -> str:
     transcript = "\n".join(f"{m['role']}: {m['content']}" for m in messages)
     if not transcript.strip():
         return ""
+    if FILTER_PROVIDER == "bedrock":
+        from bedrock_client import call_bedrock_model  # 延迟导入：ollama 路径不强制要求装 boto3/配好 AWS 凭证
+
+        return call_bedrock_model(SYSTEM_PROMPT, transcript, model_id or DEFAULT_FILTER_MODEL_BEDROCK).strip()
     return call_local_model(SYSTEM_PROMPT, transcript, model_id or DEFAULT_FILTER_MODEL).strip()
 
 

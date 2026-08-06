@@ -63,6 +63,27 @@ def _strip_code_fence(raw_text: str) -> str:
     return text.strip()
 
 
+def call_bedrock_model(
+    system_prompt: str, user_text: str, model_id: str | None = None, max_tokens: int = 2000
+) -> str:
+    """
+    跟 local_llm_client.call_local_model() 角色一样：所有 Bedrock agent 共用的
+    底层调用函数，chat_filter.py / recommend_agent.py 想切到 Bedrock 时直接调
+    这个，不用各自重复写 boto3 调用代码。model_id 不传就用抽取阶段选定的
+    MODEL_ID（Nova Lite），传了就用调用方指定的（比如给推荐阶段单独配一个）。
+    """
+    response = _get_client().converse(
+        modelId=model_id or MODEL_ID,
+        system=[{"text": system_prompt}],
+        messages=[{"role": "user", "content": [{"text": user_text}]}],
+        inferenceConfig={
+            "maxTokens": max_tokens,
+            "temperature": 0,
+        },
+    )
+    return _strip_code_fence(response["output"]["message"]["content"][0]["text"])
+
+
 def bedrock_extract(text: str, source_name: str = "api_input") -> str:
     """
     跟 mock_client.mock_extract 同一个函数签名，main.py 的 EXTRACT_FN
@@ -77,17 +98,7 @@ def bedrock_extract(text: str, source_name: str = "api_input") -> str:
     """
     schema = _load_schema()
     system_prompt = SYSTEM_PROMPT.format(schema=json.dumps(schema, ensure_ascii=False))
-
-    response = _get_client().converse(
-        modelId=MODEL_ID,
-        system=[{"text": system_prompt}],
-        messages=[{"role": "user", "content": [{"text": text}]}],
-        inferenceConfig={
-            "maxTokens": 2000,
-            "temperature": 0,
-        },
-    )
-    return _strip_code_fence(response["output"]["message"]["content"][0]["text"])
+    return call_bedrock_model(system_prompt, text, MODEL_ID)
 
 
 if __name__ == "__main__":

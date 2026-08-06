@@ -17,7 +17,12 @@
 FILTER_MODEL（chat_filter.py）/ EXTRACT_MODEL（local_llm_client.py）/
 RECOMMEND_MODEL（recommend_agent.py）。互不影响，换个环境变量就能让某一阶段
 单独换模型，不用改这份编排代码。
+
+三个阶段各自还能独立选"本地 Ollama 还是 Bedrock"：FILTER_PROVIDER /
+EXTRACT_PROVIDER / RECOMMEND_PROVIDER，默认都是 "ollama"，设成 "bedrock" 就切
+到任务 2 选定的 Nova Lite（见 ML/docs/model_selection.md）。
 """
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,6 +36,18 @@ from extraction import ExtractionFailedError, extract_with_retry  # noqa: E402
 from local_llm_client import local_extract  # noqa: E402
 from recommend_agent import RecommendationResult, recommend_places  # noqa: E402
 from trip_models import TripExtraction  # noqa: E402
+
+# 跟 main.py 的 EXTRACT_PROVIDER 说明一致：默认本地 Ollama，设
+# EXTRACT_PROVIDER=bedrock 切到任务 2 选定的 Bedrock Nova Lite。
+# chat_filter / recommend_agent 各自的 Provider 由它们自己的环境变量
+# （FILTER_PROVIDER / RECOMMEND_PROVIDER）控制，这里不用管。
+_EXTRACT_PROVIDER = os.environ.get("EXTRACT_PROVIDER", "ollama")
+if _EXTRACT_PROVIDER == "bedrock":
+    from bedrock_client import bedrock_extract  # noqa: E402
+
+    _extract_fn = bedrock_extract
+else:
+    _extract_fn = local_extract
 
 
 @dataclass
@@ -63,7 +80,7 @@ def run_pipeline(
         return PipelineResult(cleaned_text="", error="没有可抽取的有效内容（过滤后为空）")
 
     try:
-        extraction = extract_with_retry(cleaned_text, source_name, local_extract)
+        extraction = extract_with_retry(cleaned_text, source_name, _extract_fn)
     except ExtractionFailedError as e:
         return PipelineResult(cleaned_text=cleaned_text, error=str(e))
 
