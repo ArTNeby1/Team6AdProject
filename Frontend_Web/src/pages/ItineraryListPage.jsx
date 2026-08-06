@@ -18,25 +18,32 @@ const ItineraryListPage = () => {
   return (
     <div className="itinerary-list-page">
       <header className="page-header">
-        <h1>我的行程</h1>
+        <h1>My Itineraries</h1>
       </header>
 
       <div className="itinerary-grid">
         {/* ACTIVE SECTION */}
         {activeTrips.length > 0 && (
           <div className="itinerary-section">
-            <h2 className="itinerary-section-title active">进行中</h2>
+            <h2 className="itinerary-section-title active">Active</h2>
             {activeTrips.map(trip => (
               <div key={trip.id} className="itinerary-card-active" onClick={() => handleTripClick(trip.id)}>
-                <div className="itinerary-icon-lg">
-                  {trip.shortName.split(' ').map((word, i) => (
-                    <div key={i}>{word}</div>
-                  ))}
+                <div className="itinerary-icon-lg" style={{
+                  overflow: 'hidden',
+                  background: trip.coverImage ? 'none' : 'linear-gradient(135deg, var(--jade), var(--jade-deep))'
+                }}>
+                  {trip.coverImage ? (
+                    <img src={trip.coverImage} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    trip.shortName.split(' ').map((word, i) => (
+                      <div key={i}>{word}</div>
+                    ))
+                  )}
                 </div>
                 <div className="itinerary-content">
                   <h3>{trip.title}</h3>
                   <div className="date">{trip.date}</div>
-                  <div className="status-text">进行中</div>
+                  <div className="status-text">Active</div>
                   <div className="progress-bar">
                     <div className="progress" style={{ width: `${(trip.progress || 0) * 100}%` }}></div>
                   </div>
@@ -49,11 +56,15 @@ const ItineraryListPage = () => {
         {/* NOT STARTED SECTION */}
         {upcomingTrips.length > 0 && (
           <div className="itinerary-section">
-            <h2 className="itinerary-section-title">未开始</h2>
+            <h2 className="itinerary-section-title">Upcoming</h2>
             {upcomingTrips.map(trip => (
               <div key={trip.id} className="itinerary-card-simple" onClick={() => handleTripClick(trip.id)}>
-                <div className="itinerary-icon-sm">
-                  {trip.shortName}
+                <div className="itinerary-icon-sm" style={{ overflow: 'hidden', background: trip.coverImage ? 'none' : 'var(--mint)' }}>
+                  {trip.coverImage ? (
+                    <img src={trip.coverImage} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    trip.shortName
+                  )}
                 </div>
                 <div className="itinerary-info">
                   <h3>{trip.title}</h3>
@@ -68,11 +79,15 @@ const ItineraryListPage = () => {
         {/* FINISHED SECTION */}
         {finishedTrips.length > 0 && (
           <div className="itinerary-section">
-            <h2 className="itinerary-section-title finished">已结束</h2>
+            <h2 className="itinerary-section-title finished">Finished</h2>
             {finishedTrips.map(trip => (
               <div key={trip.id} className="itinerary-card-simple" onClick={() => handleTripClick(trip.id)}>
-                <div className="itinerary-icon-sm finished">
-                  {trip.shortName}
+                <div className="itinerary-icon-sm finished" style={{ overflow: 'hidden', background: trip.coverImage ? 'none' : 'var(--line-soft)' }}>
+                  {trip.coverImage ? (
+                    <img src={trip.coverImage} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    trip.shortName
+                  )}
                 </div>
                 <div className="itinerary-info">
                   <h3>{trip.title}</h3>

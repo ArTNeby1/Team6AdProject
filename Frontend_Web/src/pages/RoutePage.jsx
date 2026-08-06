@@ -11,36 +11,36 @@ const RoutePage = () => {
       <header className="page-header" style={{marginBottom: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end'}}>
         <div>
           <div className="kicker" style={{color: 'var(--muted)', fontSize: '14px', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '2px'}}>My Trip Itinerary</div>
-          <h1>清迈 3 日深度文化之旅</h1>
+          <h1>Chiang Mai 3 Days Deep Culture Trip</h1>
         </div>
         <div className="header-actions" style={{display: 'flex', gap: '12px'}}>
-          <button className="btn-secondary" onClick={() => navigate('/edit')}>编辑行程</button>
-          <button className="btn-primary">保存并分享</button>
+          <button className="btn-secondary" onClick={() => navigate('/edit')}>Edit Itinerary</button>
+          <button className="btn-primary">Save and Share</button>
         </div>
       </header>
 
       <div className="route-grid">
         <div className="itinerary-sidebar">
           <div className="info-card">
-            <h3>行程概览</h3>
+            <h3>Trip Overview</h3>
             <div className="aibadge" style={{background: '#FCEFD6', border: '1px solid #F3DDAF', padding: '12px', borderRadius: '12px', margin: '16px 0', fontSize: '14px'}}>
               <span className="s">🪄</span>
-              <span className="t" style={{color: '#8a5a10', fontWeight: 700}}> AI 已根据偏好优化路线</span>
+              <span className="t" style={{color: '#8a5a10', fontWeight: 700}}> AI has optimized the route based on preferences</span>
             </div>
             <div className="route-stats" style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px'}}>
               <div className="stat-box">
-                <div className="stat-label">总里程</div>
+                <div className="stat-label">Total Distance</div>
                 <div className="stat-val">15.4km</div>
               </div>
               <div className="stat-box">
-                <div className="stat-label">地点总数</div>
-                <div className="stat-val">{itinerary.length} 个</div>
+                <div className="stat-label">Total Locations</div>
+                <div className="stat-val">{itinerary.length} sites</div>
               </div>
             </div>
             <div className="day-tabs" style={{marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '8px'}}>
-              <div className="day-tab on">Day 1: 古城经典</div>
-              <div className="day-tab">Day 2: 宁曼时光</div>
-              <div className="day-tab">Day 3: 丛林探险</div>
+              <div className="day-tab on">Day 1: Old City Classics</div>
+              <div className="day-tab">Day 2: Nimman Time</div>
+              <div className="day-tab">Day 3: Jungle Adventure</div>
             </div>
           </div>
         </div>
@@ -49,7 +49,7 @@ const RoutePage = () => {
           <div className="day-section">
             <div className="day-header">
               <span>1</span>
-              Day 1: 2024年10月24日 · 清迈古城
+              Day 1: Oct 24, 2024 · Chiang Mai Old City
             </div>
 
             <div className="timeline">
@@ -65,10 +65,10 @@ const RoutePage = () => {
                         <div className="tl-time">{item.time || '10:00'}</div>
                         <div className="tl-info">
                           <h3>{item.name}</h3>
-                          <p>建议游玩 {item.duration || '1.5h'} · {idx === 0 ? '必去景点' : '推荐'}</p>
+                          <p>Suggested Duration {item.duration || '1.5h'} · {idx === 0 ? 'Must-visit' : 'Recommended'}</p>
                         </div>
                         <div className="tl-actions">
-                          <button onClick={() => navigate('/attraction')}>查看详情</button>
+                          <button onClick={() => navigate('/attraction')}>View Details</button>
                         </div>
                       </div>
                     </div>
@@ -78,7 +78,7 @@ const RoutePage = () => {
                     <div className="tl-transport">
                       <div className="tl-left"><div className="tl-line-dotted"></div></div>
                       <div className="tl-trans-info">
-                        <span>{item.transport || '🚕 交通 15 分钟'}</span>
+                        <span>{item.transport || '🚕 15 min Transport'}</span>
                       </div>
                     </div>
                   )}

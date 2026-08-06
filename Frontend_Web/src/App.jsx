@@ -25,6 +25,7 @@ function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/attraction/:name" element={<AttractionPage />} />
             <Route path="/attraction" element={<AttractionPage />} />
 
             {/* Protected Routes */}
