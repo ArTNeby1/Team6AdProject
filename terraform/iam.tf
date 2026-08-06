@@ -157,7 +157,9 @@ resource "aws_iam_role_policy" "github_actions_frontend_s3" {
         ]
         Resource = [
           aws_s3_bucket.frontend_android.arn,
-          "${aws_s3_bucket.frontend_android.arn}/*"
+          "${aws_s3_bucket.frontend_android.arn}/*",
+          aws_s3_bucket.frontend_web.arn,
+          "${aws_s3_bucket.frontend_web.arn}/*"
         ]
       }
     ]

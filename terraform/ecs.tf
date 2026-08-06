@@ -48,7 +48,8 @@ resource "aws_ecs_task_definition" "java" {
         }
       ]
       environment = [
-        { name = "SPRING_PROFILES_ACTIVE", value = "prod" }
+        { name = "SPRING_PROFILES_ACTIVE", value = "prod" },
+        { name = "CORS_ALLOWED_ORIGINS", value = "http://${aws_s3_bucket_website_configuration.frontend_web.website_endpoint}" }
       ]
       secrets = [
         { name = "DB_HOST", valueFrom = "${aws_secretsmanager_secret.db.arn}:host::" },
@@ -136,6 +137,13 @@ resource "aws_ecs_service" "java" {
     container_port   = 8080
   }
 
+  # 新版本部署后如果任务一直起不来（比如镜像坏了、健康检查一直不过），
+  # ECS 自动回滚到上一个跑得动的版本，不会一直死循环重启。
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
   depends_on = [aws_lb_listener.http]
 }
 
@@ -160,6 +168,11 @@ resource "aws_ecs_service" "ml" {
     target_group_arn = aws_lb_target_group.ml.arn
     container_name   = "ml-service"
     container_port   = 8000
+  }
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
   }
 
   depends_on = [aws_lb_listener.http]
