@@ -1,6 +1,9 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { apiFetch, TRAVELER_TOKEN_KEY, getTravelerToken } from '../api';
 
 const AuthContext = createContext();
+
+const USER_KEY = 'loomytrip_user';
 
 export const useAuth = () => useContext(AuthContext);
 
@@ -8,67 +11,67 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Mock User Data with ERD fields
-  const MOCK_USER = {
-    email: '1260892734@qq.com',
-    password: '123456',
-    username: 'WengYuhao',
-    age: 21,
-    gender: 'Male',
-    travelStyle: 'Cultural',
-    preferTransport: 'Public'
-  };
-
   useEffect(() => {
-    const savedUser = localStorage.getItem('loomytrip_user');
-    if (savedUser) {
+    const token = getTravelerToken();
+    const savedUser = localStorage.getItem(USER_KEY);
+    if (token && savedUser) {
       setUser(JSON.parse(savedUser));
+    } else {
+      localStorage.removeItem(TRAVELER_TOKEN_KEY);
+      localStorage.removeItem(USER_KEY);
     }
     setLoading(false);
   }, []);
 
-  const login = (email, password) => {
-    return new Promise((resolve, reject) => {
-      setTimeout(() => {
-        if (email === MOCK_USER.email && password === MOCK_USER.password) {
-          const userData = {
-            ...MOCK_USER
-          };
-          delete userData.password;
-          setUser(userData);
-          localStorage.setItem('loomytrip_user', JSON.stringify(userData));
-          resolve(userData);
-        } else {
-          reject(new Error('Incorrect email or password'));
-        }
-      }, 800);
-    });
+  const persistSession = (data, extras = {}) => {
+    const userData = {
+      userId: data.userId,
+      email: data.email,
+      username: extras.username || data.email?.split('@')[0] || 'Traveler',
+      age: extras.age ?? null,
+      gender: extras.gender ?? null,
+      travelStyle: extras.travelStyle || 'Cultural',
+      preferTransport: extras.preferTransport || 'Public',
+    };
+    localStorage.setItem(TRAVELER_TOKEN_KEY, data.accessToken);
+    localStorage.setItem(USER_KEY, JSON.stringify(userData));
+    setUser(userData);
+    return userData;
   };
 
-  const register = (username, email, password, age, gender) => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const userData = {
-          username, email, age, gender,
-          travelStyle: 'Cultural',
-          preferTransport: 'Public'
-        };
-        setUser(userData);
-        localStorage.setItem('loomytrip_user', JSON.stringify(userData));
-        resolve(userData);
-      }, 800);
+  const login = async (email, password) => {
+    const data = await apiFetch('/api/v1/auth/login', {
+      method: 'POST',
+      body: { email, password },
+      auth: false,
     });
+    return persistSession(data);
+  };
+
+  const register = async (username, email, password, age, gender) => {
+    const data = await apiFetch('/api/v1/auth/register', {
+      method: 'POST',
+      body: {
+        email,
+        password,
+        age: Number.isFinite(age) ? age : null,
+        gender: gender || null,
+      },
+      auth: false,
+    });
+    return persistSession(data, { username, age, gender });
   };
 
   const updatePreferences = (travelStyle, preferTransport) => {
     const updatedUser = { ...user, travelStyle, preferTransport };
     setUser(updatedUser);
-    localStorage.setItem('loomytrip_user', JSON.stringify(updatedUser));
+    localStorage.setItem(USER_KEY, JSON.stringify(updatedUser));
   };
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem('loomytrip_user');
+    localStorage.removeItem(TRAVELER_TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
   };
 
   return (
