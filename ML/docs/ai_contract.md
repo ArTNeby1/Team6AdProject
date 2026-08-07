@@ -13,6 +13,7 @@
 组长给的方向：
 
 > 输入："我今天要去iss学习然后去圣淘沙游泳"
+>
 > 1. 本地 LLM 解析出：地点 = iss、圣淘沙，活动 = 学习、游泳
 > 2. 输出 JSON 给前端展示
 > 3. 用户确认（或修改）后点确认
@@ -55,11 +56,13 @@
 ```
 
 **前端永远不直接调 Python 服务。** 原因：
+
 1. AI 服务在内网/本机，浏览器根本连不上
 2. 会话状态、数据库、用户鉴权都在 Java 那边
 3. 以后要切 Bedrock 还是本地模型，前端完全不用知道
 
 所以：
+
 - **前端要照着的是「第一层」的 Java 接口**（下面 2.1）
 - **后端要照着的是「第二层」的 Python 接口**（第 4、5 节）
 - 本文件第 4、5 节的 JSON 格式，前端不会直接收到，但**字段内容会被后端原样透传**，
@@ -70,13 +73,13 @@
 下面是**提议**的接口设计。Java 那边的路径、字段名最终由后端定，
 这里列的是"前端完成这个流程至少需要哪些接口"，请后端确认或调整。
 
-| 步骤 | 方法 | 路径 | 后端内部做什么 |
-|---|---|---|---|
-| ① 用户输入文字 | POST | `/api/v1/planning-sessions` | 建会话 → 调 Python `/extract-travel-info` → 地理编码 → 存 `draft_place` → 返回给前端 |
-| ② 用户改地点名 | PUT | `/api/v1/planning-sessions/draft-places/{placeId}` | 直接改数据库，**不重新调 LLM** |
-| ③ 用户删地点 | DELETE | `/api/v1/planning-sessions/draft-places/{placeId}` | 直接删，**不重新调 LLM** |
-| ④ 用户补充说明 | POST | `/api/v1/planning-sessions/{sessionId}/messages` + `/refine` | 调 Python `/refine` 重新解析 |
-| ⑤ 用户点确认 | POST | `/api/v1/planning-sessions/{sessionId}/confirm` | 调 Python `/recommend` → 存结果 → 返回 |
+| 步骤            | 方法   | 路径                                                             | 后端内部做什么                                                                              |
+| --------------- | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| ① 用户输入文字 | POST   | `/api/v1/planning-sessions`                                    | 建会话 → 调 Python`/extract-travel-info` → 地理编码 → 存 `draft_place` → 返回给前端 |
+| ② 用户改地点名 | PUT    | `/api/v1/planning-sessions/draft-places/{placeId}`             | 直接改数据库，**不重新调 LLM**                                                        |
+| ③ 用户删地点   | DELETE | `/api/v1/planning-sessions/draft-places/{placeId}`             | 直接删，**不重新调 LLM**                                                              |
+| ④ 用户补充说明 | POST   | `/api/v1/planning-sessions/{sessionId}/messages` + `/refine` | 调 Python`/refine` 重新解析                                                               |
+| ⑤ 用户点确认   | POST   | `/api/v1/planning-sessions/{sessionId}/confirm`                | 调 Python`/recommend` → 存结果 → 返回                                                   |
 
 **②③④ 已经存在**（`PlanningController.java` 里有），①⑤ 目前是 501 占位。
 
@@ -84,10 +87,10 @@
 
 这是个容易踩坑的设计点，定死规则：
 
-| 用户行为 | 处理方式 | 为什么 |
-|---|---|---|
+| 用户行为                 | 处理方式                         | 为什么                                                                       |
+| ------------------------ | -------------------------------- | ---------------------------------------------------------------------------- |
 | 改名字 / 删地点 / 改活动 | **直接改数据库，不调 LLM** | 用户是在**纠正** LLM 的错误，再跑一次 LLM 很可能把用户的修改又覆盖回去 |
-| 又打了一段新文字 | 调 `/refine` 重新解析 | 这是新信息，需要 LLM 理解 |
+| 又打了一段新文字         | 调`/refine` 重新解析           | 这是新信息，需要 LLM 理解                                                    |
 
 ### 2.3 前端在「确认界面」拿到的数据
 
@@ -126,12 +129,12 @@
 
 ### Agent 的工具
 
-| 工具 | 做什么 | 数据来源 | 状态 |
-|---|---|---|---|
-| `search_places` | 从 107 个真实新加坡景点里找相似的 | `singapore_attractions.csv` | ✅ `content_recommender.py` 已写好 |
-| `get_distance` | 算两个地点之间的直线距离 | 经纬度做 haversine 计算，纯数学不调 API | 🟡 约 20 行 |
-| `group_by_area` | 把邻近的地点归到一组，避免来回横跨全岛 | 同上 | 🟡 约 30 行 |
-| `get_weather` | 查当天/未来天气预报 | data.gov.sg 的 NEA 天气接口（免费、免密钥） | 🟡 用之前先验证接口格式 |
+| 工具              | 做什么                                 | 数据来源                                    | 状态                                |
+| ----------------- | -------------------------------------- | ------------------------------------------- | ----------------------------------- |
+| `search_places` | 从 107 个真实新加坡景点里找相似的      | `singapore_attractions.csv`               | ✅`content_recommender.py` 已写好 |
+| `get_distance`  | 算两个地点之间的直线距离               | 经纬度做 haversine 计算，纯数学不调 API     | 🟡 约 20 行                         |
+| `group_by_area` | 把邻近的地点归到一组，避免来回横跨全岛 | 同上                                        | 🟡 约 30 行                         |
+| `get_weather`   | 查当天/未来天气预报                    | data.gov.sg 的 NEA 天气接口（免费、免密钥） | 🟡 用之前先验证接口格式             |
 
 **一次性准备工作（不是运行时工具）**：给 107 个地点各打一个"室内/室外"标记。
 让 LLM 把数据集里的 description 过一遍分类，结果存回 CSV。
@@ -151,6 +154,7 @@
 Google 的 transit 模式还能给真实地铁/公交时间。
 
 **分工约定**：
+
 - **Google API 由后端调，AI 服务不调** —— 两个服务各配一套密钥、都往同一个账号计费，很乱。
 - AI 服务自己用 haversine 算直线距离，**先不依赖后端**，保证我这边不被卡住。
 - 接口二的请求体里留一个**可选**字段 `travel_matrix`，后端 Google 那边做好之后填进来，
@@ -161,13 +165,16 @@ Google 的 transit 模式还能给真实地铁/公交时间。
 ## 4. 第二层接口一：解析 ✅ 已经能用（后端调，前端不直接调）
 
 **代码**：`ML/app/main.py`
+
 - `POST /extract-travel-info` —— 用户一次性说完（对应组长例子）
 - `POST /refine` —— 多轮聊天（先过 `chat_filter` 去掉寒暄废话，再解析）
 
 **服务地址**：本地开发 `http://localhost:8001`
+
 ```
 uvicorn main:app --reload --app-dir ML/app --port 8001
 ```
+
 （`http://localhost:8001/docs` 有 FastAPI 自动生成的交互式测试页）
 
 ### 请求
@@ -177,6 +184,7 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 ```
 
 `/refine` 的请求换成聊天记录：
+
 ```json
 {
   "messages": [
@@ -206,12 +214,12 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 
 ### 字段说明
 
-| 字段 | 说明 |
-|---|---|
+| 字段            | 说明                                                                                                                                      |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | `destination` | **前端不用展示**。它的作用是范围校验：这个 app 只做新加坡，如果用户说"我想去曼谷"，这里会是 `"Bangkok"`，后端据此拒绝并提示用户。 |
-| `dates` | 文本里明确写了日期才有，没写就是空数组 `[]` —— 不让模型编年份。 |
-| `coords` | **永远是 `null`**，是故意的。模型禁止编坐标，真实经纬度由后端 `MapPlacesClient` 查地图 API 补上。 |
-| `type` | 枚举：`attraction` / `restaurant` / `hotel` / `market` / `other` |
+| `dates`       | 文本里明确写了日期才有，没写就是空数组`[]` —— 不让模型编年份。                                                                        |
+| `coords`      | **永远是 `null`**，是故意的。模型禁止编坐标，真实经纬度由后端 `MapPlacesClient` 查地图 API 补上。                               |
+| `type`        | 枚举：`attraction` / `restaurant` / `hotel` / `market` / `other`                                                                |
 
 ---
 
@@ -235,14 +243,15 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 }
 ```
 
-| 字段 | 必填 | 说明 |
-|---|---|---|
-| `date` | 是 | 查天气要用。没有日期就查不了预报。 |
-| `places` | 是 | 用户确认后的地点，**必须已经有 `lat`/`lng`** |
-| `travel_matrix` | 否 | 后端 Google API 做好之后填这里（见下），现在传 `null` 就行 |
-| `preference_text` | 否 | 用户偏好，比如 `"travel_style=culture"` |
+| 字段                | 必填 | 说明                                                        |
+| ------------------- | ---- | ----------------------------------------------------------- |
+| `date`            | 是   | 查天气要用。没有日期就查不了预报。                          |
+| `places`          | 是   | 用户确认后的地点，**必须已经有 `lat`/`lng`**      |
+| `travel_matrix`   | 否   | 后端 Google API 做好之后填这里（见下），现在传`null` 就行 |
+| `preference_text` | 否   | 用户偏好，比如`"travel_style=culture"`                    |
 
 `travel_matrix` 以后填进来的格式（**现在不用管，后端做好了再说**）：
+
 ```json
 "travel_matrix": [
   { "from": "滨海湾花园", "to": "国家博物馆", "duration_minutes": 18, "distance_km": 2.6 }
@@ -288,10 +297,10 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 
 ### 两个 key 的区别（前端注意）
 
-| | 是什么 | 前端怎么展示 |
-|---|---|---|
-| `ordered_stops` | **用户自己确认的地点**，被 agent 重新排了顺序 | 主行程列表，按 `order` 排，展示 `reason` 解释为什么这么排 |
-| `suggested_additions` | **AI 额外推荐的**新地点，用户没提过 | 单独一块"推荐加入"，用户可以选择添加 |
+|                         | 是什么                                              | 前端怎么展示                                                 |
+| ----------------------- | --------------------------------------------------- | ------------------------------------------------------------ |
+| `ordered_stops`       | **用户自己确认的地点**，被 agent 重新排了顺序 | 主行程列表，按`order` 排，展示 `reason` 解释为什么这么排 |
+| `suggested_additions` | **AI 额外推荐的**新地点，用户没提过           | 单独一块"推荐加入"，用户可以选择添加                         |
 
 注意 `ordered_stops` 里是**带顺序和理由**返回的，不是把用户输入原样回显 ——
 这是"agent"和"普通推荐"的区别。
@@ -350,6 +359,7 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 ## 7. 出错时返回什么
 
 两个接口失败时都返回 **HTTP 502**：
+
 ```json
 { "detail": "错误信息文字..." }
 ```
