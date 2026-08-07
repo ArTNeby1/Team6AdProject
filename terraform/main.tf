@@ -10,16 +10,20 @@ terraform {
       source  = "hashicorp/tls"
       version = "~> 4.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
   }
 
   # 使用 S3 存储 Terraform 状态
   # 修改 region 时需与 provider 保持同步
   backend "s3" {
-    bucket         = "adproject-terraform-998976076574-ap-southeast-1-an"
-    key            = "prod/terraform.tfstate"
-    region         = "ap-southeast-1"
-    encrypt        = true
-    use_lockfile   = true
+    bucket       = "adproject-terraform-998976076574-ap-southeast-1-an"
+    key          = "prod/terraform.tfstate"
+    region       = "ap-southeast-1"
+    encrypt      = true
+    use_lockfile = true
   }
 }
 

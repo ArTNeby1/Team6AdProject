@@ -88,7 +88,7 @@ resource "aws_iam_role_policy" "github_actions_ecr" {
         Resource = "*"
       },
       {
-        # 其余 ECR 操作限定到具体仓库
+        # 其余 ECR 操作限定到具体仓库（Java 后端 + ML 服务）
         Effect = "Allow"
         Action = [
           "ecr:BatchCheckLayerAvailability",
@@ -97,7 +97,70 @@ resource "aws_iam_role_policy" "github_actions_ecr" {
           "ecr:PutImage",
           "ecr:UploadLayerPart"
         ]
-        Resource = aws_ecr_repository.java_service.arn
+        Resource = [
+          aws_ecr_repository.java_service.arn,
+          aws_ecr_repository.ml_service.arn
+        ]
+      }
+    ]
+  })
+}
+
+# ============================================================
+# 权限策略：前端静态站点 + Android APK 制品桶
+# ============================================================
+# ci-web.yml 的 `aws s3 sync` 和 ci-android.yml 的 `aws s3 cp` 都要写这个桶，
+# 之前的策略里完全没有授权到它，push 到 main 时会 AccessDenied。
+
+# ============================================================
+# 权限策略：触发 ECS 部署
+# ============================================================
+# CI 推完镜像到 ECR 后，调用 update-service --force-new-deployment
+# 让服务滚动拉取新镜像，这就是"部署"这一步的落地方式。
+
+resource "aws_iam_role_policy" "github_actions_ecs_deploy" {
+  name = "ecs-deploy"
+  role = aws_iam_role.github_actions.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ecs:UpdateService",
+          "ecs:DescribeServices"
+        ]
+        Resource = [
+          aws_ecs_service.java.id,
+          aws_ecs_service.ml.id
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "github_actions_frontend_s3" {
+  name = "frontend-s3-access"
+  role = aws_iam_role.github_actions.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:ListBucket",
+          "s3:DeleteObject"
+        ]
+        Resource = [
+          aws_s3_bucket.frontend_android.arn,
+          "${aws_s3_bucket.frontend_android.arn}/*",
+          aws_s3_bucket.frontend_web.arn,
+          "${aws_s3_bucket.frontend_web.arn}/*"
+        ]
       }
     ]
   })
