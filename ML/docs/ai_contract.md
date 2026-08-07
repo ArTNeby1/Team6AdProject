@@ -245,10 +245,22 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 
 | 字段                | 必填 | 说明                                                        |
 | ------------------- | ---- | ----------------------------------------------------------- |
-| `date`            | 是   | 查天气要用。没有日期就查不了预报。                          |
+| `date`            | **否** | 查天气用。传了就按天气排顺序，**没传就退回只按距离排**（见下） |
 | `places`          | 是   | 用户确认后的地点，**必须已经有 `lat`/`lng`**      |
 | `travel_matrix`   | 否   | 后端 Google API 做好之后填这里（见下），现在传`null` 就行 |
 | `preference_text` | 否   | 用户偏好，比如`"travel_style=culture"`                    |
+
+**关于 `date` 改成选填**（前端反馈：用户说话里经常没有日期）：
+
+用户输入"我想去滨海湾花园"是没有日期的，硬要日期就得让前端强制弹日期选择器，
+或者后端瞎填一个默认值 —— 两种都不好（编一个用户没说的日期，等于造假数据）。
+
+所以规则改成：
+
+- **传了 `date`** → agent 查天气，按天气 + 距离排顺序，返回 `weather_summary`
+- **没传 `date`** → agent 跳过天气，只按距离和区域排顺序，`weather_summary` 返回 `null`
+
+前端可以做一个「选择日期（选填）」的入口，用户填了效果更好，不填也能正常出结果。
 
 `travel_matrix` 以后填进来的格式（**现在不用管，后端做好了再说**）：
 
@@ -358,19 +370,59 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 
 ## 7. 出错时返回什么
 
-两个接口失败时都返回 **HTTP 502**：
+⚠️ **两层的错误格式不一样，别搞混**（之前这里写错了，前端反馈后已更正）。
+
+### 给前端：Java 后端的错误格式
+
+前端只会看到这个格式（`ErrorResponse.java`）：
+
+```json
+{
+  "timestamp": "2026-08-07T09:12:33Z",
+  "code": "VALIDATION_ERROR",
+  "message": "Request validation failed",
+  "details": ["field: 错误说明"]
+}
+```
+
+`GlobalExceptionHandler` 会把所有异常都包成这个形状，包括 AI 服务挂掉的情况。
+**前端照这个写错误提示，不要用下面 Python 那个格式。**
+
+### 给后端：Python AI 服务的错误格式
+
+后端调 Python 时会看到这个，需要自己转换成上面的 Java 格式再给前端：
 
 ```json
 { "detail": "错误信息文字..." }
 ```
 
-**前端注意**：返回体里的 `status` 字段**永远是 `"OK"`**，不会用来表示错误 ——
-出错时压根走不到组装返回体那一步，直接抛 HTTP 异常。
+失败时 HTTP 状态码是 **502**。
+
+### 两层都适用的一点
+
+返回体里的 `status` 字段**永远是 `"OK"`**，不会用来表示错误 ——
+出错时压根走不到组装返回体那一步，直接抛异常。
 判断是否出错请看 **HTTP 状态码**，不要写 `if (body.status !== "OK")`。
 
 ---
 
 ## 8. 还没解决 / 待讨论
+
+### 前端 review 后发现的后端缺口（2026-08-07，需后端确认）
+
+这几条是前端对着 Java 代码核对文档时发现的，**都属实**，需要后端补：
+
+| # | 缺什么 | 现状 | 影响 |
+|---|---|---|---|
+| 1 | `POST /planning-sessions` 不返回地点 | 只返回 `PlanningSessionSummaryResponse`（id/title/status/…），没有 `places` | 前端拿不到确认界面要展示的数据，2.3 节那个返回体需要后端补上 |
+| 2 | `POST /{sessionId}/confirm` 还是 501 | `PlanningService.confirmSession()` 直接抛 NOT_IMPLEMENTED | 前端拿不到 agent 结果，整个结果界面没法做 |
+| 3 | 改不了 `activities` | `UpdateDraftPlaceRequest` 只有 name/address/lat/lng/category/note | 用户改不了"在这个地点做什么"。注意 `activities` 存在**另一张表** `draft_activity`，不是给 PUT 加个字段就行，需要单独的接口 |
+| 4 | 没有"把推荐地点加进行程"的接口 | `suggested_additions` 前端能展示，但用户点了"加入"之后没接口可调 | 需要类似 `POST /planning-sessions/{id}/draft-places` 的接口，把推荐的地点写成 `draft_place` |
+
+第 3 条要特别注意：`draft_activity` 是独立的表，通过 `draft_place_id` 关联到地点。
+所以"编辑活动"跟"编辑地点"是两件事，接口也得分开。
+
+### 其它待办
 
 - **天气接口要先验证**：data.gov.sg 的 NEA 天气 API 具体返回格式，写代码前要先实际调一次确认
 - **`travel_matrix` 的时机**：后端 Google API 什么时候能好？没好之前 agent 用直线距离，
