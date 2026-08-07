@@ -33,14 +33,6 @@ OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
 # 抽取阶段默认用哪个模型，可以用环境变量覆盖，方便换模型做对比测试
 DEFAULT_EXTRACT_MODEL = os.environ.get("EXTRACT_MODEL", "llama3.1:8b-instruct-q4_K_M")
 
-# 默认强制 CPU 推理（num_gpu=0），不让 Ollama 自动往 GPU 卸载层。
-# 原因：这台机器的 GPU（GeForce MX250）走 Vulkan 后端时不支持模型需要的
-# 16-bit storage，一旦尝试用 GPU，llama-server 子进程直接崩
-# （错误信息："ggml_vulkan: device Vulkan0 does not support 16-bit storage" /
-# exit status 0xe06d7363），日志在 %LOCALAPPDATA%/Ollama/server.log。
-# CPU 模式跑得通，只是慢（8B q4 模型加载+推理一次约 10~15 秒）。
-# 换一台 GPU 没问题的机器，可以设环境变量 OLLAMA_NUM_GPU 覆盖（比如设成一个
-# 较大的数字表示卸载层数，或者不设就用这里的 0）。
 DEFAULT_NUM_GPU = int(os.environ.get("OLLAMA_NUM_GPU", "0"))
 
 SYSTEM_PROMPT = """You are a data extraction engine for travel blog posts.

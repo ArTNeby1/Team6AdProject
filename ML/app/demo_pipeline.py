@@ -10,11 +10,9 @@
 EXTRACT_MODEL / RECOMMEND_MODEL 对应的模型（默认都是
 llama3.1:8b-instruct-q4_K_M，本机已有）。
 
-这台开发机被迫用 CPU 推理（GPU 兼容性问题，见 local_llm_client.py 里
-DEFAULT_NUM_GPU 的说明），完整跑一次大概 1.5~2 分钟，演示前建议先跑一遍
-心里有数，别当场干等。
 """
 import argparse
+import os
 import sys
 import time
 from pathlib import Path
@@ -23,6 +21,18 @@ APP_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP_DIR))
 
 from orchestrator import run_pipeline  # noqa: E402
+
+
+def _print_active_extract_model():
+    """演示前先把实际会用哪个模型打印出来，避免现场忘了设环境变量、
+    结果用了默认的本地 Ollama 却以为在跑 Bedrock Nova Lite。"""
+    provider = os.environ.get("EXTRACT_PROVIDER", "ollama")
+    if provider == "bedrock":
+        from bedrock_client import MODEL_ID
+        print(f"[抽取模型] Bedrock -> {MODEL_ID}（AWS_PROFILE={os.environ.get('AWS_PROFILE', '未设置，用默认凭证')}）")
+    else:
+        from local_llm_client import DEFAULT_EXTRACT_MODEL
+        print(f"[抽取模型] 本地 Ollama -> {DEFAULT_EXTRACT_MODEL}")
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples"
 
@@ -42,6 +52,8 @@ def main():
     )
     args = parser.parse_args()
 
+    print("=" * 60)
+    _print_active_extract_model()
     print("=" * 60)
     if args.messages:
         print("输入：多轮聊天记录（会先过 chat_filter 降噪）")
