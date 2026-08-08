@@ -32,7 +32,9 @@ SCHEMA_DIR = Path(__file__).resolve().parent.parent / "schema"
 sys.path.insert(0, str(SCHEMA_DIR))  # trip_models.py 不在标准包路径下，手动加进搜索路径
 
 from chat_filter import filter_chat_noise  # noqa: E402
+from content_recommender import indoor_outdoor_lookup  # noqa: E402
 from extraction import ExtractionFailedError, extract_with_retry  # noqa: E402
+from itinerary_planner import plan_ordered_stops  # noqa: E402
 from local_llm_client import local_extract  # noqa: E402
 from recommend_agent import (  # noqa: E402
     RecommendationResult,
@@ -106,26 +108,44 @@ def run_recommendation(
     top_n: int = 3,
     mode: str = "hybrid",
     max_distance_km: float | None = None,
-) -> list[dict]:
+    target_date: str | None = None,
+) -> dict:
     """
-    第二阶段：用户确认地点之后才调，产出推荐（F-18）。
+    第二阶段：用户确认地点之后才调。做两件事，对应返回的两个 key：
 
-    走 recommend_grounded()：候选地点来自真实数据集（107 个新加坡景点，带真实
-    经纬度），LLM 只负责从候选里挑并写推荐理由，不负责"有哪些地方"——所以不会
-    推荐出不存在的景点。详见 recommend_agent.recommend_grounded 的说明。
+    1. `ordered_stops` —— 把**用户自己确认的**地点重排（itinerary_planner）：
+       下雨的时段排室内、不下雨排室外，同时段内按距离串线路。
+       没给 target_date 或天气查不到时，退化成纯按距离排。
+    2. `suggested_additions` —— 推荐**用户没提过的**新地点（recommend_grounded）：
+       候选来自真实数据集，LLM 只负责从候选里挑并写理由，不会编造景点。
 
     places: 用户确认后的地点，形状跟抽取结果的 places 一致。
-        带 lat/lng 时才能算距离（"nearby"），没有就自动退回纯文本相似度。
+        带 lat/lng 时才能算距离（"nearby"）和串线路，没有就自动退回纯文本相似度。
         抽取阶段的 coords 是 null，坐标要等后端地理编码补上再传进来。
     """
     trip = {"destination": destination, "places": places}
-    return recommend_grounded(
+
+    suggested = recommend_grounded(
         trip,
         preference_text=preference_text,
         top_n=top_n,
         mode=mode,
         max_distance_km=max_distance_km,
     )
+
+    # 传进 planner 的是副本：plan_ordered_stops 会往 dict 里塞内部用的 _io 字段，
+    # 不复制的话会污染调用方传进来的原始数据。
+    ordered, forecast = plan_ordered_stops(
+        [dict(p) for p in places],
+        target_date=target_date,
+        dataset_lookup=indoor_outdoor_lookup(),
+    )
+
+    return {
+        "weather_summary": forecast["summary"] if forecast else None,
+        "ordered_stops": ordered,
+        "suggested_additions": suggested,
+    }
 
 
 def run_pipeline(

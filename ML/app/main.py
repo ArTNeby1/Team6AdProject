@@ -189,10 +189,14 @@ class RecommendRequest(BaseModel):
 @app.post("/recommend")
 def recommend(request: RecommendRequest) -> dict:
     """
-    第二步（F-18）：用户**确认地点之后**才调，产出推荐。
+    第二步：用户**确认地点之后**才调。返回两块内容：
 
-    地点来自真实数据集（107 个新加坡景点，带真实经纬度），LLM 只负责从候选里
-    挑选并写推荐理由，所以不会推荐出不存在的地方。
+    - `ordered_stops`：把用户**自己确认的**地点重新排顺序 —— 传了 `date` 就查天气，
+      把户外地点安排在不下雨的时段、室内地点安排在下雨的时段；同时段内按距离
+      串成一条不折返的线路。没传 `date` 或天气查不到就只按距离排，不会报错。
+    - `suggested_additions`（F-18）：推荐用户**没提过的**新地点。候选来自真实
+      数据集（107 个新加坡景点，带真实经纬度），LLM 只负责从候选里挑选并写理由，
+      所以不会推荐出不存在的地方。
 
     mode 对应 F-18 的 "nearby or similar"：
       similar = 只看文字相似度 / nearby = 只看距离 / hybrid = 两者结合（默认）
@@ -202,20 +206,16 @@ def recommend(request: RecommendRequest) -> dict:
         raise HTTPException(status_code=400, detail="places must not be empty")
 
     try:
-        recommended = run_recommendation(
+        result = run_recommendation(
             places=[p.model_dump() for p in request.places],
             destination=request.destination,
             preference_text=request.preference_text,
             top_n=request.top_n,
             mode=request.mode,
             max_distance_km=request.max_distance_km,
+            target_date=request.date,
         )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"recommendation failed: {e}")
 
-    return {
-        "status": "OK",
-        # date 传了才有天气排序（还没接天气接口，先原样回显，让调用方知道收到了）
-        "weather_summary": None,
-        "suggested_additions": recommended,
-    }
+    return {"status": "OK", **result}

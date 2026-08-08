@@ -35,8 +35,8 @@
     ▼  ⚠️ 后端在这里补经纬度（MapPlacesClient 地理编码）
     │
 ┌─────────────────────────────┐
-│ 接口二  POST /recommend  ✅ │  agent：算距离 + 从真实数据集推荐
-└─────────────────────────────┘   （查天气 + 排顺序还没做）
+│ 接口二  POST /recommend  ✅ │  agent：查天气 + 算距离 + 排顺序 + 推荐
+└─────────────────────────────┘
     │
     ▼  后端存进数据库
 ```
@@ -135,16 +135,23 @@
 | `search_places` | 从 107 个真实新加坡景点里找相似的      | `singapore_attractions.csv`               | ✅ `content_recommender.py` |
 | `get_distance`  | 算两个地点之间的直线距离               | 经纬度做 haversine 计算，纯数学不调 API     | ✅ `geo.py`（2026-08-08 完成） |
 | `group_by_area` | 把邻近的地点归到一组，避免来回横跨全岛 | 同上                                        | ⬜ 没单独做，见下 |
-| `get_weather`   | 查当天/未来天气预报                    | data.gov.sg 的 NEA 天气接口（免费、免密钥） | 🟡 还没接，先验证接口格式 |
+| `get_weather`   | 查当天/未来时段的天气预报              | data.gov.sg 的 NEA 天气接口（免费、免密钥） | ✅ `weather.py`（2026-08-08 完成） |
+| `plan_stops`    | 按天气+距离把地点排出顺序              | 上面三个工具的结果                          | ✅ `itinerary_planner.py` |
 
 **`group_by_area` 为什么没单独做**：本来想做"先按区域分组再推荐"，实际做的时候发现
 用距离直接参与打分就够了 —— `content_recommender.py` 里 `hybrid` 模式把相似度乘上
 一个就近系数（距离 5km 打对折），效果上等于"优先推荐同一片区域的地点"，
 不需要再单独做一次聚类。真要做按天分组行程时可能还得补回来，先记在这。
 
-**一次性准备工作（不是运行时工具）**：给 107 个地点各打一个"室内/室外"标记。
-让 LLM 把数据集里的 description 过一遍分类，结果存回 CSV。
+**一次性准备工作（不是运行时工具）**：✅ **已完成** —— 107 个地点都打上了"室内/室外"标记，
+存在 CSV 的 `indoor_outdoor` 列（56 室外 / 51 室内）。脚本是 `ML/scripts/label_indoor_outdoor.py`，
+先用关键词规则判（覆盖 85/107 = 79%），剩下 22 条交给 LLM。
+
 **没有这个标记，天气数据是废的** —— 知道下午下雨但不知道哪些地方是室内的，agent 没法据此做决定。
+
+⚠️ **准确度要如实说**：这是启发式分类，不是人工核对过的。规则那部分可靠（Museum→室内、
+Park→室外这种通名很稳），LLM 那 22 条会有错（比如把"小印度"这种街区判成室内）。
+答辩被问就说"79% 靠规则，剩下靠模型，没有人工逐条核对，存在误分类"。
 
 ### Agent 能做的四件事
 
@@ -312,31 +319,51 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 ```json
 {
   "status": "OK",
-  "weather_summary": null,
+  "weather_summary": "Rain expected in the afternoon",
+  "ordered_stops": [
+    {
+      "name": "Gardens by the Bay",
+      "type": "attraction",
+      "lat": 1.2816, "lng": 103.8636,
+      "activities": ["take photos"],
+      "order": 1,
+      "time_of_day": "morning",
+      "is_outdoor": true,
+      "reason": "Outdoor stop, scheduled for the morning to avoid the rain."
+    },
+    {
+      "name": "National Museum of Singapore",
+      "type": "attraction",
+      "lat": 1.2966, "lng": 103.8485,
+      "activities": ["see the exhibition"],
+      "order": 2,
+      "time_of_day": "afternoon",
+      "is_outdoor": false,
+      "reason": "Indoor stop, so the afternoon rain does not matter."
+    }
+  ],
   "suggested_additions": [
     {
       "name": "Marina Bay Sands",
       "type": "attraction",
-      "lat": 1.283,
-      "lng": 103.8585,
+      "lat": 1.283, "lng": 103.8585,
       "distance_km": 0.35,
       "similarity": 0.2242,
-      "reason": "You liked Gardens by the Bay, and Marina Bay Sands is nearby.",
+      "reason": "Close proximity to Gardens by the Bay and offers a similar experience.",
       "activities": ["sightseeing"]
-    },
-    {
-      "name": "Marina Bay Sands® SkyPark",
-      "type": "attraction",
-      "lat": 1.283,
-      "lng": 103.8585,
-      "distance_km": 0.35,
-      "similarity": 0.1911,
-      "reason": "Great view over the bay, a short walk from your existing stop.",
-      "activities": ["observation deck"]
     }
   ]
 }
 ```
+
+### 两个 key 的区别（前端注意，这是两块不同的界面内容）
+
+| | 是什么 | 前端怎么展示 |
+|---|---|---|
+| `ordered_stops` | **用户自己确认的**地点，被 agent 重排了顺序 | 主行程列表，按 `order` 排，展示 `reason`（"下午有雨，户外的排上午"）和 `time_of_day` 分组 |
+| `suggested_additions` | **AI 额外推荐的**新地点，用户没提过 | 单独一块"推荐加入"，用户可选择添加 |
+
+`ordered_stops` 是**带顺序和理由**返回的，不是把用户输入原样回显 —— 这是 agent 和普通推荐的区别。
 
 | 字段 | 说明 |
 |---|---|
@@ -346,14 +373,23 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 | `reason` / `activities` | LLM 针对这个用户写的，上限 255 字（对齐 `draft_place.note`） |
 | `weather_summary` | **目前恒为 `null`**，天气工具还没接 |
 
-### ⚠️ `ordered_stops` 还没做
+### `ordered_stops` ✅ 已实现（2026-08-08）
 
-原计划返回里还有一个 `ordered_stops`（把用户自己的地点按天气/距离重排 + 给理由），
-**这部分还没实现**，因为它依赖两个还没做的东西：天气接口、107 个地点的室内/室外标记。
+排序规则，按优先级：
 
-所以现在 `/recommend` 只返回 `suggested_additions`（推荐新地点），
-不返回 `ordered_stops`（重排已有地点）。前端可以先按只有推荐的版本做，
-`ordered_stops` 做出来之后再补一版例子到这里。
+1. **天气优先**：传了 `date` 就查天气 —— 下雨的时段排室内地点，不下雨的时段排室外地点
+2. **距离次之**：同一时段内的地点用最近邻串成一条不折返的线路
+
+**降级行为**（很重要，前端要能处理）：
+
+| 情况 | 行为 |
+|---|---|
+| 没传 `date` | 不查天气，只按距离排，`time_of_day` 全是 `null` |
+| 天气接口挂了 / 日期超出 4 天预报范围 | 同上，**不报错** |
+| 地点不在我们数据集里（用户自己打的名字） | 保留该地点，`is_outdoor` 为 `null`，不瞎猜 |
+| 地点还没有 `lat`/`lng`（后端没地理编码） | 保留该地点，排在有坐标的之后 |
+
+天气是加分项，不是必需品 —— 任何一环拿不到都只是少一个排序依据，不会让整个接口失败。
 
 ### 数据来源限制（要如实说明）
 

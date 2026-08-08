@@ -35,6 +35,24 @@ DISTANCE_SCALE_KM = 5.0
 
 
 @functools.lru_cache(maxsize=1)
+def indoor_outdoor_lookup() -> dict:
+    """
+    {地点名小写: "indoor"/"outdoor"}，给 itinerary_planner 排顺序时查用。
+
+    这一列是 `ML/scripts/label_indoor_outdoor.py` 生成的。老版本的 CSV 没有这列，
+    那种情况返回空 dict——下游会把所有地点当 unknown，天气排序失效但不会报错。
+    """
+    df = _load_dataset()
+    if "indoor_outdoor" not in df.columns:
+        return {}
+    return {
+        str(r["name"]).strip().lower(): r["indoor_outdoor"]
+        for _, r in df.iterrows()
+        if pd.notna(r.get("indoor_outdoor"))
+    }
+
+
+@functools.lru_cache(maxsize=1)
 def _load_dataset() -> pd.DataFrame:
     """惰性加载 + 缓存：这个模块被 import 时不强制要求数据集已经跑过 prepare_places_dataset.py，
     真正调用 recommend_from_dataset() 时才读文件，缺文件会在这里直接报错，方便定位。"""
