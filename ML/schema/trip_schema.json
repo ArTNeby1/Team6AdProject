@@ -30,7 +30,8 @@
         "properties": {
           "name": {
             "type": "string",
-            "description": "地点名称"
+            "maxLength": 255,
+            "description": "地点名称。上限对齐后端 draft_place.name VARCHAR(255)，防止模型把整句话当地点名"
           },
           "type": {
             "type": "string",
@@ -52,7 +53,7 @@
             "type": "array",
             "default": [],
             "description": "在这个地点做的事情",
-            "items": { "type": "string" }
+            "items": { "type": "string", "maxLength": 255 }
           }
         }
       }

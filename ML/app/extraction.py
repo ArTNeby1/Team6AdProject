@@ -50,7 +50,19 @@ def extract_with_retry(
     """
     last_error = None
     for attempt in range(1, max_attempts + 1):
-        raw_text = extract_fn(text, source_name=source_name)
+        # 第 2 次起把上一次的校验错误附在输入后面。
+        # 之前这里是原样再问一遍，模型没有任何新信息，自然还是给同一个错误答案——
+        # 三次重试等于白跑三次。实测例子：llama3 把"国家博物馆"的 type 输出成
+        # "museum"（enum 里没有这个值），不告诉它错在哪就会连错三次。
+        prompt_text = text
+        if last_error is not None:
+            prompt_text = (
+                f"{text}\n\n"
+                f"[SCHEMA VIOLATION IN YOUR PREVIOUS OUTPUT — fix it and output the full JSON again]\n"
+                f"{last_error}"
+            )
+
+        raw_text = extract_fn(prompt_text, source_name=source_name)
         try:
             return parse_and_validate(raw_text)
         except (json.JSONDecodeError, ValidationError) as e:

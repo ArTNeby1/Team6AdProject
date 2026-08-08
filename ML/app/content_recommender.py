@@ -24,7 +24,14 @@ import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
+from geo import min_distance_to_places
+
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "processed" / "singapore_attractions.csv"
+
+# 距离衰减的尺度（km）：候选地点离用户行程 DISTANCE_SCALE_KM 时，相似度打对折。
+# 选 5km 是因为新加坡整体只有 50km 宽，5km 大致是"同一片区域"的量级；
+# 换个国土面积大的城市这个值要重新调。
+DISTANCE_SCALE_KM = 5.0
 
 
 @functools.lru_cache(maxsize=1)
@@ -57,15 +64,44 @@ def _build_query_text(trip_extraction: dict, preference_text: str | None) -> str
     return ". ".join(p for p in parts if p)
 
 
+def _proximity(distance_km: float | None) -> float:
+    """
+    把"多少公里"换算成 0~1 的就近程度，用来跟相似度相乘。
+
+    公式 1/(1+d/scale)：距离 0 时是 1（完全不打折），距离等于 scale 时打对折，
+    再远继续衰减但永远不会变成负数或 0——所以一个特别贴题的远景点仍有机会入选，
+    只是要比近处的更贴题才行，这比"超过 X 公里直接砍掉"更温和。
+
+    距离未知（用户地点还没地理编码）时返回 1.0，等于不参与打分，
+    退化成纯文本相似度排序，而不是把它当成"距离 0"占便宜。
+    """
+    if distance_km is None:
+        return 1.0
+    return 1.0 / (1.0 + distance_km / DISTANCE_SCALE_KM)
+
+
 def recommend_from_dataset(
-    trip_extraction: dict, preference_text: str | None = None, top_n: int = 5
+    trip_extraction: dict,
+    preference_text: str | None = None,
+    top_n: int = 5,
+    mode: str = "hybrid",
+    max_distance_km: float | None = None,
 ) -> list[dict]:
     """
     trip_extraction: 符合 trip_schema.json 的 dict（destination/places），
-        跟 recommend_agent.recommend_places() 的输入形状一致，方便以后对比两种
-        方式的推荐结果。
-    返回：从真实数据集里选出的 top_n 个候选地点（按余弦相似度降序），排除已经
-        在 trip_extraction.places 里出现过的地点（不推荐用户已经去过/已规划的）。
+        跟 recommend_agent.recommend_places() 的输入形状一致，方便对比两种方式的结果。
+        places 里带 lat/lng 时才能算距离——抽取阶段的 coords 是 null，
+        要等后端地理编码补上，所以 /recommend 这一步传进来的才有坐标。
+
+    mode: 对应 F-18 标题里的 "nearby or similar"，三选一
+        - "similar"：只看文字相似度，忽略距离（原来的行为）
+        - "nearby" ：只看距离，越近越靠前（没坐标的排最后）
+        - "hybrid" ：相似度 × 就近程度，默认值，两者都要
+
+    max_distance_km: 传了就把超过这个距离的候选直接排除（距离未知的保留）。
+
+    返回：top_n 条候选，每条带 similarity / distance_km / score，
+        并排除已经在 trip_extraction.places 里出现过的地点。
     """
     df = _load_dataset()
     vectorizer, matrix = _fit_vectorizer()
@@ -74,27 +110,44 @@ def recommend_from_dataset(
     query_vec = vectorizer.transform([query_text])
     scores = cosine_similarity(query_vec, matrix)[0]
 
-    already_visited = {p.get("name", "").strip().lower() for p in trip_extraction.get("places", [])}
+    user_places = trip_extraction.get("places", [])
+    already_visited = {p.get("name", "").strip().lower() for p in user_places}
 
-    ranked_idx = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
-    results = []
-    for idx in ranked_idx:
+    candidates = []
+    for idx in range(len(df)):
         row = df.iloc[idx]
         if row["name"].strip().lower() in already_visited:
             continue
-        results.append(
+
+        similarity = float(scores[idx])
+        distance_km = min_distance_to_places(float(row["lat"]), float(row["lng"]), user_places)
+
+        if max_distance_km is not None and distance_km is not None and distance_km > max_distance_km:
+            continue
+
+        if mode == "similar":
+            score = similarity
+        elif mode == "nearby":
+            # 距离未知的用 inf，保证它们排在所有已知距离的后面而不是最前面
+            score = -(distance_km if distance_km is not None else float("inf"))
+        else:
+            score = similarity * _proximity(distance_km)
+
+        candidates.append(
             {
                 "name": row["name"],
                 "type": row["type"],
-                "similarity": round(float(scores[idx]), 4),
+                "similarity": round(similarity, 4),
+                "distance_km": round(distance_km, 2) if distance_km is not None else None,
+                "score": round(score, 4),
                 "address": row["address"],
-                "lat": row["lat"],
-                "lng": row["lng"],
+                "lat": float(row["lat"]),
+                "lng": float(row["lng"]),
             }
         )
-        if len(results) >= top_n:
-            break
-    return results
+
+    candidates.sort(key=lambda c: c["score"], reverse=True)
+    return candidates[:top_n]
 
 
 if __name__ == "__main__":

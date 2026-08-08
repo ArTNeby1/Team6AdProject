@@ -34,7 +34,7 @@ from extraction import (  # noqa: E402
     parse_and_validate,
 )
 from local_llm_client import local_extract  # noqa: E402
-from orchestrator import run_pipeline  # noqa: E402
+from orchestrator import run_extraction, run_recommendation  # noqa: E402
 
 app = FastAPI(title="LoomyTrip Extract Service")#整个服务的"前台"本身
 
@@ -91,8 +91,14 @@ class RefineRequest(BaseModel):
     preference_text: str | None = None
 
 
-def _pipeline_response(result) -> dict:
-    #把 pipeline 跑完的结果整理成统一格式返回
+def _extraction_response(result) -> dict:
+    """
+    把抽取结果整理成统一格式返回。
+
+    注意这里**不含 recommended_places**：推荐是用户确认之后调 /recommend 才做的
+    独立一步（见 ML/docs/ai_contract.md 第 1 节的流程图）。以前这两步绑在一起，
+    等于用户还没确认就先推荐了，现在拆开了。
+    """
     if result.error:
         raise HTTPException(status_code=502, detail=result.error)
     return {
@@ -100,7 +106,6 @@ def _pipeline_response(result) -> dict:
         "destination": result.extraction.destination,
         "dates": result.extraction.dates,
         "places": [p.model_dump() for p in result.extraction.places],
-        "recommended_places": [p.model_dump() for p in result.recommendation.recommended],
     }
 
 
@@ -108,26 +113,82 @@ def _pipeline_response(result) -> dict:
 #    /extract-travel-info 接口对应的处理函数
 def extract_travel_info(request: ExtractTravelInfoRequest) -> dict:
     """
-    单次粗略路线场景（对应 planning_session.initial_brief）：不经过 chat_filter
-    降噪，直接抽取 + 推荐。
+    第一步·单次粗略路线场景（对应 planning_session.initial_brief）：
+    不经过 chat_filter 降噪，直接抽取。**不做推荐。**
     """
-    result = run_pipeline(
+    result = run_extraction(
         raw_content=request.raw_content,
         source_name=request.source_url or "api_input",
     )
-    return _pipeline_response(result)
+    return _extraction_response(result)
 
 
 @app.post("/refine")
 #    /refine 接口对应的处理函数
 def refine(request: RefineRequest) -> dict:
     """
-    多轮聊天完善场景（对应 PlanningController.refine，chat_message 表的全部历史）：
-    先过 chat_filter 降噪，再抽取 + 推荐。
+    第一步·多轮聊天完善场景（对应 PlanningController.refine，chat_message 表的
+    全部历史）：先过 chat_filter 降噪，再抽取。**同样不做推荐。**
     """
-    result = run_pipeline(
+    result = run_extraction(
         messages=[m.model_dump() for m in request.messages],
         source_name="chat",
-        preference_text=request.preference_text,
     )
-    return _pipeline_response(result)
+    return _extraction_response(result)
+
+
+class RecommendPlaceIn(BaseModel):
+    """
+    /recommend 请求里的单个地点。字段跟抽取结果的 places 对齐，
+    额外允许 lat/lng——抽取阶段 coords 是 null，后端地理编码补上之后传进来。
+    """
+    name: str
+    type: str = "other"
+    lat: float | None = None
+    lng: float | None = None
+    activities: list[str] = []
+
+
+class RecommendRequest(BaseModel):
+    places: list[RecommendPlaceIn]
+    destination: str = "Singapore"
+    date: str | None = None
+    preference_text: str | None = None
+    top_n: int = 3
+    mode: str = "hybrid"
+    max_distance_km: float | None = None
+
+
+@app.post("/recommend")
+def recommend(request: RecommendRequest) -> dict:
+    """
+    第二步（F-18）：用户**确认地点之后**才调，产出推荐。
+
+    地点来自真实数据集（107 个新加坡景点，带真实经纬度），LLM 只负责从候选里
+    挑选并写推荐理由，所以不会推荐出不存在的地方。
+
+    mode 对应 F-18 的 "nearby or similar"：
+      similar = 只看文字相似度 / nearby = 只看距离 / hybrid = 两者结合（默认）
+    传进来的 places 带 lat/lng 才能算距离，没有就自动退回纯相似度。
+    """
+    if not request.places:
+        raise HTTPException(status_code=400, detail="places 不能为空")
+
+    try:
+        recommended = run_recommendation(
+            places=[p.model_dump() for p in request.places],
+            destination=request.destination,
+            preference_text=request.preference_text,
+            top_n=request.top_n,
+            mode=request.mode,
+            max_distance_km=request.max_distance_km,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"推荐失败：{e}")
+
+    return {
+        "status": "OK",
+        # date 传了才有天气排序（还没接天气接口，先原样回显，让调用方知道收到了）
+        "weather_summary": None,
+        "suggested_additions": recommended,
+    }

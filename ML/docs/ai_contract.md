@@ -131,10 +131,15 @@
 
 | 工具              | 做什么                                 | 数据来源                                    | 状态                                |
 | ----------------- | -------------------------------------- | ------------------------------------------- | ----------------------------------- |
-| `search_places` | 从 107 个真实新加坡景点里找相似的      | `singapore_attractions.csv`               | ✅`content_recommender.py` 已写好 |
-| `get_distance`  | 算两个地点之间的直线距离               | 经纬度做 haversine 计算，纯数学不调 API     | 🟡 约 20 行                         |
-| `group_by_area` | 把邻近的地点归到一组，避免来回横跨全岛 | 同上                                        | 🟡 约 30 行                         |
-| `get_weather`   | 查当天/未来天气预报                    | data.gov.sg 的 NEA 天气接口（免费、免密钥） | 🟡 用之前先验证接口格式             |
+| `search_places` | 从 107 个真实新加坡景点里找相似的      | `singapore_attractions.csv`               | ✅ `content_recommender.py` |
+| `get_distance`  | 算两个地点之间的直线距离               | 经纬度做 haversine 计算，纯数学不调 API     | ✅ `geo.py`（2026-08-08 完成） |
+| `group_by_area` | 把邻近的地点归到一组，避免来回横跨全岛 | 同上                                        | ⬜ 没单独做，见下 |
+| `get_weather`   | 查当天/未来天气预报                    | data.gov.sg 的 NEA 天气接口（免费、免密钥） | 🟡 还没接，先验证接口格式 |
+
+**`group_by_area` 为什么没单独做**：本来想做"先按区域分组再推荐"，实际做的时候发现
+用距离直接参与打分就够了 —— `content_recommender.py` 里 `hybrid` 模式把相似度乘上
+一个就近系数（距离 5km 打对折），效果上等于"优先推荐同一片区域的地点"，
+不需要再单独做一次聚类。真要做按天分组行程时可能还得补回来，先记在这。
 
 **一次性准备工作（不是运行时工具）**：给 107 个地点各打一个"室内/室外"标记。
 让 LLM 把数据集里的 description 过一遍分类，结果存回 CSV。
@@ -223,9 +228,17 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 
 ---
 
-## 5. 第二层接口二：推荐 🟡 设计已定，代码待写
+## 5. 第二层接口二：推荐 ✅ 已实现（2026-08-08）
 
 **`POST /recommend`**
+
+实现方式（F-18）：先用 `content_recommender.py` 从 107 个真实新加坡景点里检索出
+候选（TF-IDF 相似度 + 距离），再让 LLM 从候选名单里挑选并写推荐理由。
+模型只负责"选哪个、为什么"，不负责"有哪些地方"，所以不会推荐出不存在的景点 ——
+模型如果输出了候选名单之外的名字，代码会直接丢弃那一条。
+
+`mode` 参数对应 F-18 标题的 "nearby or similar"：
+`similar`（只看文字相似）/ `nearby`（只看距离）/ `hybrid`（两者结合，默认）。
 
 **什么时候调**：用户确认地点之后、**且后端已经补好经纬度之后**。
 
@@ -245,10 +258,13 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 
 | 字段                | 必填 | 说明                                                        |
 | ------------------- | ---- | ----------------------------------------------------------- |
-| `date`            | **否** | 查天气用。传了就按天气排顺序，**没传就退回只按距离排**（见下） |
-| `places`          | 是   | 用户确认后的地点，**必须已经有 `lat`/`lng`**      |
-| `travel_matrix`   | 否   | 后端 Google API 做好之后填这里（见下），现在传`null` 就行 |
-| `preference_text` | 否   | 用户偏好，比如`"travel_style=culture"`                    |
+| `places`          | 是   | 用户确认后的地点。带 `lat`/`lng` 才能算距离，没有会自动退回纯文本相似度（不报错） |
+| `date`            | 否 | 查天气用。天气工具还没接，**目前传了也只会原样返回 `weather_summary: null`** |
+| `mode`            | 否 | `similar` / `nearby` / `hybrid`（默认）。对应 F-18 的 "nearby or similar" |
+| `top_n`           | 否 | 推荐几条，默认 3                                            |
+| `max_distance_km` | 否 | 传了就排除超过这个距离的候选                                 |
+| `preference_text` | 否 | 用户偏好，比如`"travel_style=culture"`                    |
+| `travel_matrix`   | 否 | 后端 Google API 做好之后填这里（见下），现在传`null` 就行 |
 
 **关于 `date` 改成选填**（前端反馈：用户说话里经常没有日期）：
 
@@ -270,52 +286,53 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 ]
 ```
 
-### 返回
+### 返回（下面是真实跑出来的结果，不是设计稿）
 
 ```json
 {
   "status": "OK",
-  "weather_summary": "今天下午 2-5 点有阵雨，其余时段多云",
-  "ordered_stops": [
-    {
-      "name": "滨海湾花园",
-      "order": 1,
-      "time_of_day": "morning",
-      "is_outdoor": true,
-      "reason": "下午有阵雨，户外的花园排在上午拍照光线也更好"
-    },
-    {
-      "name": "国家博物馆",
-      "order": 2,
-      "time_of_day": "afternoon",
-      "is_outdoor": false,
-      "reason": "室内展馆，下午下雨也不影响"
-    }
-  ],
+  "weather_summary": null,
   "suggested_additions": [
     {
-      "name": "新加坡植物园",
+      "name": "Marina Bay Sands",
       "type": "attraction",
-      "lat": 1.3138,
-      "lng": 103.8159,
-      "is_outdoor": true,
-      "distance_km": 5.4,
-      "reason": "跟滨海湾花园同为户外拍照景点，距离不远，可以接在上午的行程之后",
-      "activities": ["散步", "拍照"]
+      "lat": 1.283,
+      "lng": 103.8585,
+      "distance_km": 0.35,
+      "similarity": 0.2242,
+      "reason": "You liked Gardens by the Bay, and Marina Bay Sands is nearby.",
+      "activities": ["sightseeing"]
+    },
+    {
+      "name": "Marina Bay Sands® SkyPark",
+      "type": "attraction",
+      "lat": 1.283,
+      "lng": 103.8585,
+      "distance_km": 0.35,
+      "similarity": 0.1911,
+      "reason": "Great view over the bay, a short walk from your existing stop.",
+      "activities": ["observation deck"]
     }
   ]
 }
 ```
 
-### 两个 key 的区别（前端注意）
+| 字段 | 说明 |
+|---|---|
+| `name` / `type` / `lat` / `lng` | 直接来自真实数据集，**不采用模型输出的值**（模型可能抄错） |
+| `distance_km` | 到用户已确认地点里最近那个的直线距离 |
+| `similarity` | TF-IDF 余弦相似度，方便调试/答辩时解释排序依据 |
+| `reason` / `activities` | LLM 针对这个用户写的，上限 255 字（对齐 `draft_place.note`） |
+| `weather_summary` | **目前恒为 `null`**，天气工具还没接 |
 
-|                         | 是什么                                              | 前端怎么展示                                                 |
-| ----------------------- | --------------------------------------------------- | ------------------------------------------------------------ |
-| `ordered_stops`       | **用户自己确认的地点**，被 agent 重新排了顺序 | 主行程列表，按`order` 排，展示 `reason` 解释为什么这么排 |
-| `suggested_additions` | **AI 额外推荐的**新地点，用户没提过           | 单独一块"推荐加入"，用户可以选择添加                         |
+### ⚠️ `ordered_stops` 还没做
 
-注意 `ordered_stops` 里是**带顺序和理由**返回的，不是把用户输入原样回显 ——
-这是"agent"和"普通推荐"的区别。
+原计划返回里还有一个 `ordered_stops`（把用户自己的地点按天气/距离重排 + 给理由），
+**这部分还没实现**，因为它依赖两个还没做的东西：天气接口、107 个地点的室内/室外标记。
+
+所以现在 `/recommend` 只返回 `suggested_additions`（推荐新地点），
+不返回 `ordered_stops`（重排已有地点）。前端可以先按只有推荐的版本做，
+`ordered_stops` 做出来之后再补一版例子到这里。
 
 ### 数据来源限制（要如实说明）
 
@@ -421,6 +438,32 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 
 第 3 条要特别注意：`draft_activity` 是独立的表，通过 `draft_place_id` 关联到地点。
 所以"编辑活动"跟"编辑地点"是两件事，接口也得分开。
+
+### ⚠️ 本地模型处理中文输入会出乱码（2026-08-08 实测发现）
+
+拿组长的中文例子端到端跑 `/extract-travel-info`，本地
+`llama3.1:8b-instruct-q4_K_M` 抽出来的地点名是**乱码**：
+
+| 输入 | 抽出的地点名 |
+|---|---|
+| 我想去滨海湾花园拍照，然后去国家博物馆看展览 | `次公南关学公家`、`园海关学公家` ❌ |
+| I want to take photos at Gardens by the Bay, then visit the National Museum of Singapore | `Gardens by the Bay`、`National Museum of Singapore` ✅ |
+
+同一份代码、同一个模型，**英文完全正常，中文出乱码**。这是 8B 量化模型的中文
+能力局限，不是代码 bug（JSON 结构、type 枚举、activities 都是对的，只有中文
+名字本身是乱的）。
+
+**影响**：如果 demo 要用中文输入，本地模型这条路现在跑不通。
+
+**可选的解决方向**（还没定，需要讨论）：
+
+1. 切 Bedrock Nova Lite（任务 2 选型的赢家）跑一次中文测试，看是不是好很多 ——
+   `EXTRACT_PROVIDER=bedrock` 就能切，代码不用改
+2. 换一个中文能力强的本地模型（比如 Qwen 系列）
+3. Demo 统一用英文输入
+
+**答辩如果被问**：如实说"本地小模型对中文的抽取会产生乱码地名，英文正常，
+这是模型能力限制不是流程问题，切云端模型或换中文模型可以解决，还没做对比测试"。
 
 ### 其它待办
 

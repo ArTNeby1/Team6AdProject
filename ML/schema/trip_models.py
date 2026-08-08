@@ -15,9 +15,14 @@ Agent」内部流转用的中间结构，不要求跟后端 `destination`/`draft
 - `source`：整条请求本来就带 source_name/source_url（一次请求一份输入文本，不需要
   精确到每个地点），放在 place 级别是冗余信息
 """
-from typing import Literal, Optional
+from typing import Annotated, Literal, Optional
 
 from pydantic import BaseModel, Field
+
+# 每条 activity 文字的长度上限。注意必须用 Annotated 套在元素类型上：
+# 直接写 activities: list[str] = Field(max_length=255) 限制的是"列表最多几个元素"，
+# 不是"每条文字最多几个字"，那是另一回事。
+ActivityText = Annotated[str, Field(max_length=255)]
 
 
 class Coords(BaseModel):
@@ -26,7 +31,10 @@ class Coords(BaseModel):
 
 
 class Place(BaseModel):
-    name: str = Field(description="地点名称")
+    # max_length 跟后端 DB 对齐：draft_place.name 是 VARCHAR(255)。模型偶尔会把
+    # 一整句话当成地点名输出，不设上限的话这种结果能通过校验，却在后端落库时才炸，
+    # 排查起来要跨两个服务。宁可在这里就判定不合规，让 extract_with_retry 重试。
+    name: str = Field(max_length=255, description="地点名称")
     type: Literal["attraction", "restaurant", "hotel", "market", "other"] = Field(
         description="地点类型"
     )
@@ -35,7 +43,10 @@ class Place(BaseModel):
         description="经纬度。文本里基本不会出现坐标，禁止模型编造，缺失填 null，"
         "真实坐标由下游地理编码步骤补全",
     )
-    activities: list[str] = Field(default_factory=list, description="在这个地点做的事情")
+    # 同理对齐 draft_activity.title VARCHAR(255)：一个 activity 落库一行，所以逐条限长
+    activities: list[ActivityText] = Field(
+        default_factory=list, description="在这个地点做的事情"
+    )
 
 
 class TripExtraction(BaseModel):

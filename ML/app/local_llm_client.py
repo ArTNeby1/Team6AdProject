@@ -35,10 +35,25 @@ DEFAULT_EXTRACT_MODEL = os.environ.get("EXTRACT_MODEL", "llama3.1:8b-instruct-q4
 
 DEFAULT_NUM_GPU = int(os.environ.get("OLLAMA_NUM_GPU", "0"))
 
-SYSTEM_PROMPT = """You are a data extraction engine for travel blog posts.
-Read the travel blog text and output ONLY a single JSON object that matches
-this JSON Schema exactly. Do not include markdown code fences, explanations,
-or any text other than the JSON object itself.
+# enum 那条规则是实测加的：schema 里虽然写了 enum，但整份 JSON Schema 很长，
+# 8B 小模型经常读不到那一层，把"国家博物馆"的 type 直接写成 "museum"，
+# 连重试三次都是同一个错。把约束提到 system prompt 顶层、并给出常见词的映射
+# （museum/park/temple -> attraction），模型才稳定听话。
+SYSTEM_PROMPT = """You are a data extraction engine for travel content.
+Read the text and output ONLY a single JSON object that matches this JSON
+Schema exactly. Do not include markdown code fences, explanations, or any text
+other than the JSON object itself.
+
+CRITICAL RULES:
+1. `type` MUST be EXACTLY one of these five values:
+   "attraction", "restaurant", "hotel", "market", "other"
+   Never output any other value. Map anything else to the closest one:
+   museum / park / garden / temple / zoo / landmark / beach / mall -> "attraction"
+   cafe / hawker centre / food court / bar                         -> "restaurant"
+   hostel / resort / airbnb                                        -> "hotel"
+2. `name` must be the place name only (under 255 characters), never a whole sentence.
+3. The input may be in Chinese or English. Keep place names in their original language.
+4. Never invent coordinates. Always output "coords": null.
 
 JSON Schema:
 {schema}

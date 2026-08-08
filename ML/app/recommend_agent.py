@@ -18,6 +18,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from content_recommender import recommend_from_dataset
 from local_llm_client import call_local_model
 
 # 这一步走本地 Ollama 还是 Bedrock，独立于其它两段，参考 main.py 里
@@ -32,11 +33,13 @@ DEFAULT_RECOMMEND_MODEL_BEDROCK = os.environ.get("RECOMMEND_MODEL_BEDROCK", "ama
 
 
 class RecommendedPlace(BaseModel):
-    name: str = Field(description="推荐的地点名称")
+    name: str = Field(max_length=255, description="推荐的地点名称")
     type: Literal["attraction", "restaurant", "hotel", "market", "other"] = Field(
         description="地点类型，跟抽取阶段的枚举保持一致"
     )
-    reason: str = Field(description="推荐理由，必须能从输入的已抽取地点/偏好里找到依据，不许瞎编景点")
+    # 上限对齐后端 draft_place.note VARCHAR(255)——推荐理由如果要落库就是存这一列，
+    # 不限长的话模型写嗨了会在后端插入时才炸。
+    reason: str = Field(max_length=255, description="推荐理由，必须能从输入的已抽取地点/偏好里找到依据，不许瞎编景点")
     activities: list[str] = Field(default_factory=list, description="建议在这个地点做的事情")
 
 
@@ -93,15 +96,152 @@ def recommend_places(
     return RecommendationResult.model_validate(json.loads(raw_text))
 
 
+# ---------------------------------------------------------------------------
+# grounded 版推荐：先查真实数据集拿候选，再让 LLM 从候选里挑 + 写理由
+# ---------------------------------------------------------------------------
+
+GROUNDED_SYSTEM_PROMPT = """You are a travel recommendation assistant for Singapore.
+
+You are given:
+1. `trip_so_far`: places the traveler has already planned.
+2. `candidates`: a shortlist of REAL Singapore places retrieved from an official
+   dataset, each with a distance in km from the traveler's existing plan.
+
+Pick the {top_n} best candidates and explain why each fits this traveler.
+
+HARD RULES:
+- You MUST only pick places whose `name` appears EXACTLY in `candidates`.
+  Never invent a place, never rename one, never merge two.
+- Copy each chosen place's `name` and `type` character-for-character from the
+  candidate list.
+- Base each `reason` on what the traveler already showed interest in, and
+  mention proximity when the candidate is close.
+- Keep each `reason` under 200 characters.
+
+Output ONLY a single JSON object matching this JSON Schema exactly. No markdown
+fences, no commentary.
+
+JSON Schema:
+{schema}
+"""
+
+
+def _normalize_name(name: str) -> str:
+    """
+    地点名归一化，用来做候选表回查。只保留字母和数字，忽略大小写、空格、标点。
+
+    为什么不用完全相等：数据集里的官方名字带商标符号，比如
+    'Marina Bay Sands® SkyPark'，模型抄写时几乎一定会把 ® 丢掉，
+    严格相等会把这种"选对了地方只是少个符号"的结果误判成编造，实测就误杀过。
+
+    归一化之后仍然拦得住真正的编造——模型要是凭空说一个数据集里没有的景点，
+    归一化后照样匹配不上任何候选。放宽的只是写法差异，不是地点本身。
+    """
+    return "".join(ch.lower() for ch in name if ch.isalnum())
+
+
+def recommend_grounded(
+    trip_extraction: dict,
+    preference_text: str | None = None,
+    top_n: int = 3,
+    candidate_pool: int = 10,
+    mode: str = "hybrid",
+    max_distance_km: float | None = None,
+    model_id: str | None = None,
+) -> list[dict]:
+    """
+    F-18 要的"真·推荐"：地点来自真实数据集（保证存在、带真实经纬度），
+    推荐理由由 LLM 针对这个用户写（保证不是干巴巴的相似度数字）。
+
+    跟 recommend_places() 的区别——这是这次改造的核心，答辩会被问：
+      recommend_places()   : 直接问 LLM "推荐几个地方"，地点是模型凭记忆编的，
+                             可能推荐出不存在/已停业的地方，也没有坐标。
+      recommend_grounded() : 先用 content_recommender 从 107 个真实景点里检索出
+                             candidate_pool 个候选，LLM 只能在这个名单里挑。
+                             模型负责"选哪个、为什么"，不负责"有哪些地方"。
+
+    这样即使模型胡说，最坏情况也只是理由写得牵强，不会凭空造出一个景点。
+
+    返回 list[dict]，每条 = LLM 给的 name/type/reason/activities
+    + 数据集给的 lat/lng/distance_km/similarity（坐标永远以数据集为准，不信模型）。
+    """
+    candidates = recommend_from_dataset(
+        trip_extraction,
+        preference_text=preference_text,
+        top_n=candidate_pool,
+        mode=mode,
+        max_distance_km=max_distance_km,
+    )
+    if not candidates:
+        return []
+
+    # 只把模型需要的字段喂进去：地址/相似度分数对写推荐理由没帮助，反而占 token
+    candidate_brief = [
+        {"name": c["name"], "type": c["type"], "distance_km": c["distance_km"]}
+        for c in candidates
+    ]
+    by_name = {_normalize_name(c["name"]): c for c in candidates}
+
+    system_prompt = GROUNDED_SYSTEM_PROMPT.format(
+        top_n=top_n,
+        schema=json.dumps(RecommendationResult.model_json_schema(), ensure_ascii=False),
+    )
+    user_payload = {"trip_so_far": trip_extraction, "candidates": candidate_brief}
+    if preference_text:
+        user_payload["preferences"] = preference_text
+
+    if RECOMMEND_PROVIDER == "bedrock":
+        from bedrock_client import call_bedrock_model  # 延迟导入：ollama 路径不强制装 boto3
+
+        raw_text = call_bedrock_model(
+            system_prompt, json.dumps(user_payload, ensure_ascii=False),
+            model_id or DEFAULT_RECOMMEND_MODEL_BEDROCK,
+        )
+    else:
+        raw_text = call_local_model(
+            system_prompt, json.dumps(user_payload, ensure_ascii=False),
+            model_id or DEFAULT_RECOMMEND_MODEL,
+        )
+
+    llm_result = RecommendationResult.model_validate(json.loads(raw_text))
+
+    # 关键一步：拿模型返回的名字回查候选表，对不上的直接丢掉。
+    # 提示词里已经要求"只能从候选里挑"，但提示词是请求不是保证，这里才是真的拦截。
+    grounded = []
+    for place in llm_result.recommended:
+        source = by_name.get(_normalize_name(place.name))
+        if source is None:
+            print(f"[grounded] 丢弃：候选名单里没有这个地点，判定为模型编造: {place.name!r}")
+            continue
+        grounded.append(
+            {
+                "name": source["name"],
+                "type": source["type"],
+                "lat": source["lat"],
+                "lng": source["lng"],
+                "distance_km": source["distance_km"],
+                "similarity": source["similarity"],
+                "reason": place.reason,
+                "activities": place.activities,
+            }
+        )
+        if len(grounded) >= top_n:
+            break
+    return grounded
+
+
 if __name__ == "__main__":
     # 手动冒烟测试，需要本机 Ollama 已经在跑
     demo_trip = {
         "destination": "Singapore",
         "dates": [],
         "places": [
-            {"name": "Gardens by the Bay", "type": "attraction", "coords": None,
-             "activities": ["Cloud Forest dome"]},
+            {"name": "Gardens by the Bay", "type": "attraction",
+             "lat": 1.2816, "lng": 103.8636, "activities": ["Cloud Forest dome"]},
         ],
     }
-    result = recommend_places(demo_trip, preference_text="travel_style=culture, prefer_transport=walk")
-    print(result.model_dump_json(indent=2))
+    print("=== 旧版（LLM 凭记忆编地点）===")
+    print(recommend_places(demo_trip, preference_text="travel_style=culture").model_dump_json(indent=2))
+    print("\n=== 新版 grounded（地点来自真实数据集）===")
+    print(json.dumps(recommend_grounded(demo_trip, preference_text="travel_style=culture"),
+                     ensure_ascii=False, indent=2))
