@@ -1,0 +1,40 @@
+{
+  "destination": "Singapore",
+  "dates": [],
+  "places": [
+    {
+      "name": "Tekka Centre",
+      "type": "market",
+      "coords": null,
+      "activities": [
+        "eat briyani",
+        "eat roti prata"
+      ]
+    },
+    {
+      "name": "Haji Lane",
+      "type": "attraction",
+      "coords": null,
+      "activities": [
+        "see colourful shophouses",
+        "see street art murals"
+      ]
+    },
+    {
+      "name": "Zam Zam Restaurant",
+      "type": "restaurant",
+      "coords": null,
+      "activities": [
+        "lunch"
+      ]
+    },
+    {
+      "name": "Buddha Tooth Relic Temple",
+      "type": "attraction",
+      "coords": null,
+      "activities": [
+        "view relic"
+      ]
+    }
+  ]
+}

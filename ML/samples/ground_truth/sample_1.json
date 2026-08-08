@@ -1,0 +1,60 @@
+{
+  "destination": "Singapore",
+  "dates": [],
+  "places": [
+    {
+      "name": "Gardens by the Bay",
+      "type": "attraction",
+      "coords": null,
+      "activities": ["Cloud Forest dome", "Flower Dome", "Super Tree Grove light show"]
+    },
+    {
+      "name": "Satay by the Bay",
+      "type": "restaurant",
+      "coords": null,
+      "activities": ["dinner"]
+    },
+    {
+      "name": "Merlion Park",
+      "type": "attraction",
+      "coords": null,
+      "activities": ["photos"]
+    },
+    {
+      "name": "Marina Bay Sands SkyPark Observation Deck",
+      "type": "attraction",
+      "coords": null,
+      "activities": ["city view from observation deck"]
+    },
+    {
+      "name": "Chinatown Street Market (Pagoda Street)",
+      "type": "market",
+      "coords": null,
+      "activities": ["souvenir shopping"]
+    },
+    {
+      "name": "Chinatown Complex Food Centre",
+      "type": "restaurant",
+      "coords": null,
+      "activities": ["eating chicken rice"]
+    },
+    {
+      "name": "Universal Studios Singapore",
+      "type": "attraction",
+      "coords": null,
+      "activities": ["theme park, full day"]
+    },
+    {
+      "name": "Wings of Time",
+      "type": "attraction",
+      "coords": null,
+      "activities": ["evening beach show"]
+    },
+    {
+      "name": "Vivo City",
+      "type": "restaurant",
+      "coords": null,
+      "activities": ["quick meal before flight"]
+    }
+  ]
+}

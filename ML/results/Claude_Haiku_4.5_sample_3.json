@@ -1,0 +1,59 @@
+{
+  "destination": "Singapore",
+  "dates": [],
+  "places": [
+    {
+      "name": "Tekka Centre",
+      "type": "market",
+      "coords": null,
+      "activities": [
+        "eat briyani",
+        "eat roti prata"
+      ]
+    },
+    {
+      "name": "Little India",
+      "type": "other",
+      "coords": null,
+      "activities": []
+    },
+    {
+      "name": "Haji Lane",
+      "type": "other",
+      "coords": null,
+      "activities": [
+        "see colourful shophouses",
+        "view street art murals"
+      ]
+    },
+    {
+      "name": "Zam Zam Restaurant",
+      "type": "restaurant",
+      "coords": null,
+      "activities": [
+        "have lunch"
+      ]
+    },
+    {
+      "name": "Sultan Mosque",
+      "type": "attraction",
+      "coords": null,
+      "activities": []
+    },
+    {
+      "name": "Buddha Tooth Relic Temple",
+      "type": "attraction",
+      "coords": null,
+      "activities": [
+        "view relic",
+        "tour temple"
+      ]
+    },
+    {
+      "name": "Chinatown",
+      "type": "other",
+      "coords": null,
+      "activities": []
+    }
+  ]
+}
