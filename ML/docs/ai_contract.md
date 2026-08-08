@@ -3,8 +3,13 @@
 这份文件是这条流程的**唯一参考**：接口叫什么、传什么、返回什么、谁负责哪一段。
 三个人照这份文件各自动手写代码，不用再互相猜格式。
 
-> **状态说明**：文件里每个接口都标了 ✅（已写好能跑）或 🟡（设计已定、代码待写）。
-> 🟡 的接口格式已经定下来了，前端后端可以先照着写自己那边的代码，不用等我。
+> **状态（2026-08-08 更新）**：**AI 服务这一侧的接口全部实现完毕、测试通过**
+> —— 解析、天气、按天气/距离排顺序、推荐都能真实跑起来，不是设计稿。
+>
+> 现在整条链路卡在后端：AI 抽出来的地点**还没有任何代码把它写进数据库**，
+> 所以前端页面拿不到数据。要做什么见第 6 节「后端要做的」，🔴 那四条是硬阻塞。
+>
+> 后端本机不用装 Ollama 也能联调 —— 见第 4 节的 **mock 模式**。
 
 ---
 
@@ -113,8 +118,16 @@
 ### 2.4 前端在「结果界面」拿到的数据
 
 后端 ⑤ 返回的，就是 Python 接口二（第 5 节）的返回体。
-**目前实际返回的是** `weather_summary`（恒为 `null`）+ `suggested_additions`（推荐的新地点）。
-原计划还有一个 `ordered_stops`（把用户自己的地点重排），**还没实现**，见第 5 节说明。
+返回三块内容，**都已实现**：
+
+| key | 是什么 | 前端怎么用 |
+|---|---|---|
+| `weather_summary` | 当天天气一句话总结 | 结果页顶部提示，例如 "Rain expected in the afternoon" |
+| `ordered_stops` | **用户自己确认的**地点，被 agent 按天气+距离重排了顺序 | 主行程列表，按 `order` 排，可按 `time_of_day` 分上午/下午/晚上 |
+| `suggested_additions` | **AI 额外推荐的**新地点 | 单独一块"推荐加入" |
+
+⚠️ 注意 `weather_summary` 和 `time_of_day` 在没传日期或天气查不到时会是 `null`，
+前端要能处理这种情况（详见第 5 节的降级行为表）。
 后端可能会额外加 `place_id` 之类的字段方便前端操作，具体由后端定。
 
 ---
@@ -287,7 +300,7 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 | 字段                | 必填 | 说明                                                        |
 | ------------------- | ---- | ----------------------------------------------------------- |
 | `places`          | 是   | 用户确认后的地点。带 `lat`/`lng` 才能算距离，没有会自动退回纯文本相似度（不报错） |
-| `date`            | 否 | 查天气用。天气工具还没接，**目前传了也只会原样返回 `weather_summary: null`** |
+| `date`            | 否 | 查天气用。**传了才有天气排序**（户外躲雨），不传就只按距离排，`weather_summary` 和 `time_of_day` 会是 `null` |
 | `mode`            | 否 | `similar` / `nearby` / `hybrid`（默认）。对应 F-18 的 "nearby or similar" |
 | `top_n`           | 否 | 推荐几条，默认 3                                            |
 | `max_distance_km` | 否 | 传了就排除超过这个距离的候选                                 |
@@ -371,7 +384,7 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 | `distance_km` | 到用户已确认地点里最近那个的直线距离 |
 | `similarity` | TF-IDF 余弦相似度，方便调试/答辩时解释排序依据 |
 | `reason` / `activities` | LLM 针对这个用户写的，上限 255 字（对齐 `draft_place.note`） |
-| `weather_summary` | **目前恒为 `null`**，天气工具还没接 |
+| `weather_summary` | 当天天气总结，来自 data.gov.sg 的 NEA 官方接口。**没传 `date` 或天气查不到时是 `null`** |
 
 ### `ordered_stops` ✅ 已实现（2026-08-08）
 
@@ -406,39 +419,73 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 
 ## 6. 三方分工
 
-### 我（AI）要做的
+### 我（AI）要做的 —— ✅ 全部完成（2026-08-08）
 
-1. 🟡 把 `/recommend` 从 `run_pipeline()` 里拆出来，做成独立接口（现在解析和推荐是绑一起跑的，
-   跟"用户确认后才推荐"的流程不符）
-2. 🟡 写 `get_distance`（haversine）和 `group_by_area`
-3. 🟡 接 data.gov.sg 天气接口
-4. 🟡 给 107 个地点打室内/室外标记，存回 CSV
-5. 🟡 把上面这些组装成 agent：查天气 → 算距离 → 排顺序 → 生成推荐理由
+1. ✅ 把解析和推荐拆成两个独立接口（原来绑在一起，用户还没确认就先推荐了）
+2. ✅ 距离计算 `geo.py`（haversine，纯数学不调 API）
+3. ✅ 天气工具 `weather.py`（data.gov.sg 的 NEA 官方接口，免费免密钥）
+4. ✅ 107 个地点的室内/室外标记，已写回 CSV 的 `indoor_outdoor` 列
+5. ✅ 组装成 agent：查天气 → 算距离 → 排顺序（`ordered_stops`）→ 推荐（`suggested_additions`）
+
+**测试**：31 项全过（推荐器 12、健壮性 5、行程排序 14）。
+排序那 14 项用注入的假天气测的 —— 新加坡不是天天下雨，靠真实接口测不到下雨分支。
+
+**还没做的**（不阻塞演示，记录在案）：
+- 用后端 Google API 的真实车程替换直线距离（等 `travel_matrix` 传进来，接口格式已经预留好）
+- 室内/室外标记没有人工逐条核对，LLM 判的那 22 条有错（见第 8 节）
 
 ### 后端要做的
 
-1. 把 `AiPlanningClientStub` 换成真的 HTTP 调用，指向 `http://localhost:8001`
-2. **⚠️ 字段名对不上**：stub 现在假设返回 `{status, places, activities}`，
-   实际是 `{status, destination, dates, places}` —— 照这份文件的真实格式改
-3. **⚠️ 接口缺方法**：`AiPlanningClient.java` 现在只有 `extractTravelInfo(String, String)`，
-   传不了聊天记录，用不了 `/refine`。要支持多轮聊天需要加一个方法，比如
+> **AI 服务这一侧已经全部跑通了**（解析、天气、排顺序、推荐都能用，见上面各节）。
+> 现在整条链路卡在后端 —— 下面 🔴 那四条不做的话，**前端页面是空白的**，
+> 因为 AI 抽出来的地点从来没有被写进数据库过。
+
+**🔴 不做就没法演示（按顺序做）**
+
+1. **`createSession()` 里调抽取接口** —— 现在这个方法**完全没有调用 AI**，
+   只是把用户输入的文字存进 `planning_session.initial_brief` 就返回了
+2. **把返回的 places 存成 `DraftPlace`** —— ⚠️ 全后端**没有一行创建 `DraftPlace` 的代码**
+   （唯一的 `draftPlaceRepository.save()` 在 `updateDraftPlace()` 里，那是改已有的）。
+   这条是最致命的：不存库，前端拿不到任何地点
+3. **`AiPlanningClient` 加一个调 `/recommend` 的方法** —— 现在这个接口只有
+   `extractTravelInfo()` 和 `generateDailyItinerary()` 两个方法，**没有任何方法能调到推荐接口**。
+   即使前面几条都做完，agent 的推荐和排序结果照样出不来。建议签名：
+   ```java
+   Map<String, Object> recommend(List<PlaceDto> confirmedPlaces, String date, String preferenceText);
+   ```
+4. **`confirmSession()` 里调用它** —— 现在直接抛 501，把结果（`ordered_stops` +
+   `suggested_additions`）存进数据库后返回给前端
+
+**🟡 影响效果但不阻塞**
+
+5. **调 `/recommend` 之前先地理编码**，把 `coords` 补成真实 `lat`/`lng` ——
+   否则 agent 没法按距离排序、也没法串线路（不会报错，但排序质量下降）
+6. **用 `destination` 字段做范围校验**，非新加坡的请求要拒绝
+7. **`AiPlanningClient` 再加一个传聊天记录的方法**才能用 `/refine`（多轮对话完善），
+   现在的 `extractTravelInfo(String, String)` 只能传一段文字。建议：
    `refineFromChat(List<ChatMessage> messages, String preferenceText)`
-4. 调 `/recommend` **之前**必须先地理编码，把 `coords` 补上 —— 否则 agent 没法按距离排序
-5. 用 `destination` 字段做范围校验，非新加坡的请求要拒绝
-6. 把 `ordered_stops` 和 `suggested_additions` 存进数据库
-   —— **存哪张表、怎么区分"用户说的"和"AI推荐的"，由后端决定**，
-   我不替后端定数据库设计，需要三个人一起讨论
+
+**需要三方一起定**
+
+8. `ordered_stops` 和 `suggested_additions` **存哪张表、怎么区分"用户说的"和"AI推荐的"** ——
+   我不替后端定数据库设计。另外注意 `reason`/`is_outdoor`/`distance_km` 这几个字段
+   `draft_place` 表里目前没有对应列（`reason` 最多塞 `note` VARCHAR(255)）
 
 ### 前端要做的
 
 **先看第 2 节** —— 前端调的是 Java 后端（第一层），不是 Python AI 服务。
 
 1. **确认界面** —— 用第 2.3 节的 JSON：每个地点显示名称 + 活动，可编辑（PUT）、可删除（DELETE）
-2. **结果界面** —— 用第 2.4 节的 JSON：`ordered_stops` 是主行程（按 `order` 排，展示 `reason`
-   说明为什么这么安排），`suggested_additions` 是可选择添加的推荐
-3. `destination` 字段不用展示，它只是给后端做范围校验用的
-4. 编辑地点时**不会触发重新解析**（见 2.2），改完直接生效，不用等 AI
-5. `place_id` 是编辑/删除时定位用的，务必保留
+2. **结果界面** —— 用第 2.4 节的 JSON，有三块内容：
+   - 顶部展示 `weather_summary`（例如 "Rain expected in the afternoon"）
+   - 主行程 `ordered_stops`：按 `order` 排，展示 `reason` 说明为什么这么安排，
+     可以按 `time_of_day`（morning/afternoon/evening）分组显示
+   - 底部 `suggested_additions`：可选择添加的推荐地点
+3. ⚠️ **`weather_summary` 和 `time_of_day` 可能是 `null`**（没传日期、或天气查不到时），
+   界面要能处理这种情况 —— 那时就是纯按距离排的一条线路，没有时段分组
+4. `destination` 字段不用展示，它只是给后端做范围校验用的
+5. 编辑地点时**不会触发重新解析**（见 2.2），改完直接生效，不用等 AI
+6. `place_id` 是编辑/删除时定位用的，务必保留
 
 ---
 
