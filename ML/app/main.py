@@ -172,7 +172,7 @@ def recommend(request: RecommendRequest) -> dict:
     传进来的 places 带 lat/lng 才能算距离，没有就自动退回纯相似度。
     """
     if not request.places:
-        raise HTTPException(status_code=400, detail="places 不能为空")
+        raise HTTPException(status_code=400, detail="places must not be empty")
 
     try:
         recommended = run_recommendation(
@@ -184,7 +184,7 @@ def recommend(request: RecommendRequest) -> dict:
             max_distance_km=request.max_distance_km,
         )
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"推荐失败：{e}")
+        raise HTTPException(status_code=502, detail=f"recommendation failed: {e}")
 
     return {
         "status": "OK",

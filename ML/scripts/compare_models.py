@@ -127,13 +127,13 @@ def validate_output(raw_text, schema):
     try:
         data = json.loads(text)
     except json.JSONDecodeError as e:
-        return None, f"JSON 解析失败: {e}"
+        return None, f"JSON parse failed: {e}"
 
     try:
         validate(instance=data, schema=schema)#检查内容（是否符合 Schema 规则）
         return data, "PASS"
     except ValidationError as e:
-        return data, f"FAIL: {e.message} (位置: {list(e.path)})"
+        return data, f"FAIL: {e.message} (at: {list(e.path)})"
 
 
 def estimate_cost(model_name, usage):
@@ -170,7 +170,7 @@ def main():
             try:
                 raw_text, elapsed, usage = call_model(client, model_id, schema, text)
             except Exception as e:
-                print(f"[{sample_path.name}] 调用失败: {e}")
+                print(f"[{sample_path.name}] call failed: {e}")
                 continue
 
             data, status = validate_output(raw_text, schema)
@@ -180,9 +180,9 @@ def main():
             if status == "PASS":
                 pass_count += 1
 
-            print(f"[{sample_path.name}] {status} | 耗时 {elapsed:.2f}s | "
+            print(f"[{sample_path.name}] {status} | {elapsed:.2f}s | "
                   f"tokens in/out {usage['inputTokens']}/{usage['outputTokens']} | "
-                  f"估算费用 ${cost:.5f}")
+                  f"est. cost ${cost:.5f}")
 
             # 把这次模型的原始回答存成单独文件,方便之后人工对照原文核对
             # 有没有漏抽地点/编造内容(这一步电脑没法自动判断,必须人工看)
@@ -202,10 +202,10 @@ def main():
 
     # 三个模型都跑完之后,打印一张总结表:每个模型通过了几篇、平均耗时、总花费
     # 这几个数字就是要填进 model_selection.md 对比表里的内容
-    print("\n\n=== 汇总 ===")
+    print("\n\n=== SUMMARY ===")
     for row in summary:
-        print(f"{row['model']:20s} schema通过 {row['pass_rate']:5s} "
-              f"平均耗时 {row['avg_time']:.2f}s  预估总费用 ${row['total_cost']:.5f}")
+        print(f"{row['model']:20s} schema pass {row['pass_rate']:5s} "
+              f"avg {row['avg_time']:.2f}s  est. total cost ${row['total_cost']:.5f}")
 
 
 if __name__ == "__main__":

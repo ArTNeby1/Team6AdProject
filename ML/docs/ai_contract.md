@@ -35,8 +35,8 @@
     ▼  ⚠️ 后端在这里补经纬度（MapPlacesClient 地理编码）
     │
 ┌─────────────────────────────┐
-│ 接口二  POST /recommend 🟡  │  agent：查天气 + 算距离 + 排顺序 + 推荐
-└─────────────────────────────┘
+│ 接口二  POST /recommend  ✅ │  agent：算距离 + 从真实数据集推荐
+└─────────────────────────────┘   （查天气 + 排顺序还没做）
     │
     ▼  后端存进数据库
 ```
@@ -101,8 +101,8 @@
 {
   "session_id": 17,
   "places": [
-    { "place_id": 101, "name": "滨海湾花园", "type": "attraction", "lat": 1.2816, "lng": 103.8636, "activities": ["拍照"] },
-    { "place_id": 102, "name": "国家博物馆", "type": "attraction", "lat": 1.2966, "lng": 103.8485, "activities": ["看展览"] }
+    { "place_id": 101, "name": "Gardens by the Bay", "type": "attraction", "lat": 1.2816, "lng": 103.8636, "activities": ["take photos"] },
+    { "place_id": 102, "name": "National Museum of Singapore", "type": "attraction", "lat": 1.2966, "lng": 103.8485, "activities": ["see the exhibition"] }
   ]
 }
 ```
@@ -112,8 +112,9 @@
 
 ### 2.4 前端在「结果界面」拿到的数据
 
-后端 ⑤ 返回的，就是 Python 接口二（第 5 节）的返回体：
-`weather_summary` + `ordered_stops` + `suggested_additions`。
+后端 ⑤ 返回的，就是 Python 接口二（第 5 节）的返回体。
+**目前实际返回的是** `weather_summary`（恒为 `null`）+ `suggested_additions`（推荐的新地点）。
+原计划还有一个 `ordered_stops`（把用户自己的地点重排），**还没实现**，见第 5 节说明。
 后端可能会额外加 `place_id` 之类的字段方便前端操作，具体由后端定。
 
 ---
@@ -185,7 +186,7 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 ### 请求
 
 ```json
-{ "raw_content": "我想去滨海湾花园拍照，然后去国家博物馆看展览", "source_url": null }
+{ "raw_content": "I want to take photos at Gardens by the Bay, then visit the National Museum of Singapore to see the exhibition.", "source_url": null }
 ```
 
 `/refine` 的请求换成聊天记录：
@@ -193,8 +194,8 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 ```json
 {
   "messages": [
-    { "role": "user", "content": "嗨你好呀" },
-    { "role": "user", "content": "我想去滨海湾花园拍照，然后去国家博物馆看展览" }
+    { "role": "user", "content": "hey there" },
+    { "role": "user", "content": "I want to take photos at Gardens by the Bay, then visit the National Museum to see the exhibition." }
   ],
   "preference_text": null
 }
@@ -208,14 +209,14 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
   "destination": "Singapore",
   "dates": [],
   "places": [
-    { "name": "滨海湾花园", "type": "attraction", "coords": null, "activities": ["拍照"] },
-    { "name": "国家博物馆", "type": "attraction", "coords": null, "activities": ["看展览"] }
+    { "name": "Gardens by the Bay", "type": "attraction", "coords": null, "activities": ["take photos"] },
+    { "name": "National Museum of Singapore", "type": "attraction", "coords": null, "activities": ["see the exhibition"] }
   ]
 }
 ```
 
-**这就是前端做确认界面要用的 JSON。** 每个地点自带自己的活动列表（`滨海湾花园` 配 `拍照`、
-`国家博物馆` 配 `看展览`），不是两个分开的列表让前端自己配对。
+**这就是前端做确认界面要用的 JSON。** 每个地点自带自己的活动列表（`Gardens by the Bay` 配 `take photos`、
+`National Museum` 配 `see the exhibition`），不是两个分开的列表让前端自己配对。
 
 ### 字段说明
 
@@ -248,8 +249,8 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 {
   "date": "2026-08-07",
   "places": [
-    { "name": "滨海湾花园", "type": "attraction", "lat": 1.2816, "lng": 103.8636, "activities": ["拍照"] },
-    { "name": "国家博物馆", "type": "attraction", "lat": 1.2966, "lng": 103.8485, "activities": ["看展览"] }
+    { "name": "Gardens by the Bay", "type": "attraction", "lat": 1.2816, "lng": 103.8636, "activities": ["take photos"] },
+    { "name": "National Museum of Singapore", "type": "attraction", "lat": 1.2966, "lng": 103.8485, "activities": ["see the exhibition"] }
   ],
   "travel_matrix": null,
   "preference_text": null
@@ -268,7 +269,7 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 
 **关于 `date` 改成选填**（前端反馈：用户说话里经常没有日期）：
 
-用户输入"我想去滨海湾花园"是没有日期的，硬要日期就得让前端强制弹日期选择器，
+用户输入 "I want to visit Gardens by the Bay" 是没有日期的，硬要日期就得让前端强制弹日期选择器，
 或者后端瞎填一个默认值 —— 两种都不好（编一个用户没说的日期，等于造假数据）。
 
 所以规则改成：
@@ -282,7 +283,7 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 
 ```json
 "travel_matrix": [
-  { "from": "滨海湾花园", "to": "国家博物馆", "duration_minutes": 18, "distance_km": 2.6 }
+  { "from": "Gardens by the Bay", "to": "National Museum of Singapore", "duration_minutes": 18, "distance_km": 2.6 }
 ]
 ```
 
@@ -455,12 +456,18 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 
 **影响**：如果 demo 要用中文输入，本地模型这条路现在跑不通。
 
+**已经排除的一个假设**：一开始怀疑是 prompt 里混了中文（schema 的 description
+原本是中文，会被序列化进 system prompt）诱导模型往中文输出偏。
+2026-08-08 把 `trip_schema.json`、`trip_models.py`、`recommend_agent.py` 里所有
+会进 prompt 的 description 全部改成英文后重测，**中文输入照样乱码**。
+所以这是模型本身的中文能力问题，不是 prompt 语言问题。这条对照实验值得写进答辩。
+
 **可选的解决方向**（还没定，需要讨论）：
 
 1. 切 Bedrock Nova Lite（任务 2 选型的赢家）跑一次中文测试，看是不是好很多 ——
    `EXTRACT_PROVIDER=bedrock` 就能切，代码不用改
 2. 换一个中文能力强的本地模型（比如 Qwen 系列）
-3. Demo 统一用英文输入
+3. Demo 统一用英文输入 ← **目前采用这条**，所有测试/演示数据已经统一改成英文
 
 **答辩如果被问**：如实说"本地小模型对中文的抽取会产生乱码地名，英文正常，
 这是模型能力限制不是流程问题，切云端模型或换中文模型可以解决，还没做对比测试"。

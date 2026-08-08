@@ -85,7 +85,7 @@ def run_extraction(
         cleaned_text = (raw_content or "").strip()
 
     if not cleaned_text:
-        return PipelineResult(cleaned_text="", error="没有可抽取的有效内容（过滤后为空）")
+        return PipelineResult(cleaned_text="", error="no extractable content (empty after noise filtering)")
 
     try:
         extraction = extract_with_retry(cleaned_text, source_name, _extract_fn)

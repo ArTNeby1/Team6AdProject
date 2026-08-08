@@ -67,8 +67,11 @@ def extract_with_retry(
             return parse_and_validate(raw_text)
         except (json.JSONDecodeError, ValidationError) as e:
             last_error = e
-            print(f"[重试 {attempt}/{max_attempts}] 模型输出不合规: {e}")
+            print(f"[retry {attempt}/{max_attempts}] model output failed validation: {e}")
 
     raise ExtractionFailedError(
-        f"模型连续 {max_attempts} 次都没能返回合规结果，最后一次错误：{last_error}"
+        # 错误消息用英文：这条会通过 HTTP 502 的 detail 传给后端/前端，
+        # 是跨服务的对外文本，不是只给自己看的日志。
+        f"model failed to return a schema-valid result after {max_attempts} attempts; "
+        f"last error: {last_error}"
     )

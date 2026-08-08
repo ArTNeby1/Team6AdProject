@@ -77,9 +77,9 @@ def main() -> None:
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(OUT_PATH, index=False, encoding="utf-8-sig")
 
-    print(f"[OK] 原始 {len(load_raw_features())} 条 -> 清洗后 {len(df)} 条，写入 {OUT_PATH}")
+    print(f"[OK] raw {len(load_raw_features())} rows -> cleaned {len(df)} rows, written to {OUT_PATH}")
     missing_desc = (df["description"].str.strip() == "").sum()
-    print(f"     其中 description 为空的有 {missing_desc} 条（推荐时只能靠 name 匹配，准确度会低一些）")
+    print(f"     {missing_desc} rows have an empty description (those match on name only, so less accurate)")
 
 
 if __name__ == "__main__":

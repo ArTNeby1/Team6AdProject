@@ -76,7 +76,7 @@ def mock_extract_bad_coords(text: str, source_name: str = "mock") -> str:
             {
                 "name": "Gardens by the Bay",
                 "type": "attraction",
-                "coords": {"lat": "大概在北边", "lng": 103.8198},
+                "coords": {"lat": "somewhere up north", "lng": 103.8198},
             }
         ],
     }
@@ -85,6 +85,6 @@ def mock_extract_bad_coords(text: str, source_name: str = "mock") -> str:
 
 if __name__ == "__main__":
     # 自我检查：证明 mock_extract 返回的东西真的能通过 Pydantic 校验，不是空口说白话
-    raw = mock_extract("随便什么文本，这里不会真的被读取", source_name="test.txt")
+    raw = mock_extract("any text, this is never actually read", source_name="test.txt")
     trip = TripExtraction.model_validate(json.loads(raw))
-    print(f"[PASS] mock_extract 返回结果符合 schema，解析出 {len(trip.places)} 个地点")
+    print(f"[PASS] mock_extract output matches schema, parsed {len(trip.places)} places")

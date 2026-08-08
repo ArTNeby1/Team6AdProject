@@ -34,29 +34,33 @@ class Place(BaseModel):
     # max_length 跟后端 DB 对齐：draft_place.name 是 VARCHAR(255)。模型偶尔会把
     # 一整句话当成地点名输出，不设上限的话这种结果能通过校验，却在后端落库时才炸，
     # 排查起来要跨两个服务。宁可在这里就判定不合规，让 extract_with_retry 重试。
-    name: str = Field(max_length=255, description="地点名称")
+    # description 一律写英文：这些描述会被 model_json_schema() 序列化进 system prompt
+    # 直接喂给模型，prompt 里混中文会诱导模型往中文输出上偏（实测本地 8B 模型对中文
+    # 输入会吐乱码地名）。给人看的解释放注释里，注释不会进 prompt。
+    name: str = Field(max_length=255, description="Place name only, never a whole sentence")
     type: Literal["attraction", "restaurant", "hotel", "market", "other"] = Field(
-        description="地点类型"
+        description="Place category, must be exactly one of the five enum values"
     )
     coords: Optional[Coords] = Field(
         default=None,
-        description="经纬度。文本里基本不会出现坐标，禁止模型编造，缺失填 null，"
-        "真实坐标由下游地理编码步骤补全",
+        description="Latitude and longitude. Never invent coordinates: always return null. "
+        "Real coordinates are filled in later by a geocoding step.",
     )
     # 同理对齐 draft_activity.title VARCHAR(255)：一个 activity 落库一行，所以逐条限长
     activities: list[ActivityText] = Field(
-        default_factory=list, description="在这个地点做的事情"
+        default_factory=list, description="What the traveller does at this place"
     )
 
 
 class TripExtraction(BaseModel):
-    destination: str = Field(description="整趟行程的目的地城市/地区，例如 'Singapore'")
+    destination: str = Field(description="The city or region of the whole trip, e.g. 'Singapore'")
     dates: list[str] = Field(
         default_factory=list,
-        description="文本中明确出现的日历日期，格式 YYYY-MM-DD。只写 Day 1/Day 2 "
-        "没给真实日期时，留空数组",
+        description="Calendar dates explicitly stated in the text, format YYYY-MM-DD. "
+        "If the text only says Day 1 / Day 2 with no real dates, return an empty array. "
+        "Never invent a year.",
     )
-    places: list[Place] = Field(min_length=1, description="文本中提到的所有地点")
+    places: list[Place] = Field(min_length=1, description="Every place mentioned in the text")
 
 
 if __name__ == "__main__":

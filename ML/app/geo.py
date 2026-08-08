@@ -60,10 +60,11 @@ if __name__ == "__main__":
     museum = (1.2966, 103.8485)  # 国家博物馆
     sentosa = (1.2494, 103.8303)  # 圣淘沙
 
-    print(f"滨海湾花园 -> 国家博物馆: {haversine_km(*gardens, *museum):.2f} km")
-    print(f"滨海湾花园 -> 圣淘沙:     {haversine_km(*gardens, *sentosa):.2f} km")
-    print(f"同一个点距离应为 0:        {haversine_km(*gardens, *gardens):.2f} km")
+    # 输出一律英文：Windows 终端默认 GBK，打中文会变乱码看不清
+    print(f"Gardens by the Bay -> National Museum: {haversine_km(*gardens, *museum):.2f} km")
+    print(f"Gardens by the Bay -> Sentosa:         {haversine_km(*gardens, *sentosa):.2f} km")
+    print(f"Same point should be 0:                {haversine_km(*gardens, *gardens):.2f} km")
 
     user_places = [{"lat": gardens[0], "lng": gardens[1]}, {"lat": museum[0], "lng": museum[1]}]
-    print(f"圣淘沙到用户最近行程点:    {min_distance_to_places(*sentosa, user_places):.2f} km")
-    print(f"用户地点没坐标时:          {min_distance_to_places(*sentosa, [{'lat': None, 'lng': None}])}")
+    print(f"Sentosa -> nearest planned stop:       {min_distance_to_places(*sentosa, user_places):.2f} km")
+    print(f"When user places have no coords:       {min_distance_to_places(*sentosa, [{'lat': None, 'lng': None}])}")

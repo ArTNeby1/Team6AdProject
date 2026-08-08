@@ -22,15 +22,15 @@ def expect_raises(name, exc_type, fn):
     try:
         fn()
     except exc_type as e:
-        print(f"[PASS] {name} -> 正确抛出 {type(e).__name__}")
+        print(f"[PASS] {name} -> correctly raised {type(e).__name__}")
     else:
-        print(f"[FAIL] {name} -> 没有抛出预期的 {exc_type.__name__}")
+        print(f"[FAIL] {name} -> did not raise expected {exc_type.__name__}")
 
 
 def test_bad_json():
     # 坏情况1：半截 JSON，应该在 json.loads 这一关就报错
     expect_raises(
-        "格式错的JSON",
+        "malformed JSON",
         json.JSONDecodeError,
         lambda: main.parse_and_validate(mock_client.mock_extract_bad_json("x")),
     )
@@ -39,7 +39,7 @@ def test_bad_json():
 def test_missing_field():
     # 坏情况2：JSON 格式没错，但漏了必填字段 name，应该在 schema 校验这一关报错
     expect_raises(
-        "缺字段的JSON",
+        "JSON missing a required field",
         ValidationError,
         lambda: main.parse_and_validate(mock_client.mock_extract_missing_field("x")),
     )
@@ -48,7 +48,7 @@ def test_missing_field():
 def test_bad_coords():
     # 坏情况3：坐标是瞎编的、类型也不对(lat给了文字不是数字)，应该在 schema 校验这一关报错
     expect_raises(
-        "坐标瞎编的JSON",
+        "JSON with invented, wrongly-typed coords",
         ValidationError,
         lambda: main.parse_and_validate(mock_client.mock_extract_bad_coords("x")),
     )
@@ -60,9 +60,9 @@ def test_retry_gives_up_after_max_attempts():
     main.EXTRACT_FN = mock_client.mock_extract_bad_json
     try:
         expect_raises(
-            "模型一直答错时，重试到上限应该报502",
+            "model always wrong: exhausting retries should raise 502",
             HTTPException,
-            lambda: main.call_with_retry("任意文本", "test"),
+            lambda: main.call_with_retry("any text", "test"),
         )
     finally:
         main.EXTRACT_FN = original  # 测完换回去，不影响后面的测试和真实调用
@@ -82,13 +82,13 @@ def test_retry_recovers_when_model_eventually_succeeds():
     original = main.EXTRACT_FN
     main.EXTRACT_FN = flaky
     try:
-        result = main.call_with_retry("任意文本", "test")
+        result = main.call_with_retry("any text", "test")
         print(
-            f"[PASS] 前 {give_up_after - 1} 次答错、第 {give_up_after} 次答对 -> "
-            f"重试机制成功拿到结果，解析出 {len(result.places)} 个地点"
+            f"[PASS] first {give_up_after - 1} attempts wrong, attempt {give_up_after} correct -> "
+            f"retry recovered, parsed {len(result.places)} places"
         )
     except Exception as e:
-        print(f"[FAIL] 本该重试成功，却抛出了 {type(e).__name__}: {e}")
+        print(f"[FAIL] retry should have succeeded but raised {type(e).__name__}: {e}")
     finally:
         main.EXTRACT_FN = original
 

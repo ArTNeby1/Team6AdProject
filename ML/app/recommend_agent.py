@@ -33,19 +33,28 @@ DEFAULT_RECOMMEND_MODEL_BEDROCK = os.environ.get("RECOMMEND_MODEL_BEDROCK", "ama
 
 
 class RecommendedPlace(BaseModel):
-    name: str = Field(max_length=255, description="推荐的地点名称")
+    # description 一律英文：会被序列化进 system prompt 喂给模型，理由同 trip_models.py
+    name: str = Field(max_length=255, description="Name of the recommended place")
     type: Literal["attraction", "restaurant", "hotel", "market", "other"] = Field(
-        description="地点类型，跟抽取阶段的枚举保持一致"
+        description="Place category, same enum as the extraction stage"
     )
     # 上限对齐后端 draft_place.note VARCHAR(255)——推荐理由如果要落库就是存这一列，
     # 不限长的话模型写嗨了会在后端插入时才炸。
-    reason: str = Field(max_length=255, description="推荐理由，必须能从输入的已抽取地点/偏好里找到依据，不许瞎编景点")
-    activities: list[str] = Field(default_factory=list, description="建议在这个地点做的事情")
+    reason: str = Field(
+        max_length=255,
+        description="Why this place suits the traveller, grounded in the places and "
+        "preferences given in the input. Never invent places.",
+    )
+    activities: list[str] = Field(
+        default_factory=list, description="Suggested things to do at this place"
+    )
 
 
 class RecommendationResult(BaseModel):
     destination: str
-    based_on: list[str] = Field(description="这次推荐参考了哪些已抽取的地点名称")
+    based_on: list[str] = Field(
+        description="Names of the already-planned places this recommendation was based on"
+    )
     recommended: list[RecommendedPlace] = Field(default_factory=list)
 
 
@@ -211,7 +220,7 @@ def recommend_grounded(
     for place in llm_result.recommended:
         source = by_name.get(_normalize_name(place.name))
         if source is None:
-            print(f"[grounded] 丢弃：候选名单里没有这个地点，判定为模型编造: {place.name!r}")
+            print(f"[grounded] dropped: not in candidate list, treated as invented: {place.name!r}")
             continue
         grounded.append(
             {
@@ -240,8 +249,8 @@ if __name__ == "__main__":
              "lat": 1.2816, "lng": 103.8636, "activities": ["Cloud Forest dome"]},
         ],
     }
-    print("=== 旧版（LLM 凭记忆编地点）===")
+    print("=== old version (LLM names places from memory) ===")
     print(recommend_places(demo_trip, preference_text="travel_style=culture").model_dump_json(indent=2))
-    print("\n=== 新版 grounded（地点来自真实数据集）===")
+    print("\n=== new grounded version (places come from the real dataset) ===")
     print(json.dumps(recommend_grounded(demo_trip, preference_text="travel_style=culture"),
                      ensure_ascii=False, indent=2))

@@ -60,10 +60,13 @@ def filter_chat_noise(messages: list[dict], model_id: str | None = None) -> str:
 
 if __name__ == "__main__":
     # 手动冒烟测试，需要本机 Ollama 已经在跑
+    # 测试数据一律用英文：实测本地 8B 量化模型对中文输入会吐乱码地名
+    # （见 ML/docs/ai_contract.md 第 8 节），英文正常。demo 用中文会误导人
+    # 以为流程有问题，其实是模型语言能力问题。
     demo_messages = [
-        {"role": "user", "content": "嗨你好呀！"},
-        {"role": "user", "content": "我想去新加坡玩5天，主要想看看Gardens by the Bay"},
-        {"role": "assistant", "content": "好的，没问题！"},
-        {"role": "user", "content": "哈哈谢谢，另外还想吃chicken rice"},
+        {"role": "user", "content": "hey there!"},
+        {"role": "user", "content": "I want to spend 5 days in Singapore, mainly to see Gardens by the Bay"},
+        {"role": "assistant", "content": "Sure, no problem!"},
+        {"role": "user", "content": "haha thanks, also I'd like to try chicken rice"},
     ]
     print(filter_chat_noise(demo_messages))

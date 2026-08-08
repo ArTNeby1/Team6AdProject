@@ -52,8 +52,13 @@ CRITICAL RULES:
    cafe / hawker centre / food court / bar                         -> "restaurant"
    hostel / resort / airbnb                                        -> "hotel"
 2. `name` must be the place name only (under 255 characters), never a whole sentence.
-3. The input may be in Chinese or English. Keep place names in their original language.
-4. Never invent coordinates. Always output "coords": null.
+3. `activities` must list what the traveller does at that place, using the words
+   from the text. Example: "take photos at Gardens by the Bay, then visit the
+   National Museum to see the exhibition" gives Gardens by the Bay
+   activities ["take photos"] and National Museum activities ["see the exhibition"].
+   Only leave it empty when the text says nothing about what they do there.
+4. The input may be in Chinese or English. Keep place names in their original language.
+5. Never invent coordinates. Always output "coords": null.
 
 JSON Schema:
 {schema}
