@@ -51,6 +51,10 @@ def filter_chat_noise(messages: list[dict], model_id: str | None = None) -> str:
     transcript = "\n".join(f"{m['role']}: {m['content']}" for m in messages)
     if not transcript.strip():
         return ""
+    if FILTER_PROVIDER == "mock":
+        # mock 模式：不调任何模型，直接把 user 说的话拼起来当"过滤后的文字"。
+        # 给后端联调用——他们本机不用装 Ollama 也能把 HTTP 那一层调通，见 main.py 顶部说明。
+        return "\n".join(m["content"] for m in messages if m.get("role") == "user").strip()
     if FILTER_PROVIDER == "bedrock":
         from bedrock_client import call_bedrock_model  # 延迟导入：ollama 路径不强制要求装 boto3/配好 AWS 凭证
 

@@ -191,6 +191,29 @@ def recommend_grounded(
     ]
     by_name = {_normalize_name(c["name"]): c for c in candidates}
 
+    if RECOMMEND_PROVIDER == "mock":
+        # mock 模式：跳过 LLM 那一步，直接返回数据集检索出来的前 top_n 条。
+        # 注意推荐结果本身还是**真的**——地点、坐标、距离都来自真实数据集，
+        # 因为 content_recommender 是纯 TF-IDF，本来就不需要模型。
+        # 假的只有 reason（换成模板句），因为写理由才是 LLM 干的活。
+        # 给后端联调用：他们本机不装 Ollama 也能拿到结构完全正确的响应。
+        return [
+            {
+                "name": c["name"],
+                "type": c["type"],
+                "lat": c["lat"],
+                "lng": c["lng"],
+                "distance_km": c["distance_km"],
+                "similarity": c["similarity"],
+                "reason": (
+                    f"[MOCK] Similar to your planned places"
+                    + (f", {c['distance_km']}km away" if c["distance_km"] is not None else "")
+                ),
+                "activities": [],
+            }
+            for c in candidates[:top_n]
+        ]
+
     system_prompt = GROUNDED_SYSTEM_PROMPT.format(
         top_n=top_n,
         schema=json.dumps(RecommendationResult.model_json_schema(), ensure_ascii=False),

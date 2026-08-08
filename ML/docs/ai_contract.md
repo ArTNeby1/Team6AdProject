@@ -177,6 +177,26 @@ Google 的 transit 模式还能给真实地铁/公交时间。
 
 **服务地址**：本地开发 `http://localhost:8001`
 
+> ### 🔧 后端联调用 mock 模式（不用装 Ollama）
+>
+> 后端本机大概率没装 Ollama（要拉几 GB 模型、CPU 跑一次几十秒）。只想把 HTTP
+> 那一层调通的话，加三个环境变量起服务就行：
+>
+> ```powershell
+> # Windows PowerShell
+> $env:EXTRACT_PROVIDER="mock"; $env:FILTER_PROVIDER="mock"; $env:RECOMMEND_PROVIDER="mock"
+> uvicorn main:app --reload --app-dir ML/app --port 8001
+> ```
+>
+> mock 模式下 **JSON 结构跟真实模式一模一样**，字段一个不少，可以照着写解析代码；
+> 而且是秒回（0.01 秒 vs 真实模型几十秒）。
+>
+> `/recommend` 返回的地点、坐标、距离**还是真的**（来自 107 条真实数据集，
+> 纯 TF-IDF 算的不需要模型），只有推荐理由 `reason` 换成 `[MOCK]` 开头的模板句。
+> `/extract-travel-info` 则返回固定的两条假数据，不看输入内容。
+>
+> 调通之后把这三个环境变量去掉就切回真实模型。
+
 ```
 uvicorn main:app --reload --app-dir ML/app --port 8001
 ```

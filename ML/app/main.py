@@ -14,6 +14,29 @@ FastAPI 入口。两组接口：
 
 要用 /extract-travel-info、/refine，本机需要先跑起来 Ollama（默认端口 11434），
 见 local_llm_client.py 顶部的说明。
+
+===========================================================================
+给后端联调用的 mock 模式（不需要 Ollama、不需要 AWS）
+===========================================================================
+后端同学本机大概率没装 Ollama（要拉几 GB 模型、CPU 跑一次几十秒），
+只是想把 HTTP 那一层调通的话，用 mock 模式起服务就行：
+
+    # Windows PowerShell
+    $env:EXTRACT_PROVIDER="mock"; $env:FILTER_PROVIDER="mock"; $env:RECOMMEND_PROVIDER="mock"
+    uvicorn main:app --reload --app-dir ML/app --port 8001
+
+    # bash
+    EXTRACT_PROVIDER=mock FILTER_PROVIDER=mock RECOMMEND_PROVIDER=mock \
+        uvicorn main:app --reload --app-dir ML/app --port 8001
+
+mock 模式下：
+- 响应的 JSON 结构跟真实模式**完全一样**，字段一个不少，可以照着写解析代码
+- 秒回，不用等模型推理
+- /recommend 返回的地点、坐标、距离都还是**真的**（来自 107 条真实数据集，
+  纯 TF-IDF 计算不需要模型），只有推荐理由 reason 换成了 [MOCK] 开头的模板句
+- /extract-travel-info 返回的是固定的两条假数据，不看输入内容
+
+等 HTTP 那层调通了，把这三个环境变量去掉就切回真实模型。
 """
 import os
 import sys
@@ -43,6 +66,10 @@ if EXTRACT_PROVIDER == "bedrock":
     from bedrock_client import bedrock_extract  # noqa: E402
 
     EXTRACT_FN = bedrock_extract
+elif EXTRACT_PROVIDER == "mock":
+    from mock_client import mock_extract  # noqa: E402
+
+    EXTRACT_FN = mock_extract
 else:
     EXTRACT_FN = local_extract
 

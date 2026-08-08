@@ -50,6 +50,10 @@ if _EXTRACT_PROVIDER == "bedrock":
     from bedrock_client import bedrock_extract  # noqa: E402
 
     _extract_fn = bedrock_extract
+elif _EXTRACT_PROVIDER == "mock":
+    from mock_client import mock_extract  # noqa: E402
+
+    _extract_fn = mock_extract
 else:
     _extract_fn = local_extract
 
