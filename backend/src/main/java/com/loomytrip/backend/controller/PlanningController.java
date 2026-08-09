@@ -3,6 +3,8 @@ package com.loomytrip.backend.controller;
 import com.loomytrip.backend.dto.request.CreateChatMessageRequest;
 import com.loomytrip.backend.dto.request.CreatePlanningSessionRequest;
 import com.loomytrip.backend.dto.request.UpdateDraftPlaceRequest;
+import com.loomytrip.backend.dto.response.ConfirmSessionResponse;
+import com.loomytrip.backend.dto.response.PlanningSessionDetailResponse;
 import com.loomytrip.backend.dto.response.PlanningSessionSummaryResponse;
 import com.loomytrip.backend.service.PlanningService;
 import jakarta.validation.Valid;
@@ -35,8 +37,13 @@ public class PlanningController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public PlanningSessionSummaryResponse createSession(@RequestBody CreatePlanningSessionRequest request) {
+    public PlanningSessionDetailResponse createSession(@RequestBody CreatePlanningSessionRequest request) {
         return planningService.createSession(request);
+    }
+
+    @GetMapping("/{sessionId}")
+    public PlanningSessionDetailResponse getSession(@PathVariable Long sessionId) {
+        return planningService.getSession(sessionId);
     }
 
     @PostMapping("/{sessionId}/messages")
@@ -49,7 +56,7 @@ public class PlanningController {
     }
 
     @PostMapping("/{sessionId}/refine")
-    public Object refine(@PathVariable Long sessionId) {
+    public PlanningSessionDetailResponse refine(@PathVariable Long sessionId) {
         return planningService.refineWithAi(sessionId);
     }
 
@@ -59,7 +66,7 @@ public class PlanningController {
     }
 
     @PostMapping("/{sessionId}/confirm")
-    public Object confirm(@PathVariable Long sessionId) {
+    public ConfirmSessionResponse confirm(@PathVariable Long sessionId) {
         return planningService.confirmSession(sessionId);
     }
 
