@@ -43,7 +43,7 @@ import sys
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 SCHEMA_DIR = Path(__file__).resolve().parent.parent / "schema"
 sys.path.insert(0, str(SCHEMA_DIR))  # trip_models.py 不在标准包路径下，手动加进搜索路径
@@ -57,7 +57,11 @@ from extraction import (  # noqa: E402
     parse_and_validate,
 )
 from local_llm_client import local_extract  # noqa: E402
-from orchestrator import run_extraction, run_recommendation  # noqa: E402
+from orchestrator import (  # noqa: E402
+    run_daily_itinerary,
+    run_extraction,
+    run_recommendation,
+)
 
 app = FastAPI(title="LoomyTrip Extract Service")#整个服务的"前台"本身
 
@@ -217,5 +221,55 @@ def recommend(request: RecommendRequest) -> dict:
         )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"recommendation failed: {e}")
+
+    return {"status": "OK", **result}
+
+
+class PlanItineraryRequest(BaseModel):
+    """
+    字段名对齐后端 `AiPlanningClient.generateDailyItinerary()`（目前还是 STUB）。
+    places 复用 /recommend 的形状，后端不用为这个接口另写一套 DTO。
+    """
+    places: list[RecommendPlaceIn]
+    start_date: str | None = None
+    num_days: int = Field(default=1, ge=1, le=30)
+
+
+@app.post("/plan-itinerary")
+def plan_itinerary(request: PlanItineraryRequest) -> dict:
+    """
+    F-09 按天生成行程：把用户确认的地点分到第 1/2/3 天，每天内部再排好顺序。
+
+    跟 /recommend 的分工（很容易混，这里说死）：
+      /recommend      -> **一天**之内怎么排 + 推荐用户没提过的新地点
+      /plan-itinerary -> **多天**怎么分，第 1 天去哪片区、第 2 天去哪片区。
+                         **不做推荐**，要推荐就另外调 /recommend。
+
+    怎么分天：先把所有地点按最近邻串成一条线路，再按天平均切段 —— 所以同一片
+    区域的地点会落在同一天，不会来回横跨全岛。每一天内部照样走
+    "下雨排室内、同时段按距离串线路"那套单天逻辑。
+
+    `start_date` 选填，理由跟 /recommend 的 `date` 一样（用户说话里经常没日期）：
+    - 传了 -> 每天各查各天的天气，按天气+距离排，返回每天的 `weather_summary`
+    - 没传 -> 跳过天气，只按距离排，`weather_summary` / `time_of_day` 都是 `null`
+
+    返回 `days` 数组，长度**永远等于 num_days**（某天没地点就是 `stops: []`），
+    前端可以直接按天渲染，不用自己补空缺的天。每天的 `order` 从 1 重新开始。
+    """
+    if not request.places:
+        raise HTTPException(status_code=400, detail="places must not be empty")
+
+    try:
+        result = run_daily_itinerary(
+            places=[p.model_dump() for p in request.places],
+            start_date=request.start_date,
+            num_days=request.num_days,
+        )
+    except ValueError as e:
+        # 参数传错了（日期格式、天数越界）是调用方的问题，用 400 而不是 502，
+        # 免得后端把"我传错了"误当成"AI 服务挂了"去排查。
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"itinerary planning failed: {e}")
 
     return {"status": "OK", **result}

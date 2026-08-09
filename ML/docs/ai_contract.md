@@ -4,12 +4,19 @@
 三个人照这份文件各自动手写代码，不用再互相猜格式。
 
 > **状态（2026-08-08 更新）**：**AI 服务这一侧的接口全部实现完毕、测试通过**
-> —— 解析、天气、按天气/距离排顺序、推荐都能真实跑起来，不是设计稿。
+> —— 解析、天气、按天气/距离排顺序、推荐、**按天拆分行程（F-09，第 5.5 节新增）**
+> 都能真实跑起来，不是设计稿。
 >
 > 现在整条链路卡在后端：AI 抽出来的地点**还没有任何代码把它写进数据库**，
 > 所以前端页面拿不到数据。要做什么见第 6 节「后端要做的」，🔴 那四条是硬阻塞。
 >
 > 后端本机不用装 Ollama 也能联调 —— 见第 4 节的 **mock 模式**。
+>
+> **S3 进度（2026-08-08）**：接口层没变化（后端联调还是卡点），但补齐了 S2/S3
+> 的几项欠账，都是独立于后端进度、可以先做的：F-18 补了 grounding 逻辑的自动化
+> 测试、F-32 顺序优化加了 2-opt、F-33 人流预测原型（季节性代理信号，还没接
+> 生产链路）、把 S0 的人工模型评估形式化成了脚本。完整数字见
+> `docs/model_evaluation.md`。
 
 ---
 
@@ -40,11 +47,20 @@
     ▼  ⚠️ 后端在这里补经纬度（MapPlacesClient 地理编码）
     │
 ┌─────────────────────────────┐
-│ 接口二  POST /recommend  ✅ │  agent：查天气 + 算距离 + 排顺序 + 推荐
+│ 接口二  POST /recommend  ✅ │  agent：查天气 + 算距离 + 排顺序 + 推荐（单天）
 └─────────────────────────────┘
     │
     ▼  后端存进数据库
+
+    行程超过一天时，另外调：
+┌──────────────────────────────────┐
+│ 接口三  POST /plan-itinerary  ✅ │  按天拆分（F-09），见第 5.5 节
+└──────────────────────────────────┘
 ```
+
+接口二和接口三**都要求地点已经有经纬度**，所以后端地理编码那一步对两者都是前提。
+两个接口互相独立，可以只调其中一个：单天行程调接口二就够了，多天行程调接口三
+（要推荐再补调接口二）。
 
 **中间那一步是硬性依赖**：接口二要按距离排顺序，所以调它之前地点必须已经有
 `lat`/`lng`。接口一返回的 `coords` 是 `null`（模型不许编坐标），后端必须先地理编码。
@@ -147,14 +163,16 @@
 | ----------------- | -------------------------------------- | ------------------------------------------- | ----------------------------------- |
 | `search_places` | 从 107 个真实新加坡景点里找相似的      | `singapore_attractions.csv`               | ✅ `content_recommender.py` |
 | `get_distance`  | 算两个地点之间的直线距离               | 经纬度做 haversine 计算，纯数学不调 API     | ✅ `geo.py`（2026-08-08 完成） |
-| `group_by_area` | 把邻近的地点归到一组，避免来回横跨全岛 | 同上                                        | ⬜ 没单独做，见下 |
+| `group_by_area` | 把邻近的地点归到一组，避免来回横跨全岛 | 同上                                        | ✅ `itinerary_planner.py` 的 `_split_into_days()`（2026-08-08 补做，见下） |
 | `get_weather`   | 查当天/未来时段的天气预报              | data.gov.sg 的 NEA 天气接口（免费、免密钥） | ✅ `weather.py`（2026-08-08 完成） |
 | `plan_stops`    | 按天气+距离把地点排出顺序              | 上面三个工具的结果                          | ✅ `itinerary_planner.py` |
 
-**`group_by_area` 为什么没单独做**：本来想做"先按区域分组再推荐"，实际做的时候发现
-用距离直接参与打分就够了 —— `content_recommender.py` 里 `hybrid` 模式把相似度乘上
-一个就近系数（距离 5km 打对折），效果上等于"优先推荐同一片区域的地点"，
-不需要再单独做一次聚类。真要做按天分组行程时可能还得补回来，先记在这。
+**`group_by_area` 的来龙去脉**：一开始**没单独做** —— 做推荐时发现用距离直接参与打分
+就够了（`content_recommender.py` 的 `hybrid` 模式把相似度乘上一个就近系数，距离 5km
+打对折），效果上等于"优先推荐同一片区域的地点"，不用再单独聚类。当时记了一句
+"真要做按天分组行程时可能还得补回来"。**2026-08-08 做 F-09 时确实补回来了** ——
+按天分行程绕不开"哪些地点算同一片"，实现在 `_split_into_days()`（先串线路再切段，
+不是聚类，理由见第 5.5 节）。
 
 **一次性准备工作（不是运行时工具）**：✅ **已完成** —— 107 个地点都打上了"室内/室外"标记，
 存在 CSV 的 `indoor_outdoor` 列（56 室外 / 51 室内）。脚本是 `ML/scripts/label_indoor_outdoor.py`，
@@ -166,12 +184,13 @@
 Park→室外这种通名很稳），LLM 那 22 条会有错（比如把"小印度"这种街区判成室内）。
 答辩被问就说"79% 靠规则，剩下靠模型，没有人工逐条核对，存在误分类"。
 
-### Agent 能做的四件事
+### Agent 能做的五件事
 
 1. **按天气排顺序** —— 下午有雨 → 户外景点排上午，室内的排下午
 2. **按地理位置排顺序** —— 邻近的排一起，不要圣淘沙 → 樟宜 → 圣淘沙来回跑
 3. **补充推荐** —— 用户只说了 2 个地点，一天还有空，从数据集里推荐附近的
-4. **提示冲突** —— "这两个地点相隔 45 分钟车程，一个下午安排得比较紧"
+4. **按天拆分行程（F-09）** —— 多天的行程，把同一片区域的地点排进同一天
+5. **提示冲突** —— "这两个地点相隔 45 分钟车程，一个下午安排得比较紧" ⬜ 还没做
 
 ### 关于距离：跟后端的分工
 
@@ -417,6 +436,97 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 
 ---
 
+## 5.5 第二层接口三：按天排行程（F-09）✅ 已实现（2026-08-08）
+
+**`POST /plan-itinerary`**
+
+**跟 `/recommend` 的分工（很容易混，这里说死）：**
+
+| 接口 | 管什么 | 做推荐吗 |
+|---|---|---|
+| `/recommend` | **一天**之内怎么排（`ordered_stops`）+ 推荐新地点 | ✅ 做 |
+| `/plan-itinerary` | **多天**怎么分：第 1 天去哪片区、第 2 天去哪片区 | ❌ 不做，要推荐就另调 `/recommend` |
+
+两个接口各管一件事，不绑死 —— 跟当初把 `/extract` 和 `/recommend` 拆开是同一个理由。
+
+**怎么分天**：先把所有地点用最近邻串成一条线路，再按天平均切段。所以同一片区域的
+地点会落在同一天，不会一天里横跨全岛。每一天内部照样走"下雨排室内、同时段按距离
+串线路"那套单天逻辑（直接复用 `plan_ordered_stops()`）。
+
+> **为什么不用 KMeans 聚类**（答辩大概率会问）：① 聚类不保证每天地点数均衡，
+> 真实数据容易分出"第一天 8 个、第二天 1 个"；② KMeans 有随机初始化，同样的输入
+> 可能给出不同分组，演示不稳定。切段是确定性的，且每天数量相差不超过 1。
+> 代价：切口正好落在两个挨得很近的点之间时，它们会被分到不同天 —— 不是最优分组。
+
+**代码**：[`ML/app/itinerary_planner.py`] `plan_multi_day_itinerary()`
+
+### 请求
+
+```json
+{
+  "start_date": "2026-08-09",
+  "num_days": 3,
+  "places": [
+    { "name": "Gardens by the Bay", "type": "attraction", "lat": 1.2816, "lng": 103.8636, "activities": ["photos"] },
+    { "name": "Jewel Changi Airport", "type": "attraction", "lat": 1.3601, "lng": 103.9895, "activities": ["waterfall"] }
+  ]
+}
+```
+
+| 字段 | 必填 | 说明 |
+|---|---|---|
+| `places` | 是 | 用户确认后的地点，**形状跟 `/recommend` 完全一样**，后端不用另写 DTO。带 `lat`/`lng` 才能按区域分天 |
+| `start_date` | 否 | 第 1 天的日期。传了才查天气；不传就只按距离分，`date`/`weather_summary` 全是 `null` |
+| `num_days` | 否 | 排几天，1~30，默认 1 |
+
+### 返回（下面是真实跑出来的，不是设计稿）
+
+```json
+{
+  "status": "OK",
+  "days": [
+    {
+      "day": 1,
+      "date": "2026-08-09",
+      "weather_summary": "No rain expected, good for outdoor stops",
+      "stops": [
+        { "name": "Gardens by the Bay", "type": "attraction", "lat": 1.2816, "lng": 103.8636,
+          "activities": ["photos"], "order": 1, "time_of_day": null, "is_outdoor": true,
+          "reason": "Starting point of the route." },
+        { "name": "Marina Barrage", "type": "attraction", "lat": 1.2807, "lng": 103.8713,
+          "activities": ["kite"], "order": 2, "time_of_day": null, "is_outdoor": true,
+          "reason": "About 0.9km from the previous stop, kept next to shorten the route." }
+      ]
+    },
+    { "day": 2, "date": "2026-08-10", "weather_summary": "Partly cloudy and warm", "stops": [] }
+  ]
+}
+```
+
+`stops` 里每一条的字段跟 `/recommend` 的 `ordered_stops` **一模一样**，前端那块 UI 可以直接复用。
+
+### 前端/后端要注意的降级行为
+
+| 情况 | 行为 |
+|---|---|
+| `days` 的长度 | **永远等于 `num_days`** —— 地点比天数少时，多出来的那天是 `"stops": []` 而不是被删掉，前端可以提示"这天还没安排" |
+| 每天的 `order` | **从 1 重新开始**，不是全程连续编号 |
+| 第 5 天及以后 | 官方天气只给未来 4 天，之后 `weather_summary` 是 `null`，那几天只按距离排 |
+| 没传 `start_date` | 所有 `date` / `weather_summary` / `time_of_day` 都是 `null`，纯按距离分天 |
+| 地点没有 `lat`/`lng` | 排在线路最末尾，会落到最后几天，**不会被丢掉** |
+
+### 出错
+
+| 情况 | 状态码 |
+|---|---|
+| `places` 为空 / `start_date` 格式不是 `YYYY-MM-DD` | **400** |
+| `num_days` 不在 1~30（Pydantic 拦下的） | **422** |
+| 其它内部失败 | **502** |
+
+⚠️ 参数传错是 **4xx 不是 502** —— 免得后端把"我传错了"误当成"AI 服务挂了"去排查。
+
+---
+
 ## 6. 三方分工
 
 ### 我（AI）要做的 —— ✅ 全部完成（2026-08-08）
@@ -426,13 +536,17 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 3. ✅ 天气工具 `weather.py`（data.gov.sg 的 NEA 官方接口，免费免密钥）
 4. ✅ 107 个地点的室内/室外标记，已写回 CSV 的 `indoor_outdoor` 列
 5. ✅ 组装成 agent：查天气 → 算距离 → 排顺序（`ordered_stops`）→ 推荐（`suggested_additions`）
+6. ✅ **F-09 按天拆分行程 `POST /plan-itinerary`**（2026-08-08 补做，见第 5.5 节）
 
-**测试**：31 项全过（推荐器 12、健壮性 5、行程排序 14）。
-排序那 14 项用注入的假天气测的 —— 新加坡不是天天下雨，靠真实接口测不到下雨分支。
+**测试**：56 项全过（推荐器 12、健壮性 5、行程排序 39）。
+排序那些用注入的假天气测的 —— 新加坡不是天天下雨，靠真实接口测不到下雨分支。
+接口本身也起服务实跑过（mock 模式），包括 400/422 的参数校验分支。
 
 **还没做的**（不阻塞演示，记录在案）：
 - 用后端 Google API 的真实车程替换直线距离（等 `travel_matrix` 传进来，接口格式已经预留好）
 - 室内/室外标记没有人工逐条核对，LLM 判的那 22 条有错（见第 8 节）
+- 分天用的是"先串线路再切段"，不是最优分组；切口落在两个近点之间时它们会被分到不同天
+- 冲突提示（"这两个地点相隔 45 分钟车程"）还没做
 
 ### 后端要做的
 
@@ -464,6 +578,17 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 7. **`AiPlanningClient` 再加一个传聊天记录的方法**才能用 `/refine`（多轮对话完善），
    现在的 `extractTravelInfo(String, String)` 只能传一段文字。建议：
    `refineFromChat(List<ChatMessage> messages, String preferenceText)`
+
+8. **`generateDailyItinerary()` 现在可以真接了** —— `AiPlanningClientHttp.java:63` 那个
+   写死返回 `"status":"STUB"` 的方法，注释写的是"Python 侧还没实现按天排程"，
+   **2026-08-08 起已经实现了**，改成真的 POST `/plan-itinerary` 就行（见第 5.5 节）。
+   注意现在的签名 `generateDailyItinerary(Long tripId, List<Long> confirmedPlaceIds)`
+   传的是**地点 ID**，但 Python 侧不认识你们的 ID，需要后端把 ID 查成带
+   `name`/`lat`/`lng` 的地点对象再传。建议签名改成：
+   ```java
+   Map<String, Object> generateDailyItinerary(List<PlaceDto> confirmedPlaces, String startDate, int numDays);
+   ```
+   `PlaceDto` 跟调 `/recommend` 用的是同一个，不用另写。
 
 **需要三方一起定**
 
@@ -587,6 +712,9 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 
 ## 9. 明确不做（v1 范围外）
 
-- 按天排行程（第一天去哪、第二天去哪）—— 组长的例子是单天场景，先不做
 - 具体到几点几分的排程 —— 数据集没有营业时间，排出来是编的
 - 餐厅、酒店推荐 —— 数据集里没有这类数据
+
+> ~~按天排行程（第一天去哪、第二天去哪）~~ —— **2026-08-08 已实现**，见第 5.5 节
+> `POST /plan-itinerary`。原来按组长的单天例子定的范围，后来对照 backlog 发现
+> F-09 本身就是"按天划分的行程"，属于 Must，所以补上了。

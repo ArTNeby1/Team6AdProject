@@ -34,7 +34,7 @@ sys.path.insert(0, str(SCHEMA_DIR))  # trip_models.py 不在标准包路径下�
 from chat_filter import filter_chat_noise  # noqa: E402
 from content_recommender import indoor_outdoor_lookup  # noqa: E402
 from extraction import ExtractionFailedError, extract_with_retry  # noqa: E402
-from itinerary_planner import plan_ordered_stops  # noqa: E402
+from itinerary_planner import plan_multi_day_itinerary, plan_ordered_stops  # noqa: E402
 from local_llm_client import local_extract  # noqa: E402
 from recommend_agent import (  # noqa: E402
     RecommendationResult,
@@ -146,6 +146,39 @@ def run_recommendation(
         "ordered_stops": ordered,
         "suggested_additions": suggested,
     }
+
+
+def run_daily_itinerary(
+    places: list[dict],
+    start_date: str | None = None,
+    num_days: int = 1,
+) -> dict:
+    """
+    F-09：把用户确认的地点按天排成行程。跟 run_recommendation() 平级的第三个入口。
+
+    跟 run_recommendation() 里 `ordered_stops` 的区别，一句话：
+      run_recommendation  -> **一天**之内怎么排（还顺带推荐新地点）
+      run_daily_itinerary -> **多天**怎么分（第 1 天去哪片、第 2 天去哪片），
+                             每一天内部照样调同一套单天排序逻辑
+
+    所以这个接口**不做推荐** —— 推荐是 /recommend 的事，两个接口各管一件事，
+    前端要"排程 + 推荐"就分别调，不把两件事绑死（跟当初拆 extract/recommend 同一个理由）。
+
+    places: 用户确认后的地点，形状跟 run_recommendation() 的一致。
+        带 lat/lng 才能按区域分天；没坐标的会被排到最后几天（不报错）。
+    num_days 越界、start_date 格式不对时，plan_multi_day_itinerary 会抛 ValueError，
+        由 main.py 转成 400 返回给调用方。
+
+    这里不用像 run_recommendation() 那样手动复制 places：
+    plan_multi_day_itinerary 内部已经复制过了。
+    """
+    days = plan_multi_day_itinerary(
+        places,
+        start_date=start_date,
+        num_days=num_days,
+        dataset_lookup=indoor_outdoor_lookup(),
+    )
+    return {"days": days}
 
 
 def run_pipeline(
