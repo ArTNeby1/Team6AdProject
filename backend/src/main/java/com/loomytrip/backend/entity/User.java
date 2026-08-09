@@ -25,6 +25,9 @@ public class User {
     @Column(nullable = false, unique = true, length = 255)
     private String email;
 
+    @Column(length = 64)
+    private String username;
+
     @Column(name = "password_hash", nullable = false, length = 255)
     private String passwordHash;
 
@@ -33,6 +36,12 @@ public class User {
 
     @Column(length = 32)
     private String gender;
+
+    @Column(name = "travel_style", length = 64)
+    private String travelStyle;
+
+    @Column(name = "prefer_transport", length = 64)
+    private String preferTransport;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)

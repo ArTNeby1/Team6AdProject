@@ -11,6 +11,7 @@ import com.loomytrip.backend.security.JwtService;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,6 +44,7 @@ public class AuthService {
 
         User user = new User();
         user.setEmail(request.email().trim().toLowerCase());
+        user.setUsername(resolveUsername(request.username(), user.getEmail()));
         user.setPasswordHash(passwordEncoder.encode(request.password()));
         user.setAge(request.age());
         user.setGender(request.gender());
@@ -50,18 +52,34 @@ public class AuthService {
 
         User saved = userRepository.save(user);
         String token = jwtService.generateToken(saved.getId(), saved.getEmail());
-        return AuthResponse.bearer(token, saved.getId(), saved.getEmail());
+        return AuthResponse.bearer(token, saved);
     }
 
     public AuthResponse login(LoginRequest request) {
-        authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.email().trim().toLowerCase(), request.password())
-        );
+        try {
+            authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(request.email().trim().toLowerCase(), request.password())
+            );
+        } catch (AuthenticationException e) {
+            // Spring Security throws BadCredentialsException/etc. here, which GlobalExceptionHandler
+            // would otherwise fall through to its generic 500 handler — wrong password is a client
+            // error (401), not a server bug.
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "Invalid email or password");
+        }
 
         User user = userRepository.findByEmail(request.email().trim().toLowerCase())
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "Invalid email or password"));
 
         String token = jwtService.generateToken(user.getId(), user.getEmail());
-        return AuthResponse.bearer(token, user.getId(), user.getEmail());
+        return AuthResponse.bearer(token, user);
+    }
+
+    /** Falls back to the email's local part for older rows / clients that don't send one. */
+    private String resolveUsername(String username, String email) {
+        if (username != null && !username.isBlank()) {
+            return username.trim();
+        }
+        int at = email.indexOf('@');
+        return at > 0 ? email.substring(0, at) : email;
     }
 }

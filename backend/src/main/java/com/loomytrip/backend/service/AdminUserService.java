@@ -48,6 +48,7 @@ public class AdminUserService {
     private AdminUserResponse toResponse(User user) {
         return new AdminUserResponse(
                 user.getId(),
+                user.getUsername(),
                 user.getEmail(),
                 user.getAge(),
                 user.getGender(),
