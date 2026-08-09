@@ -4,7 +4,7 @@ import { useAuth } from './AuthContext';
 
 const TripContext = createContext();
 
-export const useTrip = () => useContext(AuthContext);
+export const useTrip = () => useContext(TripContext);
 
 export const TripProvider = ({ children }) => {
   const { user } = useAuth();
