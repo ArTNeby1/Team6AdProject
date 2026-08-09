@@ -12,8 +12,10 @@ FastAPI 入口。两组接口：
     uvicorn main:app --reload --app-dir ML/app --port 8001
 启动后访问 http://127.0.0.1:8001/docs 能看到自动生成的交互式测试页面。
 
-要用 /extract-travel-info、/refine，本机需要先跑起来 Ollama（默认端口 11434），
-见 local_llm_client.py 顶部的说明。
+2周测试/展示窗口（2026-08-09~08-23）默认 EXTRACT_PROVIDER=RECOMMEND_PROVIDER=
+bedrock，走 AWS 不需要本机装 Ollama，但需要能访问 Bedrock 的 AWS 凭证（当前
+借用 gf-temp profile，见 CLAUDE.md）。显式设成 ollama 才需要本机跑起来 Ollama
+（默认端口 11434，见 local_llm_client.py 顶部说明）。
 
 ===========================================================================
 给后端联调用的 mock 模式（不需要 Ollama、不需要 AWS）
@@ -65,7 +67,11 @@ from orchestrator import (  # noqa: E402
 
 app = FastAPI(title="LoomyTrip Extract Service")#整个服务的"前台"本身
 
-EXTRACT_PROVIDER = os.environ.get("EXTRACT_PROVIDER", "ollama")
+# 2026-08-09~08-23（2周测试/展示窗口）默认切到 bedrock：Nova Lite 比本地 Ollama
+# 快 ~10x（1.6s vs 几十秒）、任务2选型测试里唯一 0 漏抽/0 编造，且这两周的调用量
+# 成本可忽略（远低于 $1）。仍可用 EXTRACT_PROVIDER=ollama / mock 显式切回。
+# 窗口结束后是否改回本地默认，需要重新评估。
+EXTRACT_PROVIDER = os.environ.get("EXTRACT_PROVIDER", "bedrock")
 if EXTRACT_PROVIDER == "bedrock":
     from bedrock_client import bedrock_extract  # noqa: E402
 
