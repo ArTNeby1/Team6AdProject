@@ -7,10 +7,22 @@ Python 类来写，而不是手写 JSON Schema 语法。好处：
 2. 能直接喂给 LangChain 的 with_structured_output()，不用手动转换格式
 3. 只有一份"真相来源"，以后改字段只改这一个文件，JSON 版可以用
    trip_schema_from_pydantic() 自动生成，不用手动同步两份文件
+
+字段设计原则（见 field_notes.md 更新说明）：这份 JSON 是「抽取 Agent -> 推荐/分析
+Agent」内部流转用的中间结构，不要求跟后端 `destination`/`draft_place` 表的列一一对应。
+所以去掉了两个曾经想拿去落库的字段：
+- `address`：原文很少写门牌地址，真要落库靠下游地图 API 反查，不需要模型抽取阶段猜
+- `source`：整条请求本来就带 source_name/source_url（一次请求一份输入文本，不需要
+  精确到每个地点），放在 place 级别是冗余信息
 """
-from typing import Literal, Optional
+from typing import Annotated, Literal, Optional
 
 from pydantic import BaseModel, Field
+
+# 每条 activity 文字的长度上限。注意必须用 Annotated 套在元素类型上：
+# 直接写 activities: list[str] = Field(max_length=255) 限制的是"列表最多几个元素"，
+# 不是"每条文字最多几个字"，那是另一回事。
+ActivityText = Annotated[str, Field(max_length=255)]
 
 
 class Coords(BaseModel):
@@ -19,32 +31,36 @@ class Coords(BaseModel):
 
 
 class Place(BaseModel):
-    name: str = Field(description="地点名称")
+    # max_length 跟后端 DB 对齐：draft_place.name 是 VARCHAR(255)。模型偶尔会把
+    # 一整句话当成地点名输出，不设上限的话这种结果能通过校验，却在后端落库时才炸，
+    # 排查起来要跨两个服务。宁可在这里就判定不合规，让 extract_with_retry 重试。
+    # description 一律写英文：这些描述会被 model_json_schema() 序列化进 system prompt
+    # 直接喂给模型，prompt 里混中文会诱导模型往中文输出上偏（实测本地 8B 模型对中文
+    # 输入会吐乱码地名）。给人看的解释放注释里，注释不会进 prompt。
+    name: str = Field(max_length=255, description="Place name only, never a whole sentence")
     type: Literal["attraction", "restaurant", "hotel", "market", "other"] = Field(
-        description="地点类型"
-    )
-    address: Optional[str] = Field(
-        default=None, description="文本中提到的地址，没有就填 null，不要编造"
+        description="Place category, must be exactly one of the five enum values"
     )
     coords: Optional[Coords] = Field(
         default=None,
-        description="经纬度。文本里基本不会出现坐标，禁止模型编造，缺失填 null，"
-        "真实坐标由下游地理编码步骤补全",
+        description="Latitude and longitude. Never invent coordinates: always return null. "
+        "Real coordinates are filled in later by a geocoding step.",
     )
-    activities: list[str] = Field(default_factory=list, description="在这个地点做的事情")
-    source: str = Field(
-        description="该地点信息来自哪份输入文本，由我们的代码在模型返回结果后填入，不由模型生成"
+    # 同理对齐 draft_activity.title VARCHAR(255)：一个 activity 落库一行，所以逐条限长
+    activities: list[ActivityText] = Field(
+        default_factory=list, description="What the traveller does at this place"
     )
 
 
 class TripExtraction(BaseModel):
-    destination: str = Field(description="整趟行程的目的地城市/地区，例如 'Singapore'")
+    destination: str = Field(description="The city or region of the whole trip, e.g. 'Singapore'")
     dates: list[str] = Field(
         default_factory=list,
-        description="文本中明确出现的日历日期，格式 YYYY-MM-DD。只写 Day 1/Day 2 "
-        "没给真实日期时，留空数组",
+        description="Calendar dates explicitly stated in the text, format YYYY-MM-DD. "
+        "If the text only says Day 1 / Day 2 with no real dates, return an empty array. "
+        "Never invent a year.",
     )
-    places: list[Place] = Field(min_length=1, description="文本中提到的所有地点")
+    places: list[Place] = Field(min_length=1, description="Every place mentioned in the text")
 
 
 if __name__ == "__main__":

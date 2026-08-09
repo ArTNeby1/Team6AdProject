@@ -1,0 +1,104 @@
+{
+  "destination": "Singapore",
+  "dates": [
+    "2024-08-12",
+    "2024-08-13",
+    "2024-08-14"
+  ],
+  "places": [
+    {
+      "name": "Bugis",
+      "type": "other",
+      "coords": null,
+      "activities": [
+        "hotel accommodation"
+      ]
+    },
+    {
+      "name": "Gardens by the Bay",
+      "type": "attraction",
+      "coords": null,
+      "activities": [
+        "walked through Cloud Forest dome",
+        "visited Flower Dome",
+        "watched Super Tree Grove light show"
+      ]
+    },
+    {
+      "name": "Satay by the Bay",
+      "type": "restaurant",
+      "coords": null,
+      "activities": [
+        "dinner"
+      ]
+    },
+    {
+      "name": "Merlion Park",
+      "type": "attraction",
+      "coords": null,
+      "activities": [
+        "took photos"
+      ]
+    },
+    {
+      "name": "Marina Bay Sands SkyPark Observation Deck",
+      "type": "attraction",
+      "coords": null,
+      "activities": [
+        "viewed 360 city views"
+      ]
+    },
+    {
+      "name": "Chinatown Street Market",
+      "type": "market",
+      "coords": null,
+      "activities": [
+        "souvenir shopping"
+      ]
+    },
+    {
+      "name": "Pagoda Street",
+      "type": "other",
+      "coords": null,
+      "activities": []
+    },
+    {
+      "name": "Chinatown Complex Food Centre",
+      "type": "restaurant",
+      "coords": null,
+      "activities": [
+        "tried chicken rice"
+      ]
+    },
+    {
+      "name": "Sentosa Island",
+      "type": "other",
+      "coords": null,
+      "activities": []
+    },
+    {
+      "name": "Universal Studios Singapore",
+      "type": "attraction",
+      "coords": null,
+      "activities": [
+        "full day visit"
+      ]
+    },
+    {
+      "name": "Wings of Time",
+      "type": "attraction",
+      "coords": null,
+      "activities": [
+        "watched beach show"
+      ]
+    },
+    {
+      "name": "Vivo City mall",
+      "type": "other",
+      "coords": null,
+      "activities": [
+        "grabbed meal at food court"
+      ]
+    }
+  ]
+}

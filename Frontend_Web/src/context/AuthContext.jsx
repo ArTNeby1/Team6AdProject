@@ -1,9 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { apiFetch, TRAVELER_TOKEN_KEY, getTravelerToken } from '../api';
+import api from '../services/api';
 
 const AuthContext = createContext();
-
-const USER_KEY = 'loomytrip_user';
 
 export const useAuth = () => useContext(AuthContext);
 
@@ -12,66 +10,70 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = getTravelerToken();
-    const savedUser = localStorage.getItem(USER_KEY);
-    if (token && savedUser) {
+    const savedUser = localStorage.getItem('loomytrip_user');
+    if (savedUser) {
       setUser(JSON.parse(savedUser));
-    } else {
-      localStorage.removeItem(TRAVELER_TOKEN_KEY);
-      localStorage.removeItem(USER_KEY);
     }
     setLoading(false);
   }, []);
 
-  const persistSession = (data, extras = {}) => {
-    const userData = {
-      userId: data.userId,
-      email: data.email,
-      username: extras.username || data.email?.split('@')[0] || 'Traveler',
-      age: extras.age ?? null,
-      gender: extras.gender ?? null,
-      travelStyle: extras.travelStyle || 'Cultural',
-      preferTransport: extras.preferTransport || 'Public',
-    };
-    localStorage.setItem(TRAVELER_TOKEN_KEY, data.accessToken);
-    localStorage.setItem(USER_KEY, JSON.stringify(userData));
-    setUser(userData);
-    return userData;
-  };
-
   const login = async (email, password) => {
-    const data = await apiFetch('/api/v1/auth/login', {
-      method: 'POST',
-      body: { email, password },
-      auth: false,
-    });
-    return persistSession(data);
+    try {
+      const response = await api.post('/auth/login', { email, password });
+      const { accessToken, userId, username, email: userEmail } = response.data;
+
+      const userData = { id: userId, username, email: userEmail };
+
+      // Save to local storage
+      localStorage.setItem('loomytrip_token', accessToken);
+      localStorage.setItem('loomytrip_user', JSON.stringify(userData));
+
+      setUser(userData);
+      return userData;
+    } catch (error) {
+      const message = error.response?.data?.message || 'Incorrect email or password';
+      throw new Error(message);
+    }
   };
 
   const register = async (username, email, password, age, gender) => {
-    const data = await apiFetch('/api/v1/auth/register', {
-      method: 'POST',
-      body: {
+    try {
+      const response = await api.post('/auth/register', {
+        username,
         email,
         password,
-        age: Number.isFinite(age) ? age : null,
-        gender: gender || null,
-      },
-      auth: false,
-    });
-    return persistSession(data, { username, age, gender });
+        age,
+        gender
+      });
+      const { accessToken, userId, username: userN, email: userEmail } = response.data;
+
+      const userData = { id: userId, username: userN, email: userEmail };
+
+      localStorage.setItem('loomytrip_token', accessToken);
+      localStorage.setItem('loomytrip_user', JSON.stringify(userData));
+
+      setUser(userData);
+      return userData;
+    } catch (error) {
+      const message = error.response?.data?.message || 'Registration failed';
+      throw new Error(message);
+    }
   };
 
-  const updatePreferences = (travelStyle, preferTransport) => {
-    const updatedUser = { ...user, travelStyle, preferTransport };
-    setUser(updatedUser);
-    localStorage.setItem(USER_KEY, JSON.stringify(updatedUser));
+  const updatePreferences = async (travelStyle, preferTransport) => {
+    try {
+      const updatedUser = { ...user, travelStyle, preferTransport };
+      setUser(updatedUser);
+      localStorage.setItem('loomytrip_user', JSON.stringify(updatedUser));
+    } catch (error) {
+      console.error('Failed to sync preferences:', error);
+    }
   };
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem(TRAVELER_TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
+    localStorage.removeItem('loomytrip_token');
+    localStorage.removeItem('loomytrip_user');
   };
 
   return (
