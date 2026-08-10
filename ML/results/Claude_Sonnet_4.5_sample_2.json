@@ -1,0 +1,58 @@
+{
+  "destination": "Singapore",
+  "dates": [],
+  "places": [
+    {
+      "name": "Clarke Quay",
+      "type": "other",
+      "coords": null,
+      "activities": [
+        "checked into hotel"
+      ]
+    },
+    {
+      "name": "Thian Hock Keng Temple",
+      "type": "attraction",
+      "coords": null,
+      "activities": [
+        "visit temple",
+        "take photos"
+      ]
+    },
+    {
+      "name": "Sri Mariamman Temple",
+      "type": "attraction",
+      "coords": null,
+      "activities": [
+        "see the colourful gopuram"
+      ]
+    },
+    {
+      "name": "Maxwell Food Centre",
+      "type": "restaurant",
+      "coords": null,
+      "activities": [
+        "dinner",
+        "Tian Tian Hainanese Chicken Rice"
+      ]
+    },
+    {
+      "name": "Tiong Bahru Market",
+      "type": "market",
+      "coords": null,
+      "activities": [
+        "local breakfast",
+        "browse produce stalls"
+      ]
+    },
+    {
+      "name": "1-Altitude",
+      "type": "restaurant",
+      "coords": null,
+      "activities": [
+        "rooftop drinks",
+        "skyline view"
+      ]
+    }
+  ]
+}

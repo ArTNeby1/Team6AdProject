@@ -1,0 +1,85 @@
+{
+  "destination": "Singapore",
+  "dates": [
+    "2023-08-12",
+    "2023-08-13",
+    "2023-08-14"
+  ],
+  "places": [
+    {
+      "name": "Gardens by the Bay",
+      "type": "attraction",
+      "coords": null,
+      "activities": [
+        "walked through the Cloud Forest dome",
+        "walked through the Flower Dome",
+        "waited for the Super Tree Grove light show"
+      ]
+    },
+    {
+      "name": "Satay by the Bay",
+      "type": "restaurant",
+      "coords": null,
+      "activities": [
+        "grabbed dinner"
+      ]
+    },
+    {
+      "name": "Merlion Park",
+      "type": "attraction",
+      "coords": null,
+      "activities": [
+        "took photos"
+      ]
+    },
+    {
+      "name": "Marina Bay Sands SkyPark Observation Deck",
+      "type": "attraction",
+      "coords": null,
+      "activities": [
+        "walked over",
+        "enjoyed a 360 view of the city"
+      ]
+    },
+    {
+      "name": "Chinatown Street Market on Pagoda Street",
+      "type": "market",
+      "coords": null,
+      "activities": [
+        "souvenir shopping"
+      ]
+    },
+    {
+      "name": "Chinatown Complex Food Centre",
+      "type": "restaurant",
+      "coords": null,
+      "activities": [
+        "tried chicken rice"
+      ]
+    },
+    {
+      "name": "Universal Studios Singapore",
+      "type": "attraction",
+      "coords": null,
+      "activities": [
+        "visited"
+      ]
+    },
+    {
+      "name": "Wings of Time show",
+      "type": "attraction",
+      "coords": null,
+      "activities": [
+        "watched the show"
+      ]
+    },
+    {
+      "name": "Vivo City mall food court",
+      "type": "restaurant",
+      "coords": null,
+      "activities": [
+        "grabbed a quick meal"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "destination": "Singapore",
+  "dates": [
+    "2024-08-12",
+    "2024-08-13",
+    "2024-08-14"
+  ],
+  "places": [
+    {
+      "name": "Bugis",
+      "type": "other",
+      "coords": null,
+      "activities": [
+        "Dropped bags at hotel"
+      ]
+    },
+    {
+      "name": "Gardens by the Bay",
+      "type": "attraction",
+      "coords": null,
+      "activities": [
+        "Walked through Cloud Forest dome",
+        "Walked through Flower Dome",
+        "Watched Super Tree Grove light show"
+      ]
+    },
+    {
+      "name": "Satay by the Bay",
+      "type": "restaurant",
+      "coords": null,
+      "activities": [
+        "Grabbed dinner"
+      ]
+    },
+    {
+      "name": "Merlion Park",
+      "type": "attraction",
+      "coords": null,
+      "activities": [
+        "Taking photos"
+      ]
+    },
+    {
+      "name": "Marina Bay Sands SkyPark Observation Deck",
+      "type": "attraction",
+      "coords": null,
+      "activities": [
+        "Viewed 360 view of the city"
+      ]
+    },
+    {
+      "name": "Chinatown Street Market",
+      "type": "market",
+      "coords": null,
+      "activities": [
+        "Souvenir shopping"
+      ]
+    },
+    {
+      "name": "Chinatown Complex Food Centre",
+      "type": "restaurant",
+      "coords": null,
+      "activities": [
+        "Tried chicken rice"
+      ]
+    },
+    {
+      "name": "Sentosa Island",
+      "type": "attraction",
+      "coords": null,
+      "activities": [
+        "Visited Universal Studios Singapore",
+        "Watched Wings of Time show on the beach"
+      ]
+    },
+    {
+      "name": "Vivo City",
+      "type": "other",
+      "coords": null,
+      "activities": [
+        "Grabbed quick meal at food court"
+      ]
+    }
+  ]
+}

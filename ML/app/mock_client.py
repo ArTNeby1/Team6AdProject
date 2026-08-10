@@ -17,6 +17,7 @@ mock_extract_bad_coords    -- 坏情况3：JSON 格式是对的，但坐标是�
 """
 import json
 import sys
+from datetime import date, timedelta
 from pathlib import Path
 
 SCHEMA_DIR = Path(__file__).resolve().parent.parent / "schema"
@@ -28,28 +29,27 @@ from trip_models import TripExtraction  # noqa: E402
 def mock_extract(text: str, source_name: str = "mock") -> str:
     """
     假装"读了 text 之后抽取出结构化数据"，实际上不看 text 内容，
-    直接返回写死的、完全合规的 JSON 文字。
+    直接返回写死的地点数据；日期按调用时的当天动态生成（今天起 30 天后连续两天），
+    避免 demo 里日期停在某个已经过去的固定值。
     source_name: 这份数据算是来自哪份输入文本，写进每个 place 的 source 字段。
     """
+    start = date.today() + timedelta(days=30)
+    end = start + timedelta(days=1)
     data = {
         "destination": "Singapore",
-        "dates": ["2025-08-12", "2025-08-13"],
+        "dates": [start.isoformat(), end.isoformat()],
         "places": [
             {
                 "name": "Gardens by the Bay",
                 "type": "attraction",
-                "address": None,
                 "coords": None,
                 "activities": ["Cloud Forest dome", "Super Tree Grove light show"],
-                "source": source_name,
             },
             {
                 "name": "Satay by the Bay",
                 "type": "restaurant",
-                "address": None,
                 "coords": None,
                 "activities": ["dinner"],
-                "source": source_name,
             },
         ],
     }
@@ -66,7 +66,7 @@ def mock_extract_missing_field(text: str, source_name: str = "mock") -> str:
     data = {
         "destination": "Singapore",
         "places": [
-            {"type": "attraction", "source": source_name}
+            {"type": "attraction"}
         ],
     }
     return json.dumps(data, ensure_ascii=False)
@@ -80,8 +80,7 @@ def mock_extract_bad_coords(text: str, source_name: str = "mock") -> str:
             {
                 "name": "Gardens by the Bay",
                 "type": "attraction",
-                "source": source_name,
-                "coords": {"lat": "大概在北边", "lng": 103.8198},
+                "coords": {"lat": "somewhere up north", "lng": 103.8198},
             }
         ],
     }
@@ -90,6 +89,6 @@ def mock_extract_bad_coords(text: str, source_name: str = "mock") -> str:
 
 if __name__ == "__main__":
     # 自我检查：证明 mock_extract 返回的东西真的能通过 Pydantic 校验，不是空口说白话
-    raw = mock_extract("随便什么文本，这里不会真的被读取", source_name="test.txt")
+    raw = mock_extract("any text, this is never actually read", source_name="test.txt")
     trip = TripExtraction.model_validate(json.loads(raw))
-    print(f"[PASS] mock_extract 返回结果符合 schema，解析出 {len(trip.places)} 个地点")
+    print(f"[PASS] mock_extract output matches schema, parsed {len(trip.places)} places")
