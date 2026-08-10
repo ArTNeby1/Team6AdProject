@@ -33,6 +33,8 @@ import com.loomytrip.backend.repository.TripScheduleRepository;
 import com.loomytrip.backend.repository.UserRepository;
 import com.loomytrip.backend.util.SecurityUtils;
 import java.time.LocalDate;
+import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,6 +48,7 @@ public class PlanningService {
 
     private static final String DEFAULT_DESTINATION = "Singapore";
     private static final int NOTE_MAX_LENGTH = 255;
+    private static final int DEFAULT_VISIT_SLOT_MINUTES = 90;
 
     private final PlanningSessionRepository planningSessionRepository;
     private final ChatMessageRepository chatMessageRepository;
@@ -148,7 +151,7 @@ public class PlanningService {
                 .map(m -> Map.of("role", m.getRole().name(), "content", m.getContent()))
                 .toList();
 
-        Map<String, Object> result = aiPlanningClient.refineFromChat(messages, null);
+        Map<String, Object> result = aiPlanningClient.refineFromChat(messages, buildPreferenceText(currentUser()));
 
         draftActivityRepository.deleteBySession_Id(sessionId);
         draftPlaceRepository.deleteBySession_Id(sessionId);
@@ -187,12 +190,19 @@ public class PlanningService {
                 .map(place -> toAiPlace(place, activitiesByPlaceId.getOrDefault(place.getId(), List.of())))
                 .toList();
 
-        AiRecommendResult result = aiPlanningClient.recommend(places, null, null);
+        // 🔴 gap closed: this used to pass (places, null, null) — the AI agent never got a
+        // date or the user's travel_style/prefer_transport, so it could only ever fall back
+        // to its no-date/no-preference behavior (distance-only ordering, weather_summary
+        // always null — see ai_contract.md section 7/9). trip.getStartDate() below reuses
+        // the same LocalDate.now() so the Trip we save and the date we send the AI agree.
+        User user = currentUser();
+        LocalDate startDate = LocalDate.now();
+        AiRecommendResult result = aiPlanningClient.recommend(places, startDate.toString(), buildPreferenceText(user));
 
         Trip trip = new Trip();
-        trip.setUser(currentUser());
+        trip.setUser(user);
         trip.setTripName(session.getTitle() != null ? session.getTitle() : "Trip");
-        trip.setStartDate(LocalDate.now());
+        trip.setStartDate(startDate);
         trip.setDurationDays(1);
         Trip savedTrip = tripRepository.save(trip);
 
@@ -201,16 +211,25 @@ public class PlanningService {
         day.setDaySequence(1);
         TripDay savedDay = tripDayRepository.save(day);
 
+        // 🔴 gap closed: `stop.timeOfDay()` (morning/afternoon/evening from AI's weather-aware
+        // ordering) was computed but never written anywhere — TripSchedule.start_time was
+        // always left null, so the frontend's `s.startTime || '09:00'` fallback showed 09:00
+        // for every single stop regardless of what the AI actually decided. clockCursor turns
+        // each bucket into a real, increasing start_time per stop (see nextStartTime javadoc).
         int sequence = 1;
+        LocalTime clockCursor = LocalTime.of(9, 0);
         for (AiRecommendResult.OrderedStop stop : result.orderedStops()) {
             Destination destination = destinationService.findOrCreateByName(stop.name(), stop.type(), stop.lat(), stop.lng());
+            clockCursor = nextStartTime(clockCursor, stop.timeOfDay());
             TripSchedule schedule = new TripSchedule();
             schedule.setTripDay(savedDay);
             schedule.setDestination(destination);
             schedule.setSequence(sequence++);
             schedule.setLocked(false);
             schedule.setNote(truncate(stop.reason()));
+            schedule.setStartTime(clockCursor);
             tripScheduleRepository.save(schedule);
+            clockCursor = clockCursor.plusMinutes(DEFAULT_VISIT_SLOT_MINUTES);
         }
 
         session.setConfirmedTrip(savedTrip);
@@ -355,6 +374,44 @@ public class PlanningService {
         map.put("lng", place.getLongitude());
         map.put("activities", activities.stream().map(DraftActivity::getTitle).toList());
         return map;
+    }
+
+    /**
+     * Builds the `preference_text` string the AI `/recommend` and `/refine` endpoints expect
+     * (ai_contract.md: "用户偏好，比如 travel_style=culture"), from the user's saved
+     * `travel_style`/`prefer_transport` (UserService.updatePreferences). Returns null when
+     * neither is set so the AI agent falls back to its no-preference behavior instead of
+     * being sent a meaningless empty string.
+     */
+    private String buildPreferenceText(User user) {
+        List<String> parts = new ArrayList<>();
+        if (user.getTravelStyle() != null && !user.getTravelStyle().isBlank()) {
+            parts.add("travel_style=" + user.getTravelStyle());
+        }
+        if (user.getPreferTransport() != null && !user.getPreferTransport().isBlank()) {
+            parts.add("prefer_transport=" + user.getPreferTransport());
+        }
+        return parts.isEmpty() ? null : String.join(", ", parts);
+    }
+
+    /**
+     * Converts a stop's `time_of_day` bucket (morning/afternoon/evening/null — see
+     * ai_contract.md section 5) into a concrete, strictly-increasing {@link LocalTime} to
+     * store on the schedule. {@code time_of_day} is only ever a coarse bucket, never an exact
+     * clock time, so this is a display-time heuristic, not something the AI actually decided
+     * minute-by-minute: jump forward to the bucket's opening time when the AI's ordering moves
+     * into a new part of the day, otherwise just advance the cursor by a default 90-minute
+     * visit slot so consecutive stops in the same bucket don't collide on the same timestamp.
+     */
+    private LocalTime nextStartTime(LocalTime cursor, String timeOfDay) {
+        LocalTime bucketStart = switch (timeOfDay == null ? "" : timeOfDay.toLowerCase()) {
+            case "morning" -> LocalTime.of(9, 0);
+            case "afternoon" -> LocalTime.of(13, 0);
+            case "evening" -> LocalTime.of(18, 0);
+            default -> cursor;
+        };
+        LocalTime next = bucketStart.isAfter(cursor) ? bucketStart : cursor;
+        return next.isBefore(LocalTime.of(22, 30)) ? next : LocalTime.of(22, 30);
     }
 
     private String truncate(String value) {
