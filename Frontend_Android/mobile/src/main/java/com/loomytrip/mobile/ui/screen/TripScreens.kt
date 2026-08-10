@@ -85,14 +85,20 @@ import kotlin.math.hypot
 @Composable
 fun RouteScreen(
     tripTitle: String,
+    tripDateLabel: String,
+    dayLabels: List<String>,
     activities: List<TripActivity>,
     totalDays: Int,
+    importedPlacesCount: Int,
+    onReviewImported: () -> Unit,
     onViewMap: (Int) -> Unit,
     onEdit: (Int) -> Unit
 ) {
     var selectedDay by rememberSaveable { mutableIntStateOf(1) }
     val dayActivities = activities.filter { it.day == selectedDay }
-    val totalMinutes = dayActivities.sumOf { it.durationMinutes }
+    val activityMinutes = dayActivities.sumOf { it.durationMinutes }
+    val travelMinutes = dayActivities.sumOf { it.travelMinutesToNext ?: 0 }
+    val selectedDate = dayLabels.getOrNull(selectedDay - 1)
 
     Column(
         modifier = Modifier
@@ -111,7 +117,7 @@ fun RouteScreen(
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    "$totalDays days  •  ${activities.size} saved stops",
+                    "$tripDateLabel  •  ${if (totalDays == 1) "1 day" else "$totalDays days"}  •  ${activities.size} stops",
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -128,9 +134,25 @@ fun RouteScreen(
             ) {
                 Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(19.dp))
                 Spacer(Modifier.width(9.dp))
-                Column {
-                    Text("Route ready", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    Text("Stops are grouped by day and ready to fine-tune.", fontSize = 11.sp)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        if (importedPlacesCount > 0) "Import complete" else "Route ready",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
+                    Text(
+                        if (importedPlacesCount > 0) {
+                            "$importedPlacesCount places were added to this draft."
+                        } else {
+                            "Stops are grouped by day and ready to fine-tune."
+                        },
+                        fontSize = 11.sp
+                    )
+                }
+                if (importedPlacesCount > 0) {
+                    TextButton(onClick = onReviewImported) {
+                        Text("Review")
+                    }
                 }
             }
         }
@@ -140,10 +162,16 @@ fun RouteScreen(
             onDaySelected = { selectedDay = it }
         )
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Day $selectedDay plan", style = MaterialTheme.typography.titleMedium)
             Text(
-                "${dayActivities.size} stops  •  ${durationSummary(totalMinutes)}",
-                fontSize = 12.sp,
+                if (selectedDate == null) "Day $selectedDay plan" else "Day $selectedDay · $selectedDate",
+                style = MaterialTheme.typography.titleMedium
+            )
+            Text(
+                buildString {
+                    append("${dayActivities.size} stops · ${durationSummary(activityMinutes)}")
+                    if (travelMinutes > 0) append(" · ${travelMinutes} min travel")
+                },
+                fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
             )
         }
@@ -260,7 +288,9 @@ private fun ItineraryActivityCard(index: Int, activity: TripActivity, showConnec
                     )
                     Spacer(Modifier.width(5.dp))
                     Text(
-                        "About 15 min to the next stop",
+                        activity.travelMinutesToNext?.let { minutes ->
+                            "${activity.transportModeToNext ?: "Travel"} · $minutes min to the next stop"
+                        } ?: "Travel time to be confirmed",
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
                     )
@@ -380,7 +410,7 @@ fun MapScreen(
             }
         }
         Text(
-            "Drag to move. Pinch to zoom. Tap a stop for details.",
+            "Route preview from saved coordinates. Navigation opens your map app.",
             fontSize = 11.sp,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
         )
@@ -388,7 +418,7 @@ fun MapScreen(
 }
 
 @Composable
-private fun DaySelector(
+internal fun DaySelector(
     selectedDay: Int,
     totalDays: Int,
     onDaySelected: (Int) -> Unit
@@ -504,7 +534,7 @@ private fun TripSelector(
                         Column {
                             Text(trip.title, fontWeight = FontWeight.SemiBold)
                             Text(
-                                "${trip.totalDays} days · ${trip.activities.size} stops",
+                                "${if (trip.totalDays == 1) "1 day" else "${trip.totalDays} days"} · ${trip.activities.size} stops",
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f)
                             )

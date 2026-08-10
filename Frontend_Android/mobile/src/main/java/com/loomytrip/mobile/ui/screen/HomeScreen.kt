@@ -30,7 +30,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -53,32 +52,38 @@ import androidx.compose.ui.unit.sp
 private data class DestinationPreview(
     val city: String,
     val detail: String,
-    val colors: List<Color>
+    val colors: List<Color>,
+    val preferences: Set<String>
 )
 
 private val destinationPreviews = listOf(
     DestinationPreview(
         city = "Chiang Mai",
         detail = "Temples & markets",
-        colors = listOf(Color(0xFF48785E), Color(0xFFB8C7A3))
+        colors = listOf(Color(0xFF48785E), Color(0xFFB8C7A3)),
+        preferences = setOf("Culture", "Food", "Shopping")
     ),
     DestinationPreview(
         city = "Kyoto",
         detail = "Culture & gardens",
-        colors = listOf(Color(0xFF9A574A), Color(0xFFE5B58D))
+        colors = listOf(Color(0xFF9A574A), Color(0xFFE5B58D)),
+        preferences = setOf("Culture", "Nature")
     ),
     DestinationPreview(
         city = "Bali",
         detail = "Coast & wellness",
-        colors = listOf(Color(0xFF34777C), Color(0xFF92C6B8))
+        colors = listOf(Color(0xFF34777C), Color(0xFF92C6B8)),
+        preferences = setOf("Nature", "Food")
     )
 )
 
 @Composable
 fun HomeScreen(
     currentTripTitle: String,
+    currentTripDate: String,
     currentTripDays: Int,
     currentTripStops: Int,
+    travelPreference: String,
     onStartPlanning: () -> Unit,
     onOpenTrip: () -> Unit
 ) {
@@ -121,9 +126,9 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 leadingIcon = {
-                    Icon(Icons.Default.Search, contentDescription = null)
+                    Icon(Icons.Default.Search, contentDescription = "Search destinations")
                 },
-                placeholder = { Text("Search destinations or trips") },
+                placeholder = { Text("Search destinations") },
                 shape = RoundedCornerShape(18.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     unfocusedBorderColor = Color.Transparent,
@@ -137,12 +142,13 @@ fun HomeScreen(
         item { AiPlannerCard(onStartPlanning) }
 
         item {
-            SectionHeader(title = "My trips", action = "View all")
+            SectionHeader(title = "My trips", action = "View all", onAction = onOpenTrip)
         }
 
         item {
             CurrentTripCard(
                 title = currentTripTitle,
+                dateLabel = currentTripDate,
                 totalDays = currentTripDays,
                 stopCount = currentTripStops,
                 onClick = onOpenTrip
@@ -150,13 +156,13 @@ fun HomeScreen(
         }
 
         item {
-            SectionHeader(title = "Explore next", action = "See more")
+            SectionHeader(title = "Recommended for you", action = travelPreference)
         }
 
         item {
-            val filtered = destinationPreviews.filter {
-                searchQuery.isBlank() || it.city.contains(searchQuery, ignoreCase = true)
-            }
+            val filtered = destinationPreviews
+                .sortedByDescending { travelPreference in it.preferences }
+                .filter { searchQuery.isBlank() || it.city.contains(searchQuery, ignoreCase = true) }
             if (filtered.isEmpty()) {
                 Text(
                     text = "No matching destinations yet.",
@@ -243,25 +249,33 @@ private fun AiPlannerCard(onStartPlanning: () -> Unit) {
 }
 
 @Composable
-private fun SectionHeader(title: String, action: String) {
+private fun SectionHeader(
+    title: String,
+    action: String? = null,
+    onAction: (() -> Unit)? = null
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Text(
-            text = action,
-            color = MaterialTheme.colorScheme.primary,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold
-        )
+        if (action != null) {
+            Text(
+                text = action,
+                modifier = if (onAction == null) Modifier else Modifier.clickable(onClick = onAction),
+                color = MaterialTheme.colorScheme.primary,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
     }
 }
 
 @Composable
 private fun CurrentTripCard(
     title: String,
+    dateLabel: String,
     totalDays: Int,
     stopCount: Int,
     onClick: () -> Unit
@@ -311,17 +325,11 @@ private fun CurrentTripCard(
                     )
                     Spacer(Modifier.width(5.dp))
                     Text(
-                        "$totalDays days · $stopCount saved stops",
+                        "$dateLabel · $totalDays days · $stopCount stops",
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
                         fontSize = 13.sp
                     )
                 }
-                LinearProgressIndicator(
-                    progress = { 0.75f },
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.secondary,
-                    trackColor = MaterialTheme.colorScheme.primaryContainer
-                )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier

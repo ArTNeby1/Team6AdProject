@@ -10,12 +10,20 @@ android {
     namespace = "com.loomytrip.mobile"
     compileSdk = 35
 
+    val aiBaseUrl = providers.gradleProperty("AI_BASE_URL")
+        .orElse("http://ad-project-dev-593875640.ap-southeast-1.elb.amazonaws.com/")
+    val backendBaseUrl = providers.gradleProperty("BACKEND_BASE_URL")
+        .orElse("http://ad-project-dev-593875640.ap-southeast-1.elb.amazonaws.com/")
+
     defaultConfig {
         applicationId = "com.loomytrip.mobile"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+
+        buildConfigField("String", "AI_BASE_URL", "\"${aiBaseUrl.get()}\"")
+        buildConfigField("String", "BACKEND_BASE_URL", "\"${backendBaseUrl.get()}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -37,6 +45,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -58,6 +67,9 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.navigation:navigation-compose:2.9.3")
+    implementation("com.squareup.retrofit2:retrofit:2.11.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

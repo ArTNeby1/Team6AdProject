@@ -72,4 +72,20 @@ class MockTripRepositoryTest {
         assertEquals(activity, restored.filter { it.day == 1 }[1])
         assertEquals(original.size, restored.size)
     }
+
+    @Test
+    fun updateActivity_changesTimeAndDurationWithoutMovingStop() {
+        val original = repository.initialItinerary()
+        val updated = repository.updateActivity(
+            activities = original,
+            id = "wat-chedi-luang",
+            startTime = "09:30",
+            durationMinutes = 120
+        )
+        val activity = updated.first { it.id == "wat-chedi-luang" }
+
+        assertEquals("09:30", activity.startTime)
+        assertEquals(120, activity.durationMinutes)
+        assertEquals(1, activity.day)
+    }
 }

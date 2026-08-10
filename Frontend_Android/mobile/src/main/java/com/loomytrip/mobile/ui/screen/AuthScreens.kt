@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mail
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -44,11 +45,14 @@ import androidx.compose.ui.unit.sp
 
 @Composable
 fun LoginScreen(
-    onLogin: (String) -> Unit,
+    isLoading: Boolean,
+    serverError: String?,
+    onLogin: (String, String) -> Unit,
+    onDemoLogin: () -> Unit,
     onCreateAccount: () -> Unit
 ) {
-    var email by remember { mutableStateOf("traveler@loomytrip.com") }
-    var password by remember { mutableStateOf("loomytrip") }
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
 
     AuthPage(
@@ -76,29 +80,42 @@ fun LoginScreen(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             shape = RoundedCornerShape(16.dp)
         )
-        error?.let {
+        (error ?: serverError)?.let {
             Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
         }
         Button(
             onClick = {
-                if (!email.contains("@") || password.length < 6) {
-                    error = "Enter a valid email and a password of at least 6 characters."
+                if (!email.contains("@") || password.length < 8) {
+                    error = "Enter a valid email and a password of at least 8 characters."
                 } else {
-                    onLogin(email)
+                    onLogin(email.trim(), password)
                 }
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isLoading
         ) {
-            Text("Sign in", fontWeight = FontWeight.Bold)
+            if (isLoading) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            } else {
+                Text("Sign in", fontWeight = FontWeight.Bold)
+            }
         }
         OutlinedButton(
             onClick = onCreateAccount,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isLoading
         ) {
-            Text("Create an account")
+            Text("No account? Create one")
+        }
+        OutlinedButton(
+            onClick = onDemoLogin,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isLoading
+        ) {
+            Text("Continue with offline demo")
         }
         Text(
-            text = "Demo login: any email and password will work.",
+            text = "Sign in uses the LoomyTrip Backend. Offline demo keeps tomorrow's presentation usable if a service is unavailable.",
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
             fontSize = 12.sp,
             lineHeight = 17.sp
@@ -108,7 +125,9 @@ fun LoginScreen(
 
 @Composable
 fun RegisterScreen(
-    onRegister: (String) -> Unit,
+    isLoading: Boolean,
+    serverError: String?,
+    onRegister: (String, String, String) -> Unit,
     onBackToLogin: () -> Unit
 ) {
     var name by remember { mutableStateOf("") }
@@ -148,27 +167,33 @@ fun RegisterScreen(
             leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            supportingText = { Text("At least 6 characters") },
+            supportingText = { Text("At least 8 characters") },
             shape = RoundedCornerShape(16.dp)
         )
-        error?.let {
+        (error ?: serverError)?.let {
             Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
         }
         Button(
             onClick = {
-                if (name.isBlank() || !email.contains("@") || password.length < 6) {
+                if (name.isBlank() || !email.contains("@") || password.length < 8) {
                     error = "Complete all fields with a valid email and password."
                 } else {
-                    onRegister(email)
+                    onRegister(name.trim(), email.trim(), password)
                 }
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isLoading
         ) {
-            Text("Create account", fontWeight = FontWeight.Bold)
+            if (isLoading) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            } else {
+                Text("Create account", fontWeight = FontWeight.Bold)
+            }
         }
         OutlinedButton(
             onClick = onBackToLogin,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isLoading
         ) {
             Text("Back to sign in")
         }
@@ -206,7 +231,7 @@ private fun AuthPage(
             }
             Spacer(Modifier.size(10.dp))
             Text(
-                text = "Loomytrip",
+                text = "LoomyTrip",
                 color = MaterialTheme.colorScheme.tertiary,
                 fontWeight = FontWeight.Bold,
                 fontSize = 24.sp

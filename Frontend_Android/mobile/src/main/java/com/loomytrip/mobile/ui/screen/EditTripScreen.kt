@@ -20,7 +20,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -31,6 +33,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -41,9 +44,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +57,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -86,10 +93,13 @@ fun EditTripScreen(
     onDelete: (String) -> Unit,
     onRestore: (TripActivity, Int) -> Unit,
     onAdd: (Int, String, String) -> Unit,
+    onUpdateActivity: (String, String, Int) -> Unit,
     onAddDay: () -> Unit,
     onSave: () -> Unit
 ) {
     var addToDay by remember { mutableStateOf<Int?>(null) }
+    var editActivity by remember { mutableStateOf<TripActivity?>(null) }
+    var selectedDay by rememberSaveable { mutableIntStateOf(initialDay) }
     var draggedId by remember { mutableStateOf<String?>(null) }
     var draggedDistance by remember { mutableFloatStateOf(0f) }
     var dropTarget by remember { mutableStateOf<DropTarget?>(null) }
@@ -119,10 +129,14 @@ fun EditTripScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text("Shape your trip", style = MaterialTheme.typography.headlineMedium)
-            Text(
-                "Hold a card to drag it. Drop it into another day, or use the menu for an exact move.",
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
-                style = MaterialTheme.typography.bodyMedium
+            DaySelector(
+                selectedDay = selectedDay,
+                totalDays = totalDays,
+                onDaySelected = { day ->
+                    selectedDay = day
+                    val target = rows.indexOfFirst { it is EditorRow.DayHeader && it.day == day }
+                    if (target >= 0) scope.launch { listState.animateScrollToItem(target) }
+                }
             )
 
             Surface(
@@ -137,7 +151,7 @@ fun EditTripScreen(
                     Icon(Icons.Default.DragHandle, contentDescription = null, modifier = Modifier.size(19.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        "Drag to reorder within or between days",
+                        "Hold and drag to reorder, or use the menu for exact moves",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -171,6 +185,7 @@ fun EditTripScreen(
                                 isDropTarget = dropTarget?.day == activity.day &&
                                     dropTarget?.position == row.position && !isDragging,
                                 dragDistance = if (isDragging) draggedDistance else 0f,
+                                onEdit = { editActivity = activity },
                                 onMoveToDay = { day ->
                                     val oldPosition = activities.filter { it.day == activity.day }
                                         .indexOfFirst { it.id == activity.id }
@@ -314,6 +329,17 @@ fun EditTripScreen(
             }
         )
     }
+
+    editActivity?.let { activity ->
+        EditActivityDialog(
+            activity = activity,
+            onDismiss = { editActivity = null },
+            onSave = { startTime, durationMinutes ->
+                onUpdateActivity(activity.id, startTime, durationMinutes)
+                editActivity = null
+            }
+        )
+    }
 }
 
 @Composable
@@ -361,6 +387,7 @@ private fun DraggableActivityCard(
     isDragging: Boolean,
     isDropTarget: Boolean,
     dragDistance: Float,
+    onEdit: () -> Unit,
     onMoveToDay: (Int) -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
@@ -411,6 +438,15 @@ private fun DraggableActivityCard(
                     Icon(Icons.Default.MoreVert, contentDescription = "More options for ${activity.title}")
                 }
                 DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Edit time and duration") },
+                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                        onClick = {
+                            menuExpanded = false
+                            onEdit()
+                        }
+                    )
+                    HorizontalDivider()
                     Text(
                         "Move to",
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -441,6 +477,58 @@ private fun DraggableActivityCard(
             }
         }
     }
+}
+
+@Composable
+private fun EditActivityDialog(
+    activity: TripActivity,
+    onDismiss: () -> Unit,
+    onSave: (String, Int) -> Unit
+) {
+    var startTime by remember(activity.id) { mutableStateOf(activity.startTime) }
+    var durationText by remember(activity.id) { mutableStateOf(activity.durationMinutes.toString()) }
+    val duration = durationText.toIntOrNull()
+    val validTime = remember(startTime) {
+        Regex("(?:[01]\\d|2[0-3]):[0-5]\\d").matches(startTime)
+    }
+    val validDuration = duration != null && duration in 15..720
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(activity.title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = startTime,
+                    onValueChange = { startTime = it.take(5) },
+                    label = { Text("Start time") },
+                    supportingText = { Text(if (validTime) "24-hour format" else "Use a time such as 09:30") },
+                    isError = !validTime,
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = durationText,
+                    onValueChange = { durationText = it.filter(Char::isDigit).take(3) },
+                    label = { Text("Duration in minutes") },
+                    supportingText = { Text(if (validDuration) "15 to 720 minutes" else "Enter 15–720 minutes") },
+                    isError = !validDuration,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(startTime, duration!!) },
+                enabled = validTime && validDuration
+            ) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }
 
 internal fun durationSummary(minutes: Int): String = when {

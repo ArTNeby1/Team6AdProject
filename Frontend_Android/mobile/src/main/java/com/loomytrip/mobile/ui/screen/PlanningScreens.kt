@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material3.AssistChip
@@ -24,7 +25,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -43,8 +46,12 @@ import androidx.compose.ui.unit.sp
 import com.loomytrip.mobile.data.model.ExtractedPlace
 
 @Composable
-fun ImportGuideScreen(onExtract: (String) -> Unit) {
-    val sampleGuide = "Chiang Mai in 3 days — Wat Chedi Luang, Tha Phae Gate, Nimman Road and Sunday Walking Street."
+fun ImportGuideScreen(
+    isLoading: Boolean = false,
+    errorMessage: String? = null,
+    onExtract: (String) -> Unit
+) {
+    val sampleGuide = "Singapore on 12 August: Gardens by the Bay for photos, then the National Museum for an exhibition."
     var guide by remember { mutableStateOf("") }
     val clipboard = LocalClipboardManager.current
 
@@ -56,7 +63,7 @@ fun ImportGuideScreen(onExtract: (String) -> Unit) {
     ) {
         Text("Turn notes into a trip", style = MaterialTheme.typography.headlineMedium)
         Text(
-            "Paste a travel post or your own notes. Loomytrip will extract the places and build a day-by-day route.",
+            "Paste a travel post or your own notes. The AI service will extract places and activities for you to review.",
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
             lineHeight = 21.sp
         )
@@ -123,7 +130,7 @@ fun ImportGuideScreen(onExtract: (String) -> Unit) {
             ) {
                 Icon(Icons.Default.AutoAwesome, contentDescription = null)
                 Text(
-                    "This prototype uses local demo data. The same flow can connect to the extraction API later.",
+                    "Live AI mock over HTTPS. You will review the extracted places before route optimisation starts.",
                     fontSize = 12.sp,
                     lineHeight = 17.sp
                 )
@@ -132,12 +139,21 @@ fun ImportGuideScreen(onExtract: (String) -> Unit) {
         Button(
             onClick = { onExtract(guide) },
             modifier = Modifier.fillMaxWidth(),
-            enabled = guide.isNotBlank()
+            enabled = guide.isNotBlank() && !isLoading
         ) {
-            Icon(Icons.Default.AutoAwesome, contentDescription = null)
+            if (isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+            } else {
+                Icon(Icons.Default.AutoAwesome, contentDescription = null)
+            }
             Spacer(Modifier.size(8.dp))
-            Text("Extract places and build trip", fontWeight = FontWeight.Bold)
+            Text(if (isLoading) "Contacting AI service..." else "Extract places", fontWeight = FontWeight.Bold)
         }
+        errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
     }
 }
 
@@ -145,6 +161,9 @@ fun ImportGuideScreen(onExtract: (String) -> Unit) {
 fun ReviewExtractedScreen(
     places: List<ExtractedPlace>,
     onIncludedChange: (String, Boolean) -> Unit,
+    onRemove: (String) -> Unit = {},
+    isConfirming: Boolean = false,
+    errorMessage: String? = null,
     onConfirm: () -> Unit,
     onImportAgain: () -> Unit
 ) {
@@ -168,17 +187,27 @@ fun ReviewExtractedScreen(
             items(places, key = { it.id }) { place ->
                 ExtractedPlaceCard(
                     place = place,
-                    onIncludedChange = { onIncludedChange(place.id, it) }
+                    onIncludedChange = { onIncludedChange(place.id, it) },
+                    onRemove = { onRemove(place.id) }
                 )
             }
         }
         Button(
             onClick = onConfirm,
             modifier = Modifier.fillMaxWidth(),
-            enabled = includedCount > 0
+            enabled = includedCount > 0 && !isConfirming
         ) {
-            Text("Confirm itinerary", fontWeight = FontWeight.Bold)
+            if (isConfirming) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+                Spacer(Modifier.size(8.dp))
+            }
+            Text(if (isConfirming) "Optimising route..." else "Confirm and optimise", fontWeight = FontWeight.Bold)
         }
+        errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
         OutlinedButton(
             onClick = onImportAgain,
             modifier = Modifier.fillMaxWidth()
@@ -191,7 +220,8 @@ fun ReviewExtractedScreen(
 @Composable
 private fun ExtractedPlaceCard(
     place: ExtractedPlace,
-    onIncludedChange: (Boolean) -> Unit
+    onIncludedChange: (Boolean) -> Unit,
+    onRemove: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -223,22 +253,31 @@ private fun ExtractedPlaceCard(
             ) {
                 Text(place.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Text(
-                    "${place.category} · ${place.suggestedTime}",
+                    listOfNotNull(
+                        place.category.takeIf { it.isNotBlank() },
+                        place.activities.takeIf { it.isNotEmpty() }?.joinToString()
+                            ?: place.suggestedTime.takeIf { it.isNotBlank() }
+                    ).joinToString(" · "),
                     color = MaterialTheme.colorScheme.primary,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold
                 )
-                Text(
-                    place.address,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                    fontSize = 12.sp,
-                    lineHeight = 17.sp
-                )
+                if (place.address.isNotBlank()) {
+                    Text(
+                        place.address,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp
+                    )
+                }
             }
             Checkbox(
                 checked = place.isIncluded,
                 onCheckedChange = onIncludedChange
             )
+            IconButton(onClick = onRemove) {
+                Icon(Icons.Default.DeleteOutline, contentDescription = "Remove ${place.name}")
+            }
         }
     }
 }
