@@ -1,21 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useTrip } from '../context/TripContext';
 
 const ItineraryDetailPage = () => {
   const navigate = useNavigate();
-  const { id } = useParams();
-  const {
-    getTripById,
-    getActiveTrip,
-    setActiveTripId,
-    addDayToTrip,
-    updateTripTitle,
-    updateTripCover,
-    loadingTrips,
-  } = useTrip();
-
-  const trip = (id && getTripById(id)) || getActiveTrip();
+  const { getActiveTrip, addDayToTrip, updateTripTitle, updateTripCover } = useTrip();
+  const trip = getActiveTrip();
 
   const [selectedDay, setSelectedDay] = useState(1);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -25,16 +15,11 @@ const ItineraryDetailPage = () => {
   const fileInputRef = useRef(null);
 
   useEffect(() => {
-    if (id) setActiveTripId(id);
-  }, [id, setActiveTripId]);
-
-  useEffect(() => {
     if (trip) {
       setEditTitleValue(trip.title);
     }
   }, [trip]);
 
-  if (loadingTrips && !trip) return <div>Loading trip...</div>;
   if (!trip) return <div>Trip not found</div>;
 
   const handleAddDay = () => {
@@ -67,7 +52,7 @@ const ItineraryDetailPage = () => {
     fileInputRef.current.click();
   };
 
-  const dayLocations = (trip.locations || []).filter((loc) => loc.day === selectedDay);
+  const dayLocations = trip.locations.filter(loc => loc.day === selectedDay);
 
   return (
     <div className="route-page">

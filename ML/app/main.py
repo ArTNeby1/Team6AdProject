@@ -12,8 +12,10 @@ FastAPI 入口。两组接口：
     uvicorn main:app --reload --app-dir ML/app --port 8001
 启动后访问 http://127.0.0.1:8001/docs 能看到自动生成的交互式测试页面。
 
-要用 /extract-travel-info、/refine，本机需要先跑起来 Ollama（默认端口 11434），
-见 local_llm_client.py 顶部的说明。
+2周测试/展示窗口（2026-08-09~08-23）默认 EXTRACT_PROVIDER=RECOMMEND_PROVIDER=
+bedrock，走 AWS 不需要本机装 Ollama，但需要能访问 Bedrock 的 AWS 凭证（当前
+借用 gf-temp profile，见 CLAUDE.md）。显式设成 ollama 才需要本机跑起来 Ollama
+（默认端口 11434，见 local_llm_client.py 顶部说明）。
 
 ===========================================================================
 给后端联调用的 mock 模式（不需要 Ollama、不需要 AWS）
@@ -43,7 +45,7 @@ import sys
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 SCHEMA_DIR = Path(__file__).resolve().parent.parent / "schema"
 sys.path.insert(0, str(SCHEMA_DIR))  # trip_models.py 不在标准包路径下，手动加进搜索路径
@@ -57,11 +59,19 @@ from extraction import (  # noqa: E402
     parse_and_validate,
 )
 from local_llm_client import local_extract  # noqa: E402
-from orchestrator import run_extraction, run_recommendation  # noqa: E402
+from orchestrator import (  # noqa: E402
+    run_daily_itinerary,
+    run_extraction,
+    run_recommendation,
+)
 
 app = FastAPI(title="LoomyTrip Extract Service")#整个服务的"前台"本身
 
-EXTRACT_PROVIDER = os.environ.get("EXTRACT_PROVIDER", "ollama")
+# 2026-08-09~08-23（2周测试/展示窗口）默认切到 bedrock：Nova Lite 比本地 Ollama
+# 快 ~10x（1.6s vs 几十秒）、任务2选型测试里唯一 0 漏抽/0 编造，且这两周的调用量
+# 成本可忽略（远低于 $1）。仍可用 EXTRACT_PROVIDER=ollama / mock 显式切回。
+# 窗口结束后是否改回本地默认，需要重新评估。
+EXTRACT_PROVIDER = os.environ.get("EXTRACT_PROVIDER", "bedrock")
 if EXTRACT_PROVIDER == "bedrock":
     from bedrock_client import bedrock_extract  # noqa: E402
 
@@ -217,5 +227,55 @@ def recommend(request: RecommendRequest) -> dict:
         )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"recommendation failed: {e}")
+
+    return {"status": "OK", **result}
+
+
+class PlanItineraryRequest(BaseModel):
+    """
+    字段名对齐后端 `AiPlanningClient.generateDailyItinerary()`（目前还是 STUB）。
+    places 复用 /recommend 的形状，后端不用为这个接口另写一套 DTO。
+    """
+    places: list[RecommendPlaceIn]
+    start_date: str | None = None
+    num_days: int = Field(default=1, ge=1, le=30)
+
+
+@app.post("/plan-itinerary")
+def plan_itinerary(request: PlanItineraryRequest) -> dict:
+    """
+    F-09 按天生成行程：把用户确认的地点分到第 1/2/3 天，每天内部再排好顺序。
+
+    跟 /recommend 的分工（很容易混，这里说死）：
+      /recommend      -> **一天**之内怎么排 + 推荐用户没提过的新地点
+      /plan-itinerary -> **多天**怎么分，第 1 天去哪片区、第 2 天去哪片区。
+                         **不做推荐**，要推荐就另外调 /recommend。
+
+    怎么分天：先把所有地点按最近邻串成一条线路，再按天平均切段 —— 所以同一片
+    区域的地点会落在同一天，不会来回横跨全岛。每一天内部照样走
+    "下雨排室内、同时段按距离串线路"那套单天逻辑。
+
+    `start_date` 选填，理由跟 /recommend 的 `date` 一样（用户说话里经常没日期）：
+    - 传了 -> 每天各查各天的天气，按天气+距离排，返回每天的 `weather_summary`
+    - 没传 -> 跳过天气，只按距离排，`weather_summary` / `time_of_day` 都是 `null`
+
+    返回 `days` 数组，长度**永远等于 num_days**（某天没地点就是 `stops: []`），
+    前端可以直接按天渲染，不用自己补空缺的天。每天的 `order` 从 1 重新开始。
+    """
+    if not request.places:
+        raise HTTPException(status_code=400, detail="places must not be empty")
+
+    try:
+        result = run_daily_itinerary(
+            places=[p.model_dump() for p in request.places],
+            start_date=request.start_date,
+            num_days=request.num_days,
+        )
+    except ValueError as e:
+        # 参数传错了（日期格式、天数越界）是调用方的问题，用 400 而不是 502，
+        # 免得后端把"我传错了"误当成"AI 服务挂了"去排查。
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"itinerary planning failed: {e}")
 
     return {"status": "OK", **result}

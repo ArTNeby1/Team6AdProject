@@ -22,8 +22,9 @@ from content_recommender import recommend_from_dataset
 from local_llm_client import call_local_model
 
 # 这一步走本地 Ollama 还是 Bedrock，独立于其它两段，参考 main.py 里
-# EXTRACT_PROVIDER 的说明。默认 "ollama"，显式设 RECOMMEND_PROVIDER=bedrock 才切。
-RECOMMEND_PROVIDER = os.environ.get("RECOMMEND_PROVIDER", "ollama")
+# EXTRACT_PROVIDER 的说明。2周测试窗口默认 "bedrock"，显式设
+# RECOMMEND_PROVIDER=ollama / mock 才切走。
+RECOMMEND_PROVIDER = os.environ.get("RECOMMEND_PROVIDER", "bedrock")
 
 # 推荐这一步默认用哪个模型，独立于 EXTRACT_MODEL/FILTER_MODEL，同样是"多模型分工"的一环：
 # 推荐需要一点"发散 + 解释理由"的能力，可以换一个跟抽取阶段不同的模型试试效果。
