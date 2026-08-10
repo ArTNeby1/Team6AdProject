@@ -102,6 +102,15 @@ resource "aws_ecs_task_definition" "ml" {
           protocol      = "tcp"
         }
       ]
+      # 显式声明，不依赖 orchestrator.py/chat_filter.py 里的代码默认值：
+      # 容器镜像是 python:3.11-slim，没装 Ollama，FILTER_PROVIDER 如果落到
+      # 代码默认值 "ollama" 会在多轮聊天场景连不上本地模型。
+      # 临时切到 mock（排查 /recommend 线上不可用问题，恢复 Bedrock 前请改回）。
+      environment = [
+        { name = "EXTRACT_PROVIDER", value = "mock" },
+        { name = "RECOMMEND_PROVIDER", value = "mock" },
+        { name = "FILTER_PROVIDER", value = "mock" }
+      ]
       logConfiguration = {
         logDriver = "awslogs"
         options = {
