@@ -67,6 +67,15 @@ from orchestrator import (  # noqa: E402
 
 app = FastAPI(title="LoomyTrip Extract Service")#整个服务的"前台"本身
 
+
+@app.get("/health")
+def health() -> dict:
+    """ALB target group 探活用（terraform/alb.tf 里 ml 目标组 health_check.path = "/health"）。
+    之前只有占位版 app.py 有这个路由，main.py 一直没有——ECS 换上真实镜像后探活会
+    一直 404，服务永远起不来（见 backend_alignment_brief / PR #22 讨论）。"""
+    return {"status": "ok", "service": "loomytrip-ml"}
+
+
 # 2026-08-09~08-23（2周测试/展示窗口）默认切到 bedrock：Nova Lite 比本地 Ollama
 # 快 ~10x（1.6s vs 几十秒）、任务2选型测试里唯一 0 漏抽/0 编造，且这两周的调用量
 # 成本可忽略（远低于 $1）。仍可用 EXTRACT_PROVIDER=ollama / mock 显式切回。
