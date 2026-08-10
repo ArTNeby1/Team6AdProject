@@ -104,6 +104,19 @@ public class TripService {
     }
 
     /**
+     * Deletes a whole trip. {@code trip_day}/{@code trip_schedule}/{@code trip_transport}/
+     * {@code trip_preference} all cascade-delete via FK {@code ON DELETE CASCADE}; a
+     * {@code planning_session} that was confirmed into this trip keeps existing —
+     * {@code confirmed_trip_id} is {@code ON DELETE SET NULL}, not cascade — so deleting a
+     * trip never silently deletes someone's planning session history.
+     */
+    @Transactional
+    public void deleteTrip(Long tripId) {
+        Trip trip = loadOwnedTrip(tripId);
+        tripRepository.delete(trip);
+    }
+
+    /**
      * Partial update (🟠 gap closed): {@code status}/{@code coverImage} still need a schema
      * decision (no columns for them yet). {@code travelStyle}/{@code preferTransport} were
      * write-only until now — `trip_preference` got a row on create but nothing ever read it
