@@ -1,90 +1,94 @@
-import React, { useMemo } from 'react';
-import { useTrip } from '../context/TripContext';
+import React from 'react';
 
 const MapPage = () => {
-  const { getActiveTrip } = useTrip();
-  const trip = getActiveTrip();
-
-  // If no trip or no locations, show empty state
-  const locations = useMemo(() => {
-    return trip?.locations || [];
-  }, [trip]);
-
-  // Simple coordinate to SVG mapping (Normalizing lat/lng to a 0-800 scale for mock display)
-  const markers = useMemo(() => {
-    if (locations.length === 0) return [];
-
-    const lats = locations.map(l => l.lat).filter(l => l !== 0);
-    const lngs = locations.map(l => l.lng).filter(l => l !== 0);
-
-    const minLat = Math.min(...lats, 18.7);
-    const maxLat = Math.max(...lats, 18.8);
-    const minLng = Math.min(...lngs, 98.9);
-    const maxLng = Math.max(...lngs, 99.0);
-
-    return locations.map((loc, i) => {
-      // Linear mapping
-      const x = ((loc.lng - minLng) / (maxLng - minLng)) * 600 + 100;
-      const y = 600 - (((loc.lat - minLat) / (maxLat - minLat)) * 400 + 100);
-      return { ...loc, x, y };
-    });
-  }, [locations]);
-
   return (
     <div className="map-page">
       <header className="page-header" style={{marginBottom: '32px'}}>
-        <h1>Explore Map: {trip?.title || 'No Trip Selected'}</h1>
-        <p>Real-time coordinate visualization from backend data.</p>
+        <h1>Explore Map</h1>
+        <p>Visualize your itinerary routes and surrounding recommendations.</p>
       </header>
 
       <div className="map-container">
         <div className="map-view">
           <svg viewBox="0 0 800 600" style={{width: '100%', height: '100%', display: 'block', background: '#f0ede5'}}>
+            {/* Mock Map Background */}
             <path d="M0,100 L800,100 M0,300 L800,300 M0,500 L800,500 M200,0 L200,600 M400,0 L400,600 M600,0 L600,600" stroke="#e0d8c8" strokeWidth="1" />
+            <path d="M100,150 Q400,50 700,150 T700,450" fill="none" stroke="#e0d8c8" strokeWidth="40" strokeLinecap="round" opacity="0.5" />
 
-            {/* Dynamic Route Line */}
-            {markers.length > 1 && (
-              <polyline
-                points={markers.map(m => `${m.x},${m.y}`).join(' ')}
-                fill="none"
-                stroke="#0E9E8E"
-                strokeWidth="4"
-                strokeDasharray="10 5"
-              />
-            )}
+            {/* Route Line */}
+            <path d="M200,200 L350,250 L300,400" fill="none" stroke="#0E9E8E" strokeWidth="4" strokeDasharray="10 5" />
 
-            {/* Dynamic Markers */}
-            {markers.map((m, i) => (
-              <g key={i} transform={`translate(${m.x}, ${m.y})`}>
-                <circle r="12" fill={i === 0 ? "#F0A038" : "#0E9E8E"} />
-                <text y="-20" textAnchor="middle" style={{fontSize: '12px', fontWeight: 700}}>{m.name}</text>
-              </g>
-            ))}
+            {/* Markers */}
+            <g transform="translate(200, 200)">
+              <circle r="12" fill="#0E9E8E" />
+              <text y="30" textAnchor="middle" style={{fontSize: '14px', fontWeight: 700}}>Wat Chedi Luang</text>
+            </g>
+            <g transform="translate(350, 250)">
+              <circle r="12" fill="#0E9E8E" />
+              <text y="30" textAnchor="middle" style={{fontSize: '14px', fontWeight: 700}}>Wat Phra Singh</text>
+            </g>
+            <g transform="translate(300, 400)">
+              <circle r="12" fill="#F0A038" />
+              <text y="30" textAnchor="middle" style={{fontSize: '14px', fontWeight: 700}}>Lunch at Nimman Road</text>
+            </g>
           </svg>
+
+          <div className="map-controls">
+            <div className="control-group">
+              <button className="active">Route Order</button>
+              <button>Nearby Attractions</button>
+              <button>Traffic Heatmap</button>
+            </div>
+          </div>
         </div>
 
         <div className="map-sidebar">
-          <h3>{trip?.title}</h3>
+          <h3>Day 1 Trip Overview</h3>
           <div className="route-meta-web">
             <div className="meta-item">
-              <strong>{locations.length} sites</strong>
+              <strong>3 sites</strong>
               <span>Total Locations</span>
+            </div>
+            <div className="meta-item">
+              <strong>5.4km</strong>
+              <span>Estimated Distance</span>
+            </div>
+            <div className="meta-item">
+              <strong>45min</strong>
+              <span>Travel Time</span>
             </div>
           </div>
 
-          <div className="place-list-web" style={{marginTop: '32px', overflowY: 'auto', maxHeight: '400px'}}>
-            {locations.map((item, idx) => (
-              <div key={item.id} className="place-item-web">
-                <div className="num">{idx + 1}</div>
-                <div className="info">
-                  <h4>{item.name}</h4>
-                  <p>{item.time} | Lat: {item.lat.toFixed(4)}, Lng: {item.lng.toFixed(4)}</p>
-                </div>
+          <div className="place-list-web" style={{marginTop: '32px'}}>
+            <div className="place-item-web">
+              <div className="num">1</div>
+              <div className="info">
+                <h4>Wat Chedi Luang</h4>
+                <p>09:30 - 11:00</p>
               </div>
-            ))}
+            </div>
+            <div className="place-item-web">
+              <div className="num">2</div>
+              <div className="info">
+                <h4>Wat Phra Singh</h4>
+                <p>11:12 - 12:10</p>
+              </div>
+            </div>
+            <div className="place-item-web active">
+              <div className="num">3</div>
+              <div className="info">
+                <h4>Lunch at Nimman Road</h4>
+                <p>12:30 - 14:00</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="sidebar-action" style={{marginTop: 'auto', paddingTop: '40px'}}>
+            <button className="btn-primary" style={{width: '100%'}}>Sync to Phone Navigation</button>
           </div>
         </div>
       </div>
+
     </div>
   );
 };

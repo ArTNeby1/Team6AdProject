@@ -47,10 +47,10 @@ const ProfilePage = () => {
             fontSize: '48px', fontWeight: '900',
             boxShadow: 'var(--shadow)'
           }}>
-            {(user.username || user.email || 'T').charAt(0).toUpperCase()}
+            {user.username.charAt(0).toUpperCase()}
           </div>
           <div>
-            <h1 style={{ fontSize: '32px', marginBottom: '8px' }}>{user.username || user.email}</h1>
+            <h1 style={{ fontSize: '32px', marginBottom: '8px' }}>{user.username}</h1>
             <p style={{color: 'var(--muted)', fontSize: '16px'}}>
                ID: {user.email} | <span style={{ color: 'var(--jade-deep)', fontWeight: '600' }}>Travel Expert</span>
             </p>
