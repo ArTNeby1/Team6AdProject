@@ -9,19 +9,21 @@ const RegisterPage = () => {
   const [age, setAge] = useState('');
   const [gender, setGender] = useState('Male');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
   const { register } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
     setIsSubmitting(true);
 
     try {
       await register(username, email, password, parseInt(age), gender);
       navigate('/');
     } catch (err) {
-      console.error(err);
+      setError(err.message);
     } finally {
       setIsSubmitting(false);
     }
@@ -37,6 +39,8 @@ const RegisterPage = () => {
           </div>
 
           <form onSubmit={handleSubmit} className="auth-form">
+            {error && <div className="auth-error">{error}</div>}
+
             <div className="form-group">
               <label>Username</label>
               <input
@@ -91,7 +95,7 @@ const RegisterPage = () => {
               <label>Set Password</label>
               <input
                 type="password"
-                placeholder="At least 6 characters"
+                placeholder="At least 8 characters"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required

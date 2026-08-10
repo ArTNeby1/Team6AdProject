@@ -1,15 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useTrip } from '../context/TripContext';
 
 const ItineraryDetailPage = () => {
   const navigate = useNavigate();
   const { id } = useParams();
+  const routerLocation = useLocation();
   const {
     getTripById,
     getActiveTrip,
     setActiveTripId,
     addDayToTrip,
+    addLocationsToTripDay,
     updateTripTitle,
     updateTripCover,
     loadingTrips,
@@ -21,6 +23,26 @@ const ItineraryDetailPage = () => {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitleValue, setEditTitleValue] = useState('');
   const [showImageModal, setShowImageModal] = useState(false);
+
+  // F-18: nearby/similar place suggestions from the AI /recommend agent, handed off from
+  // ImportPage's confirm step via navigation state. Backend doesn't persist these, so a
+  // page refresh loses them — that matches the backend's "ephemeral suggestion" design.
+  const [suggestions, setSuggestions] = useState(routerLocation.state?.suggestedAdditions || []);
+  const weatherSummary = routerLocation.state?.weatherSummary;
+  const [addingSuggestion, setAddingSuggestion] = useState(null);
+
+  const handleAddSuggestion = async (suggestion) => {
+    if (!trip) return;
+    setAddingSuggestion(suggestion.name);
+    try {
+      await addLocationsToTripDay(trip.id, selectedDay, [suggestion.name]);
+      setSuggestions(prev => prev.filter(s => s.name !== suggestion.name));
+    } catch {
+      alert('Failed to add place. Please try again.');
+    } finally {
+      setAddingSuggestion(null);
+    }
+  };
 
   const fileInputRef = useRef(null);
 
@@ -229,6 +251,39 @@ const ItineraryDetailPage = () => {
               ))}
             </div>
           </div>
+
+          {/* F-18: AI-recommended nearby/similar places, offered once right after confirm */}
+          {suggestions.length > 0 && (
+            <div className="info-card" style={{ marginTop: '20px' }}>
+              <h3>Recommended Nearby Places</h3>
+              {weatherSummary && (
+                <p style={{ color: 'var(--muted)', fontSize: '13px', marginTop: '4px' }}>{weatherSummary}</p>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
+                {suggestions.map((s) => (
+                  <div key={s.name} style={{ border: '1px solid var(--line-soft)', borderRadius: '12px', padding: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                      <div>
+                        <strong>{s.name}</strong>
+                        {s.distanceKm != null && (
+                          <span style={{ color: 'var(--muted)', fontSize: '13px' }}> · {s.distanceKm.toFixed(1)}km away</span>
+                        )}
+                      </div>
+                      <button
+                        className="btn-secondary"
+                        style={{ padding: '4px 12px', fontSize: '13px', whiteSpace: 'nowrap' }}
+                        onClick={() => handleAddSuggestion(s)}
+                        disabled={addingSuggestion === s.name}
+                      >
+                        {addingSuggestion === s.name ? 'Adding...' : '+ Add'}
+                      </button>
+                    </div>
+                    {s.reason && <p style={{ fontSize: '13px', color: 'var(--muted)', marginTop: '6px' }}>{s.reason}</p>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="itinerary-main">
