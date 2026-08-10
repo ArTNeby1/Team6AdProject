@@ -63,8 +63,7 @@ public class TripService {
     public List<TripSummaryResponse> listMyTrips() {
         User user = currentUser();
         return tripRepository.findByUser_IdOrderByUpdatedAtDesc(user.getId()).stream()
-                .map(trip -> entityMapper.toTripSummary(trip, tripScheduleRepository
-                        .findByTripDay_Trip_IdOrderByTripDay_DaySequenceAscSequenceAsc(trip.getId())))
+                .map(this::toSummary)
                 .toList();
     }
 
@@ -96,20 +95,19 @@ public class TripService {
             tripPreferenceRepository.save(preference);
         }
 
-        return entityMapper.toTripSummary(saved, List.of());
+        return toSummary(saved);
     }
 
     @Transactional(readOnly = true)
     public TripSummaryResponse getTrip(Long tripId) {
-        Trip trip = loadOwnedTrip(tripId);
-        return entityMapper.toTripSummary(trip, tripScheduleRepository
-                .findByTripDay_Trip_IdOrderByTripDay_DaySequenceAscSequenceAsc(tripId));
+        return toSummary(loadOwnedTrip(tripId));
     }
 
     /**
-     * Partial update (🟠 gap closed): only {@code tripName}/{@code startDate}/
-     * {@code durationDays} are supported today — {@code status} and {@code coverImage}
-     * need a schema decision first (no columns for them yet), see UpdateTripRequest.
+     * Partial update (🟠 gap closed): {@code status}/{@code coverImage} still need a schema
+     * decision (no columns for them yet). {@code travelStyle}/{@code preferTransport} were
+     * write-only until now — `trip_preference` got a row on create but nothing ever read it
+     * back (no field on TripSummaryResponse), so it could never actually display.
      */
     @Transactional
     public TripSummaryResponse updateTrip(Long tripId, UpdateTripRequest request) {
@@ -127,8 +125,23 @@ public class TripService {
         }
         Trip saved = tripRepository.save(trip);
 
-        return entityMapper.toTripSummary(saved, tripScheduleRepository
-                .findByTripDay_Trip_IdOrderByTripDay_DaySequenceAscSequenceAsc(tripId));
+        if (request.travelStyle() != null || request.preferTransport() != null) {
+            TripPreference preference = tripPreferenceRepository.findByTrip_Id(tripId)
+                    .orElseGet(() -> {
+                        TripPreference p = new TripPreference();
+                        p.setTrip(saved);
+                        return p;
+                    });
+            if (request.travelStyle() != null) {
+                preference.setTravelStyle(request.travelStyle());
+            }
+            if (request.preferTransport() != null) {
+                preference.setPreferTransport(request.preferTransport());
+            }
+            tripPreferenceRepository.save(preference);
+        }
+
+        return toSummary(saved);
     }
 
     /**
@@ -160,8 +173,7 @@ public class TripService {
             tripScheduleRepository.save(schedule);
         }
 
-        return entityMapper.toTripSummary(trip, tripScheduleRepository
-                .findByTripDay_Trip_IdOrderByTripDay_DaySequenceAscSequenceAsc(tripId));
+        return toSummary(trip);
     }
 
     /**
@@ -213,8 +225,27 @@ public class TripService {
         }
         tripScheduleRepository.saveAllAndFlush(schedules);
 
-        return entityMapper.toTripSummary(trip, tripScheduleRepository
-                .findByTripDay_Trip_IdOrderByTripDay_DaySequenceAscSequenceAsc(tripId));
+        return toSummary(trip);
+    }
+
+    /**
+     * 🔴 gap closed: EditPage.jsx's "Delete" button on a location only ever removed it from
+     * local draft state — Save then called bulkUpdateSchedules with the remaining schedules,
+     * but that endpoint only reorders/moves schedules whose ids are present in the request, it
+     * never deletes ones that are missing. There was no endpoint at all for removing a single
+     * schedule, so a deleted location always reappeared on the next fetch. See saveTripEdits
+     * in TripContext.jsx, which now diffs old vs. new location ids and calls this per removal.
+     */
+    @Transactional
+    public TripSummaryResponse deleteSchedule(Long tripId, Long scheduleId) {
+        Trip trip = loadOwnedTrip(tripId);
+        TripSchedule schedule = tripScheduleRepository.findById(scheduleId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "SCHEDULE_NOT_FOUND", "Schedule not found: " + scheduleId));
+        if (!schedule.getTripDay().getTrip().getId().equals(tripId)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN", "Schedule does not belong to this trip");
+        }
+        tripScheduleRepository.delete(schedule);
+        return toSummary(trip);
     }
 
     /**
@@ -227,6 +258,13 @@ public class TripService {
                 "NOT_IMPLEMENTED",
                 "Itinerary generation will call AiPlanningClient in a later iteration"
         );
+    }
+
+    private TripSummaryResponse toSummary(Trip trip) {
+        TripPreference preference = tripPreferenceRepository.findByTrip_Id(trip.getId()).orElse(null);
+        List<TripSchedule> schedules = tripScheduleRepository
+                .findByTripDay_Trip_IdOrderByTripDay_DaySequenceAscSequenceAsc(trip.getId());
+        return entityMapper.toTripSummary(trip, preference, schedules);
     }
 
     /** Grows or shrinks the trip's `trip_day` rows to match a new duration. Shrinking

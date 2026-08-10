@@ -1,11 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useTrip } from '../context/TripContext';
 
 const ItineraryDetailPage = () => {
   const navigate = useNavigate();
-  const { getActiveTrip, addDayToTrip, updateTripTitle, updateTripCover } = useTrip();
-  const trip = getActiveTrip();
+  const { id } = useParams();
+  const {
+    getTripById,
+    getActiveTrip,
+    setActiveTripId,
+    addDayToTrip,
+    updateTripTitle,
+    updateTripCover,
+    loadingTrips,
+  } = useTrip();
+
+  const trip = (id && getTripById(id)) || getActiveTrip();
 
   const [selectedDay, setSelectedDay] = useState(1);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -15,11 +25,16 @@ const ItineraryDetailPage = () => {
   const fileInputRef = useRef(null);
 
   useEffect(() => {
+    if (id) setActiveTripId(id);
+  }, [id, setActiveTripId]);
+
+  useEffect(() => {
     if (trip) {
       setEditTitleValue(trip.title);
     }
   }, [trip]);
 
+  if (loadingTrips && !trip) return <div>Loading trip...</div>;
   if (!trip) return <div>Trip not found</div>;
 
   const handleAddDay = () => {
@@ -171,6 +186,21 @@ const ItineraryDetailPage = () => {
                 <div className="stat-val">{trip.locations.length} sites</div>
               </div>
             </div>
+
+            {(trip.travelStyle || trip.preferTransport) && (
+              <div style={{ display: 'flex', gap: '8px', marginTop: '16px', flexWrap: 'wrap' }}>
+                {trip.travelStyle && (
+                  <span style={{ padding: '4px 12px', background: 'var(--mint)', borderRadius: '8px', fontSize: '13px', color: 'var(--jade-deep)', fontWeight: 'bold' }}>
+                    {trip.travelStyle}
+                  </span>
+                )}
+                {trip.preferTransport && (
+                  <span style={{ padding: '4px 12px', background: 'var(--mint)', borderRadius: '8px', fontSize: '13px', color: 'var(--jade-deep)', fontWeight: 'bold' }}>
+                    {trip.preferTransport}
+                  </span>
+                )}
+              </div>
+            )}
 
             <div className="day-tabs" style={{marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '8px'}}>
               {Array.from({ length: trip.dayCount || 1 }).map((_, i) => (

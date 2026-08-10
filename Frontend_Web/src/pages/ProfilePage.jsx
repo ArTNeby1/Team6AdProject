@@ -21,10 +21,14 @@ const ProfilePage = () => {
     }
   };
 
-  const handleSavePreferences = () => {
-    updatePreferences(travelStyle, preferTransport);
-    setShowSettings(false);
-    alert('Preferences saved');
+  const handleSavePreferences = async () => {
+    try {
+      await updatePreferences(travelStyle, preferTransport);
+      setShowSettings(false);
+      alert('Preferences saved');
+    } catch (error) {
+      alert(error.response?.data?.message || 'Failed to save preferences, please try again');
+    }
   };
 
   const handleMenuClick = (title) => {
@@ -47,10 +51,10 @@ const ProfilePage = () => {
             fontSize: '48px', fontWeight: '900',
             boxShadow: 'var(--shadow)'
           }}>
-            {user.username.charAt(0).toUpperCase()}
+            {(user.username || user.email || 'T').charAt(0).toUpperCase()}
           </div>
           <div>
-            <h1 style={{ fontSize: '32px', marginBottom: '8px' }}>{user.username}</h1>
+            <h1 style={{ fontSize: '32px', marginBottom: '8px' }}>{user.username || user.email}</h1>
             <p style={{color: 'var(--muted)', fontSize: '16px'}}>
                ID: {user.email} | <span style={{ color: 'var(--jade-deep)', fontWeight: '600' }}>Travel Expert</span>
             </p>
@@ -69,15 +73,15 @@ const ProfilePage = () => {
           display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '24px',
           marginBottom: '48px'
         }}>
-          <div className="info-card" style={{textAlign: 'center', padding: '24px'}}>
+          <div className="info-card" style={{textAlign: 'center', padding: '24px', cursor: 'pointer'}} onClick={() => navigate('/route')}>
             <div style={{fontSize: '32px', fontWeight: '900', color: 'var(--ink)'}}>{trips.length}</div>
             <div style={{fontSize: '14px', color: 'var(--muted)', marginTop: '4px', fontWeight: '600'}}>Trips</div>
           </div>
-          <div className="info-card" style={{textAlign: 'center', padding: '24px'}}>
+          <div className="info-card" style={{textAlign: 'center', padding: '24px', cursor: 'pointer'}} onClick={() => handleMenuClick('Favorites')}>
             <div style={{fontSize: '32px', fontWeight: '900', color: 'var(--ink)'}}>45</div>
             <div style={{fontSize: '14px', color: 'var(--muted)', marginTop: '4px', fontWeight: '600'}}>Favorites</div>
           </div>
-          <div className="info-card" style={{textAlign: 'center', padding: '24px'}}>
+          <div className="info-card" style={{textAlign: 'center', padding: '24px', cursor: 'pointer'}} onClick={() => handleMenuClick('Footprints')}>
             <div style={{fontSize: '32px', fontWeight: '900', color: 'var(--ink)'}}>8</div>
             <div style={{fontSize: '14px', color: 'var(--muted)', marginTop: '4px', fontWeight: '600'}}>Footprints</div>
           </div>
