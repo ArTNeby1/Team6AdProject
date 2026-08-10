@@ -25,9 +25,9 @@ const Header = () => {
             <>
               <div className="user-info" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--jade)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '14px' }}>
-                  {user.username.charAt(0)}
+                  {(user.username || user.email || '?').charAt(0).toUpperCase()}
                 </div>
-                <span style={{ fontWeight: '600', color: 'var(--ink)' }}>{user.username}</span>
+                <span style={{ fontWeight: '600', color: 'var(--ink)' }}>{user.username || user.email}</span>
               </div>
               <button className="btn-secondary" style={{ padding: '6px 16px', fontSize: '13px' }} onClick={logout}>Logout</button>
               <button className="btn-primary" onClick={() => navigate('/import')}>Start Planning</button>

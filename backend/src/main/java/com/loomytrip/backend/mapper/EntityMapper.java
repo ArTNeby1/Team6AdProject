@@ -12,6 +12,7 @@ import com.loomytrip.backend.entity.DraftActivity;
 import com.loomytrip.backend.entity.DraftPlace;
 import com.loomytrip.backend.entity.PlanningSession;
 import com.loomytrip.backend.entity.Trip;
+import com.loomytrip.backend.entity.TripPreference;
 import com.loomytrip.backend.entity.TripSchedule;
 import java.time.LocalDate;
 import java.util.List;
@@ -21,7 +22,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class EntityMapper {
 
-    public TripSummaryResponse toTripSummary(Trip trip, List<TripSchedule> schedules) {
+    public TripSummaryResponse toTripSummary(Trip trip, TripPreference preference, List<TripSchedule> schedules) {
         return new TripSummaryResponse(
                 trip.getId(),
                 trip.getTripName(),
@@ -29,6 +30,8 @@ public class EntityMapper {
                 trip.getDurationDays(),
                 trip.getUpdatedAt(),
                 deriveTripStatus(trip),
+                preference == null ? null : preference.getTravelStyle(),
+                preference == null ? null : preference.getPreferTransport(),
                 schedules.stream().map(this::toTripSchedule).toList()
         );
     }

@@ -13,6 +13,7 @@ const EditPage = () => {
   const [localDayCount, setLocalDayCount] = useState(1);
   const [manualAddDay, setManualAddDay] = useState(null);
   const [manualName, setManualAddName] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   // Initial Sort helper
   const sortByTime = (items) => {
@@ -152,10 +153,20 @@ const EditPage = () => {
     setManualAddDay(null);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const sortedLocations = sortByTime(localLocations);
-    saveTripEdits(trip.id, sortedLocations, localDayCount);
-    navigate(`/itinerary/${trip.id}`);
+    setIsSaving(true);
+    try {
+      // saveTripEdits rethrows on failure — must await it before navigating away, otherwise
+      // this was firing the request and immediately leaving the page regardless of outcome,
+      // silently discarding the edits whenever the reorder request failed.
+      await saveTripEdits(trip.id, sortedLocations, localDayCount);
+      navigate(`/itinerary/${trip.id}`);
+    } catch (error) {
+      alert(error.response?.data?.message || 'Failed to save changes, please try again');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleReset = () => {
@@ -186,7 +197,7 @@ const EditPage = () => {
         </div>
         <div className="header-actions" style={{display: 'flex', gap: '12px'}}>
           <button className="btn-secondary" onClick={handleReset}>Reset Changes</button>
-          <button className="btn-primary" onClick={handleSave}>Save Changes</button>
+          <button className="btn-primary" onClick={handleSave} disabled={isSaving}>{isSaving ? 'Saving...' : 'Save Changes'}</button>
         </div>
       </header>
 

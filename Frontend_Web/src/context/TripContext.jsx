@@ -11,6 +11,7 @@ export const TripProvider = ({ children }) => {
   const [trips, setTrips] = useState([]);
   const [activeTripId, setActiveTripId] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (user) {
@@ -23,6 +24,7 @@ export const TripProvider = ({ children }) => {
 
   const fetchTrips = async () => {
     setLoading(true);
+    setError(null);
     try {
       const response = await api.get('/trips');
       const mappedTrips = response.data.map(t => ({
@@ -34,6 +36,8 @@ export const TripProvider = ({ children }) => {
         shortName: t.tripName.substring(0, 2).toUpperCase(),
         dayCount: t.durationDays || 1,
         coverImage: t.coverImage,
+        travelStyle: t.travelStyle,
+        preferTransport: t.preferTransport,
         locations: t.schedules ? t.schedules.map(s => ({
           id: s.id.toString(),
           name: s.destination.name,
@@ -50,14 +54,16 @@ export const TripProvider = ({ children }) => {
       if (mappedTrips.length > 0 && !activeTripId) {
         setActiveTripId(mappedTrips[0].id);
       }
-    } catch (error) {
-      console.error('Failed to fetch trips:', error);
+    } catch (err) {
+      console.error('Failed to fetch trips:', err);
+      setError(err.message || 'Failed to load trips');
     } finally {
       setLoading(false);
     }
   };
 
   const getActiveTrip = () => trips.find(t => t.id === activeTripId) || trips[0];
+  const getTripById = (id) => trips.find(t => t.id === id?.toString());
 
   const createNewTrip = async (locationNames, preferences = {}) => {
     try {
@@ -111,21 +117,48 @@ export const TripProvider = ({ children }) => {
       await fetchTrips();
     } catch (error) {
       console.error('Failed to add locations:', error);
+      throw error;
     }
   };
 
   const saveTripEdits = async (tripId, newLocations, newDayCount) => {
     try {
-      // In a full sync, you might call multiple endpoints or a bulk update
-      // For now, updating the metadata
       await api.put(`/trips/${tripId}`, { durationDays: newDayCount });
 
-      // Ideally, a specialized bulk schedule update endpoint would be called here
-      // await api.put(`/trips/${tripId}/schedules/bulk`, { schedules: newLocations });
+      // EditPage.jsx's "Delete" only drops the item from local draft state — the schedule
+      // still exists in the DB until we explicitly delete it here. bulkUpdateSchedules only
+      // reorders/moves schedules whose ids are IN the request, it was never told to remove
+      // ones that are missing, so deleted locations kept reappearing after Save.
+      const originalTrip = trips.find(t => t.id === tripId);
+      const newIds = new Set(newLocations.map(loc => loc.id?.toString()));
+      const removedIds = (originalTrip?.locations || [])
+        .map(loc => loc.id?.toString())
+        .filter(id => id && !newIds.has(id) && !id.startsWith('manual-'));
+      for (const id of removedIds) {
+        await api.delete(`/trips/${tripId}/schedules/${id}`);
+      }
+
+      // Reassign sequence per day, in array order, so drag-and-drop reordering from
+      // EditPage.jsx actually survives a refresh instead of only updating durationDays.
+      // Manually-added locations (id starts with "manual-") aren't real schedules yet, so
+      // they're excluded here too — persisting new items is a separate gap.
+      const scheduleByDay = {};
+      newLocations
+        .filter(loc => !loc.id?.toString().startsWith('manual-'))
+        .forEach((loc) => {
+          (scheduleByDay[loc.day] ||= []).push(loc);
+        });
+      const schedules = Object.entries(scheduleByDay).flatMap(([day, locs]) =>
+        locs.map((loc, idx) => ({ id: parseInt(loc.id, 10), day: parseInt(day, 10), sequence: idx + 1 }))
+      );
+      if (schedules.length > 0) {
+        await api.put(`/trips/${tripId}/schedules/bulk`, { schedules });
+      }
 
       await fetchTrips();
     } catch (error) {
       console.error('Failed to save edits:', error);
+      throw error;
     }
   };
 
@@ -157,6 +190,7 @@ export const TripProvider = ({ children }) => {
       activeTripId,
       setActiveTripId,
       getActiveTrip,
+      getTripById,
       addDayToTrip,
       createNewTrip,
       updateTripTitle,
@@ -165,7 +199,10 @@ export const TripProvider = ({ children }) => {
       fetchAttractionData,
       saveTripEdits,
       loading,
-      fetchTrips
+      loadingTrips: loading,
+      tripsError: error,
+      fetchTrips,
+      refreshTrips: fetchTrips
     }}>
       {children}
     </TripContext.Provider>

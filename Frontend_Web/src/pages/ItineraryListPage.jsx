@@ -1,14 +1,32 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTrip } from '../context/TripContext';
+import { useAuth } from '../context/AuthContext';
 
 const ItineraryListPage = () => {
   const navigate = useNavigate();
-  const { trips, setActiveTripId } = useTrip();
+  const { user } = useAuth();
+  const { trips, setActiveTripId, createNewTrip, loadingTrips, tripsError, refreshTrips } = useTrip();
+  const [creating, setCreating] = useState(false);
 
   const handleTripClick = (id) => {
     setActiveTripId(id);
     navigate(`/itinerary/${id}`);
+  };
+
+  const handleCreateTrip = async () => {
+    setCreating(true);
+    try {
+      const id = await createNewTrip([], {
+        travelStyle: user?.travelStyle || 'Cultural',
+        preferTransport: user?.preferTransport || 'Public',
+      });
+      navigate(`/itinerary/${id}`);
+    } catch (err) {
+      alert(err.message || 'Failed to create trip');
+    } finally {
+      setCreating(false);
+    }
   };
 
   const activeTrips = trips.filter(t => t.status === 'ACTIVE');
@@ -17,9 +35,27 @@ const ItineraryListPage = () => {
 
   return (
     <div className="itinerary-list-page">
-      <header className="page-header">
+      <header className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1>My Itineraries</h1>
+        <button type="button" className="btn-primary" onClick={handleCreateTrip} disabled={creating}>
+          {creating ? 'Creating...' : '+ New Trip'}
+        </button>
       </header>
+
+      {loadingTrips && <p style={{ color: 'var(--muted)' }}>Loading trips...</p>}
+      {tripsError && (
+        <p style={{ color: '#b42318' }}>
+          {tripsError}{' '}
+          <button type="button" className="btn-secondary" onClick={() => refreshTrips().catch(() => {})}>
+            Retry
+          </button>
+        </p>
+      )}
+      {!loadingTrips && !tripsError && trips.length === 0 && (
+        <p style={{ color: 'var(--muted)', marginBottom: '24px' }}>
+          No trips yet. Create one or start from Smart Planning.
+        </p>
+      )}
 
       <div className="itinerary-grid">
         {/* ACTIVE SECTION */}
@@ -35,7 +71,7 @@ const ItineraryListPage = () => {
                   {trip.coverImage ? (
                     <img src={trip.coverImage} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   ) : (
-                    trip.shortName.split(' ').map((word, i) => (
+                    String(trip.shortName || 'T').split(' ').map((word, i) => (
                       <div key={i}>{word}</div>
                     ))
                   )}

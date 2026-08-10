@@ -9,6 +9,7 @@ import com.loomytrip.backend.service.TripService;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -58,6 +59,11 @@ public class TripController {
     @PutMapping("/{tripId}/schedules/bulk")
     public TripSummaryResponse bulkUpdateSchedules(@PathVariable Long tripId, @Valid @RequestBody BulkUpdateSchedulesRequest request) {
         return tripService.bulkUpdateSchedules(tripId, request);
+    }
+
+    @DeleteMapping("/{tripId}/schedules/{scheduleId}")
+    public TripSummaryResponse deleteSchedule(@PathVariable Long tripId, @PathVariable Long scheduleId) {
+        return tripService.deleteSchedule(tripId, scheduleId);
     }
 
     @PostMapping("/{tripId}/generate")

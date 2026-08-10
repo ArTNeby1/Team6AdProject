@@ -13,6 +13,8 @@ import java.time.LocalDate;
 public record UpdateTripRequest(
         String tripName,
         LocalDate startDate,
-        Integer durationDays
+        Integer durationDays,
+        String travelStyle,
+        String preferTransport
 ) {
 }

@@ -13,6 +13,9 @@ public record TripSummaryResponse(
         /** Derived from today vs. startDate/startDate+durationDays — not a stored column
          * (no explicit "mark as finished" support; see NOT_STARTED/ACTIVE/FINISHED). */
         String status,
+        /** From `trip_preference` — null if the trip has none set. */
+        String travelStyle,
+        String preferTransport,
         List<TripScheduleResponse> schedules
 ) {
 }

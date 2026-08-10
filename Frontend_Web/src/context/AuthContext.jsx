@@ -20,9 +20,9 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     try {
       const response = await api.post('/auth/login', { email, password });
-      const { accessToken, userId, username, email: userEmail } = response.data;
+      const { accessToken, userId, username, email: userEmail, travelStyle, preferTransport } = response.data;
 
-      const userData = { id: userId, username, email: userEmail };
+      const userData = { id: userId, username, email: userEmail, travelStyle, preferTransport };
 
       // Save to local storage
       localStorage.setItem('loomytrip_token', accessToken);
@@ -45,9 +45,9 @@ export const AuthProvider = ({ children }) => {
         age,
         gender
       });
-      const { accessToken, userId, username: userN, email: userEmail } = response.data;
+      const { accessToken, userId, username: userN, email: userEmail, travelStyle, preferTransport } = response.data;
 
-      const userData = { id: userId, username: userN, email: userEmail };
+      const userData = { id: userId, username: userN, email: userEmail, travelStyle, preferTransport };
 
       localStorage.setItem('loomytrip_token', accessToken);
       localStorage.setItem('loomytrip_user', JSON.stringify(userData));
@@ -60,14 +60,15 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Persists to `users.travel_style` / `users.prefer_transport` via PUT /users/me/preferences
+  // (was previously local-only, so it never survived a re-login or another device). Errors are
+  // NOT swallowed here — callers (ProfilePage) need to know a save actually failed.
   const updatePreferences = async (travelStyle, preferTransport) => {
-    try {
-      const updatedUser = { ...user, travelStyle, preferTransport };
-      setUser(updatedUser);
-      localStorage.setItem('loomytrip_user', JSON.stringify(updatedUser));
-    } catch (error) {
-      console.error('Failed to sync preferences:', error);
-    }
+    const response = await api.put('/users/me/preferences', { travelStyle, preferTransport });
+    const updatedUser = { ...user, travelStyle: response.data.travelStyle, preferTransport: response.data.preferTransport };
+    setUser(updatedUser);
+    localStorage.setItem('loomytrip_user', JSON.stringify(updatedUser));
+    return updatedUser;
   };
 
   const logout = () => {
