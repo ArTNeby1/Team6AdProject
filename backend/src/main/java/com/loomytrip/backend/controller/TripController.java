@@ -50,6 +50,12 @@ public class TripController {
         return tripService.updateTrip(tripId, request);
     }
 
+    @DeleteMapping("/{tripId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteTrip(@PathVariable Long tripId) {
+        tripService.deleteTrip(tripId);
+    }
+
     @PostMapping("/{tripId}/schedules")
     @ResponseStatus(HttpStatus.CREATED)
     public TripSummaryResponse addSchedules(@PathVariable Long tripId, @Valid @RequestBody AddTripScheduleRequest request) {
