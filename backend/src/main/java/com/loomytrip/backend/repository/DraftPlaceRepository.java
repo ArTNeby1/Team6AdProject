@@ -6,4 +6,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface DraftPlaceRepository extends JpaRepository<DraftPlace, Long> {
     List<DraftPlace> findBySession_Id(Long sessionId);
+
+    void deleteBySession_Id(Long sessionId);
 }

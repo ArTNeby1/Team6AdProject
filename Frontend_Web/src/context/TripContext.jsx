@@ -1,0 +1,210 @@
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import api from '../services/api';
+import { useAuth } from './AuthContext';
+
+const TripContext = createContext();
+
+export const useTrip = () => useContext(TripContext);
+
+export const TripProvider = ({ children }) => {
+  const { user } = useAuth();
+  const [trips, setTrips] = useState([]);
+  const [activeTripId, setActiveTripId] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (user) {
+      fetchTrips();
+    } else {
+      setTrips([]);
+      setActiveTripId(null);
+    }
+  }, [user]);
+
+  const fetchTrips = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await api.get('/trips');
+      const mappedTrips = response.data.map(t => ({
+        id: t.id.toString(),
+        title: t.tripName,
+        date: t.startDate || 'TBD',
+        status: t.status || 'NOT_STARTED',
+        progress: 0,
+        shortName: t.tripName.substring(0, 2).toUpperCase(),
+        dayCount: t.durationDays || 1,
+        coverImage: t.coverImage,
+        travelStyle: t.travelStyle,
+        preferTransport: t.preferTransport,
+        locations: t.schedules ? t.schedules.map(s => ({
+          id: s.id.toString(),
+          name: s.destination.name,
+          day: s.tripDay?.daySequence || 1,
+          time: s.startTime || '09:00',
+          activityType: s.activityType || 'Visit',
+          duration: s.plannedDurationMinutes ? (s.plannedDurationMinutes / 60).toFixed(1) : '1.5',
+          transport: '🚕 TBD',
+          lat: s.destination.latitude,
+          lng: s.destination.longitude
+        })) : []
+      }));
+      setTrips(mappedTrips);
+      if (mappedTrips.length > 0 && !activeTripId) {
+        setActiveTripId(mappedTrips[0].id);
+      }
+    } catch (err) {
+      console.error('Failed to fetch trips:', err);
+      setError(err.message || 'Failed to load trips');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getActiveTrip = () => trips.find(t => t.id === activeTripId) || trips[0];
+  const getTripById = (id) => trips.find(t => t.id === id?.toString());
+
+  const createNewTrip = async (locationNames, preferences = {}) => {
+    try {
+      const response = await api.post('/trips', {
+        tripName: 'New Trip',
+        startDate: new Date().toISOString().split('T')[0],
+        durationDays: 1,
+        travelStyle: preferences.travelStyle,
+        preferTransport: preferences.preferTransport
+      });
+
+      const newTripId = response.data.id.toString();
+
+      if (locationNames && locationNames.length > 0) {
+        await addLocationsToTripDay(newTripId, 1, locationNames);
+      }
+
+      await fetchTrips();
+      setActiveTripId(newTripId);
+      return newTripId;
+    } catch (error) {
+      console.error('Failed to create trip:', error);
+      throw error;
+    }
+  };
+
+  const updateTripTitle = async (tripId, newTitle) => {
+    try {
+      await api.put(`/trips/${tripId}`, { tripName: newTitle });
+      setTrips(prev => prev.map(t => t.id === tripId ? { ...t, title: newTitle } : t));
+    } catch (error) {
+      console.error('Failed to update title:', error);
+    }
+  };
+
+  const updateTripCover = async (tripId, imageUrl) => {
+    try {
+      await api.put(`/trips/${tripId}`, { coverImage: imageUrl });
+      setTrips(prev => prev.map(t => t.id === tripId ? { ...t, coverImage: imageUrl } : t));
+    } catch (error) {
+      console.error('Failed to update cover:', error);
+    }
+  };
+
+  const addLocationsToTripDay = async (tripId, day, locationNames) => {
+    try {
+      await api.post(`/trips/${tripId}/schedules`, {
+        day: parseInt(day),
+        locationNames
+      });
+      await fetchTrips();
+    } catch (error) {
+      console.error('Failed to add locations:', error);
+      throw error;
+    }
+  };
+
+  const saveTripEdits = async (tripId, newLocations, newDayCount) => {
+    try {
+      await api.put(`/trips/${tripId}`, { durationDays: newDayCount });
+
+      // EditPage.jsx's "Delete" only drops the item from local draft state — the schedule
+      // still exists in the DB until we explicitly delete it here. bulkUpdateSchedules only
+      // reorders/moves schedules whose ids are IN the request, it was never told to remove
+      // ones that are missing, so deleted locations kept reappearing after Save.
+      const originalTrip = trips.find(t => t.id === tripId);
+      const newIds = new Set(newLocations.map(loc => loc.id?.toString()));
+      const removedIds = (originalTrip?.locations || [])
+        .map(loc => loc.id?.toString())
+        .filter(id => id && !newIds.has(id) && !id.startsWith('manual-'));
+      for (const id of removedIds) {
+        await api.delete(`/trips/${tripId}/schedules/${id}`);
+      }
+
+      // Reassign sequence per day, in array order, so drag-and-drop reordering from
+      // EditPage.jsx actually survives a refresh instead of only updating durationDays.
+      // Manually-added locations (id starts with "manual-") aren't real schedules yet, so
+      // they're excluded here too — persisting new items is a separate gap.
+      const scheduleByDay = {};
+      newLocations
+        .filter(loc => !loc.id?.toString().startsWith('manual-'))
+        .forEach((loc) => {
+          (scheduleByDay[loc.day] ||= []).push(loc);
+        });
+      const schedules = Object.entries(scheduleByDay).flatMap(([day, locs]) =>
+        locs.map((loc, idx) => ({ id: parseInt(loc.id, 10), day: parseInt(day, 10), sequence: idx + 1 }))
+      );
+      if (schedules.length > 0) {
+        await api.put(`/trips/${tripId}/schedules/bulk`, { schedules });
+      }
+
+      await fetchTrips();
+    } catch (error) {
+      console.error('Failed to save edits:', error);
+      throw error;
+    }
+  };
+
+  const addDayToTrip = async (tripId) => {
+    const trip = trips.find(t => t.id === tripId);
+    if (!trip) return;
+    const newDayCount = trip.dayCount + 1;
+    try {
+      await api.put(`/trips/${tripId}`, { durationDays: newDayCount });
+      await fetchTrips();
+    } catch (error) {
+      console.error('Failed to add day:', error);
+    }
+  };
+
+  const fetchAttractionData = async (name) => {
+    try {
+      const response = await api.get(`/destinations?q=${encodeURIComponent(name)}`);
+      return response.data[0]; // Return the first match
+    } catch (error) {
+      console.error('Failed to fetch attraction:', error);
+      return null;
+    }
+  };
+
+  return (
+    <TripContext.Provider value={{
+      trips,
+      activeTripId,
+      setActiveTripId,
+      getActiveTrip,
+      getTripById,
+      addDayToTrip,
+      createNewTrip,
+      updateTripTitle,
+      addLocationsToTripDay,
+      updateTripCover,
+      fetchAttractionData,
+      saveTripEdits,
+      loading,
+      loadingTrips: loading,
+      tripsError: error,
+      fetchTrips,
+      refreshTrips: fetchTrips
+    }}>
+      {children}
+    </TripContext.Provider>
+  );
+};

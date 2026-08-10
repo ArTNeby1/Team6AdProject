@@ -1,0 +1,63 @@
+# ============================================================
+# S3 存储桶：Web 前端静态网站（独立于 frontend_android 那个桶）
+# ============================================================
+# 单独开桶主要是因为 Vite 打包默认假设部署在域名根路径（vite.config.js
+# 没设 base），构建产物里 JS/CSS 引用的都是根路径 /assets/...。如果跟
+# Android APK 挤在同一个桶的 web/ 子路径下，浏览器会去桶根路径找这些
+# 静态资源，404，页面空白。独立一个桶、内容放根路径，就没有这个问题。
+#
+# 这个桶只装前端构建产物（没有用户数据），走 S3 静态网站托管、整桶公开
+# 只读，先不上 CloudFront/HTTPS——课程演示够用，以后要接自定义域名/HTTPS
+# 再补。
+
+resource "aws_s3_bucket" "frontend_web" {
+  bucket = "${var.project_name}-frontend-web-${var.environment}"
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "frontend_web_encryption" {
+  bucket = aws_s3_bucket.frontend_web.id
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_website_configuration" "frontend_web" {
+  bucket = aws_s3_bucket.frontend_web.id
+
+  index_document {
+    suffix = "index.html"
+  }
+
+  error_document {
+    key = "index.html"
+  }
+}
+
+# 只关闭"公开访问"里跟 bucket policy 相关的两项，ACL 相关的两项保持开启
+resource "aws_s3_bucket_public_access_block" "frontend_web_public_access" {
+  bucket                  = aws_s3_bucket.frontend_web.id
+  block_public_acls       = true
+  ignore_public_acls      = true
+  block_public_policy     = false
+  restrict_public_buckets = false
+}
+
+resource "aws_s3_bucket_policy" "frontend_web_public_read" {
+  bucket = aws_s3_bucket.frontend_web.id
+  # 必须等 public access block 先放开，否则这条 policy 会被挡下来
+  depends_on = [aws_s3_bucket_public_access_block.frontend_web_public_access]
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = "*"
+        Action    = ["s3:GetObject"]
+        Resource  = "${aws_s3_bucket.frontend_web.arn}/*"
+      }
+    ]
+  })
+}

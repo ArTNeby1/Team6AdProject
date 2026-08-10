@@ -1,0 +1,36 @@
+{
+  "destination": "Singapore",
+  "dates": [],
+  "places": [
+    {
+      "name": "Thian Hock Keng Temple",
+      "type": "attraction",
+      "coords": null,
+      "activities": ["photos", "temple visit before sunset"]
+    },
+    {
+      "name": "Sri Mariamman Temple",
+      "type": "attraction",
+      "coords": null,
+      "activities": ["seeing the gopuram"]
+    },
+    {
+      "name": "Maxwell Food Centre",
+      "type": "restaurant",
+      "coords": null,
+      "activities": ["dinner - Tian Tian Hainanese Chicken Rice"]
+    },
+    {
+      "name": "Tiong Bahru Market",
+      "type": "market",
+      "coords": null,
+      "activities": ["browsing wet market/hawker centre", "breakfast"]
+    },
+    {
+      "name": "1-Altitude",
+      "type": "other",
+      "coords": null,
+      "activities": ["rooftop drinks, skyline view"]
+    }
+  ]
+}

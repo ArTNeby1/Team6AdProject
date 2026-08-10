@@ -50,13 +50,18 @@ All business APIs are under `/api/v1`:
 
 Protected routes require `Authorization: Bearer <token>`.
 
-## External clients (stubs)
+## External clients
 
-Replace later with real integrations:
-
-- `AiPlanningClient` — Python/LLM extraction & itinerary generation
-- `MapPlacesClient` — Places / geocoding validation
-- `RoutingClient` — Routes / travel time
+- `AiPlanningClient` (`AiPlanningClientHttp`) — calls the local Python/LLM planning
+  service under `ML/app` (`uvicorn main:app --app-dir ML/app --port 8001`) over HTTP.
+  Base URL configurable via `loomytrip.ai.base-url` / `AI_SERVICE_BASE_URL` (default
+  `http://localhost:8001`). `extractTravelInfo` is wired to the Python service's
+  `/extract-travel-info`; if that service isn't running the client degrades to a
+  `STUB`-shaped response instead of failing the request. `generateDailyItinerary`
+  is still a stub — the Python side (`ML/app/orchestrator.py`) currently only runs
+  the extraction + recommendation agents, not day-by-day itinerary generation.
+- `MapPlacesClient` — Places / geocoding validation (still stub)
+- `RoutingClient` — Routes / travel time (still stub)
 
 ## Existing MySQL schema
 
