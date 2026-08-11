@@ -214,7 +214,7 @@ const ItineraryDetailPage = () => {
                   onClick={() => setSelectedDay(i + 1)}
                   style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                 >
-                  <span>Day {i + 1}: {i === 0 ? 'Planning' : 'To be planned'}</span>
+                  <span>Day {i + 1}: {trip.locations.some(loc => loc.day === i + 1) ? 'Planning' : 'To be planned'}</span>
                   {i === (trip.dayCount || 1) - 1 && trip.status !== 'FINISHED' && (
                     <span
                       onClick={(e) => { e.stopPropagation(); handleAddDay(); }}
