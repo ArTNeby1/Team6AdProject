@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 const ItineraryListPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { trips, setActiveTripId, createNewTrip, loadingTrips, tripsError, refreshTrips } = useTrip();
+  const { trips, setActiveTripId, createNewTrip, deleteTrip, loadingTrips, tripsError, refreshTrips } = useTrip();
   const [creating, setCreating] = useState(false);
 
   const handleTripClick = (id) => {
@@ -26,6 +26,17 @@ const ItineraryListPage = () => {
       alert(err.message || 'Failed to create trip');
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleDeleteTrip = async (e, id) => {
+    e.stopPropagation();
+    if (window.confirm('Are you sure you want to delete this itinerary? This action cannot be undone.')) {
+      try {
+        await deleteTrip(id);
+      } catch (err) {
+        alert('Failed to delete trip. Please try again.');
+      }
     }
   };
 
@@ -49,11 +60,6 @@ const ItineraryListPage = () => {
           <button type="button" className="btn-secondary" onClick={() => refreshTrips().catch(() => {})}>
             Retry
           </button>
-        </p>
-      )}
-      {!loadingTrips && !tripsError && trips.length === 0 && (
-        <p style={{ color: 'var(--muted)', marginBottom: '24px' }}>
-          No trips yet. Create one or start from Smart Planning.
         </p>
       )}
 
@@ -84,12 +90,17 @@ const ItineraryListPage = () => {
                     <div className="progress" style={{ width: `${(trip.progress || 0) * 100}%` }}></div>
                   </div>
                 </div>
+                <button
+                  className="delete-trip-btn"
+                  onClick={(e) => handleDeleteTrip(e, trip.id)}
+                  title="Delete Itinerary"
+                >🗑️</button>
               </div>
             ))}
           </div>
         )}
 
-        {/* NOT STARTED SECTION */}
+        {/* UPCOMING SECTION */}
         {upcomingTrips.length > 0 && (
           <div className="itinerary-section">
             <h2 className="itinerary-section-title">Upcoming</h2>
@@ -104,9 +115,14 @@ const ItineraryListPage = () => {
                 </div>
                 <div className="itinerary-info">
                   <h3>{trip.title}</h3>
-                  <p>{trip.desc}</p>
+                  <p>{trip.date}</p>
                 </div>
                 <div className="itinerary-date-right">{trip.date}</div>
+                <button
+                  className="delete-trip-btn sm"
+                  onClick={(e) => handleDeleteTrip(e, trip.id)}
+                  title="Delete Itinerary"
+                >🗑️</button>
               </div>
             ))}
           </div>
@@ -127,7 +143,7 @@ const ItineraryListPage = () => {
                 </div>
                 <div className="itinerary-info">
                   <h3>{trip.title}</h3>
-                  <p>{trip.desc}</p>
+                  <p>{trip.date}</p>
                 </div>
                 <div className="itinerary-date-right">{trip.date}</div>
               </div>

@@ -549,6 +549,52 @@ main {
   color: var(--muted);
 }
 
+/* Delete Trip Button Styles */
+.itinerary-card-active, .itinerary-card-simple {
+  position: relative;
+}
+
+.delete-trip-btn {
+  position: absolute;
+  right: -50px; /* Move to the right of the card, on beige background */
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--coral);
+  color: white;
+  border: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.2s;
+  opacity: 0;
+  visibility: hidden;
+  box-shadow: var(--shadow-sm);
+  z-index: 5;
+}
+
+.itinerary-card-active:hover .delete-trip-btn,
+.itinerary-card-simple:hover .delete-trip-btn {
+  opacity: 1;
+  visibility: visible;
+  right: -45px; /* Slight slide-in effect */
+}
+
+.delete-trip-btn:hover {
+  background: #d32f2f;
+  transform: translateY(-50%) scale(1.1);
+}
+
+.delete-trip-btn.sm {
+  width: 32px;
+  height: 32px;
+  font-size: 14px;
+}
+
 /* ---------- Route Page ---------- */
 .route-grid {
   display: grid;
@@ -887,10 +933,17 @@ main {
   padding-top: 20px;
 }
 
+.itinerary-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px; /* Space between individual trip cards */
+  margin-bottom: 48px; /* Space between different sections (Active, Upcoming, etc.) */
+}
+
 .itinerary-section-title {
   font-size: 16px;
   font-weight: 800;
-  margin: 32px 0 16px;
+  margin: 0 0 16px; /* Reset margin and keep only bottom */
   padding-left: 4px;
 }
 
@@ -900,7 +953,6 @@ main {
 .itinerary-grid {
   display: flex;
   flex-direction: column;
-  gap: 16px;
   max-width: 900px;
   margin: 0 auto;
 }
