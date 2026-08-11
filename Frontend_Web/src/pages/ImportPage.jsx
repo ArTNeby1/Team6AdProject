@@ -130,13 +130,19 @@ const ImportPage = () => {
       // (nearby/similar places not already in the trip) — it's ephemeral, not persisted by
       // the backend, so it's handed to ItineraryDetailPage via navigation state only.
       const response = await api.post(`/planning-sessions/${sessionId}/confirm`);
-      const newTripId = response.data.id;
+
+      const { id: newTripId, weatherSummary, suggestedAdditions } = response.data;
+
       await fetchTrips();
+
+      // Pass the AI summary data to the next page to show a welcome message
+      // and drive the "Recommended Nearby Places" sidebar (F-18).
       navigate(`/itinerary/${newTripId}`, {
         state: {
-          suggestedAdditions: response.data.suggestedAdditions,
-          weatherSummary: response.data.weatherSummary,
-        },
+          showAiSummary: true,
+          weatherSummary,
+          suggestedAdditions
+        }
       });
     } catch (error) {
       alert("Confirmation failed. Please try again.");

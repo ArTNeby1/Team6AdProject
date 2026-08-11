@@ -33,3 +33,23 @@ variable "environment" {
   type        = string
   default     = "dev"
 }
+
+# Bedrock 的 Model access 和账单都在另一个账号（483528439116）上，不在本项目
+# 账号里。ML 容器会先 AssumeRole 到这个角色再调 Bedrock，这样不用把任何长期
+# access key 存进本项目账号。留空 = 不跨账号，直接用 task role 自己的权限。
+# 这个角色需要在 483528439116 里手动创建，信任策略只信任本项目的 ML task role。
+variable "bedrock_assume_role_arn" {
+  description = "跨账号调用 Bedrock 用的角色 ARN（留空则不跨账号）"
+  type        = string
+  default     = "arn:aws:iam::483528439116:role/Team6BedrockInvoke"
+}
+
+# 注意这个跟 aws_region 是两回事，不要跟着改：aws_region 是这套基础设施部署在
+# 哪（ap-southeast-1），这个是去哪个 region 调 Bedrock。Model access 是按
+# 「账号 + region」开通的，483528439116 的 Nova Lite 是在 us-east-1 批的，
+# 所以跨 region 调用是故意的，不是配错了。
+variable "bedrock_region" {
+  description = "调用 Bedrock 的 region（跟部署 region 无关）"
+  type        = string
+  default     = "us-east-1"
+}

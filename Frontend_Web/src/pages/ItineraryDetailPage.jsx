@@ -4,6 +4,7 @@ import { useTrip } from '../context/TripContext';
 
 const ItineraryDetailPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { id } = useParams();
   const routerLocation = useLocation();
   const {
@@ -43,6 +44,9 @@ const ItineraryDetailPage = () => {
       setAddingSuggestion(null);
     }
   };
+
+  // AI Summary State from Import flow
+  const [aiSummary, setAiSummary] = useState(location.state?.showAiSummary ? location.state : null);
 
   const fileInputRef = useRef(null);
 
@@ -336,6 +340,42 @@ const ItineraryDetailPage = () => {
           </div>
         </div>
       </div>
+
+      {/* AI GENERATED SUMMARY MODAL */}
+      {aiSummary && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(20, 48, 74, 0.8)',
+          zIndex: 5000, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          backdropFilter: 'blur(10px)'
+        }}>
+          <div className="info-card" style={{ maxWidth: '600px', width: '90%', padding: '40px', textAlign: 'center', position: 'relative' }}>
+            <div style={{ fontSize: '64px', marginBottom: '20px' }}>✨</div>
+            <h2 style={{ fontSize: '28px', marginBottom: '16px' }}>Your AI Itinerary is Ready!</h2>
+
+            <div style={{ background: 'var(--mint)', padding: '20px', borderRadius: '16px', marginBottom: '32px', textAlign: 'left' }}>
+               <h4 style={{ color: 'var(--jade-deep)', marginBottom: '8px' }}>🌦️ Local Weather Insight</h4>
+               <p style={{ color: 'var(--ink-70)', lineHeight: '1.6' }}>{aiSummary.weatherSummary || "Clear skies ahead! Perfect for sightseeing."}</p>
+            </div>
+
+            {aiSummary.suggestedAdditions && aiSummary.suggestedAdditions.length > 0 && (
+              <div style={{ textAlign: 'left', marginBottom: '32px' }}>
+                <h4 style={{ marginBottom: '12px' }}>💡 Nearby Gems you might like:</h4>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  {aiSummary.suggestedAdditions.map((item, idx) => (
+                    <span key={idx} style={{ padding: '6px 12px', background: 'var(--paper)', borderRadius: '8px', fontSize: '13px' }}>
+                      📍 {item.name || item}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <button className="btn-primary" style={{ width: '100%', padding: '16px' }} onClick={() => setAiSummary(null)}>
+              Explore My Journey
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* IMAGE ENLARGE MODAL */}
       {showImageModal && (

@@ -12,10 +12,12 @@ FastAPI 入口。两组接口：
     uvicorn main:app --reload --app-dir ML/app --port 8001
 启动后访问 http://127.0.0.1:8001/docs 能看到自动生成的交互式测试页面。
 
-2周测试/展示窗口（2026-08-09~08-23）默认 EXTRACT_PROVIDER=RECOMMEND_PROVIDER=
-bedrock，走 AWS 不需要本机装 Ollama，但需要能访问 Bedrock 的 AWS 凭证（当前
-借用 gf-temp profile，见 CLAUDE.md）。显式设成 ollama 才需要本机跑起来 Ollama
-（默认端口 11434，见 local_llm_client.py 顶部说明）。
+2026-08-11 起，EXTRACT_PROVIDER=FILTER_PROVIDER=RECOMMEND_PROVIDER=bedrock 是
+固定默认值（不是临时测试窗口，不会自动回退到本地）——本地 Ollama 在这台开发机
+上是 CPU 推理，单次调用要几十秒，本机装 Ollama 也不需要，走 AWS 就够快。
+需要能访问 Bedrock 的 AWS 凭证（当前借用 gf-temp profile，见 CLAUDE.md）。
+显式设成 ollama 才会本机跑起来 Ollama（默认端口 11434，见 local_llm_client.py
+顶部说明）——只用于没有 AWS 凭证时的本地调试，不是常规路径。
 
 ===========================================================================
 给后端联调用的 mock 模式（不需要 Ollama、不需要 AWS）
@@ -76,10 +78,9 @@ def health() -> dict:
     return {"status": "ok", "service": "loomytrip-ml"}
 
 
-# 2026-08-09~08-23（2周测试/展示窗口）默认切到 bedrock：Nova Lite 比本地 Ollama
-# 快 ~10x（1.6s vs 几十秒）、任务2选型测试里唯一 0 漏抽/0 编造，且这两周的调用量
-# 成本可忽略（远低于 $1）。仍可用 EXTRACT_PROVIDER=ollama / mock 显式切回。
-# 窗口结束后是否改回本地默认，需要重新评估。
+# 2026-08-11 起，bedrock 是固定默认值，不是临时测试窗口：Nova Lite 比本地 Ollama
+# 快 ~10x（1.6s vs 几十秒）、任务2选型测试里唯一 0 漏抽/0 编造，实测调用量下
+# 成本可忽略（远低于 $1）。仍可用 EXTRACT_PROVIDER=ollama / mock 显式切回本地调试。
 EXTRACT_PROVIDER = os.environ.get("EXTRACT_PROVIDER", "bedrock")
 if EXTRACT_PROVIDER == "bedrock":
     from bedrock_client import bedrock_extract  # noqa: E402
