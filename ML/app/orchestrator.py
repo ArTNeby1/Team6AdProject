@@ -22,11 +22,12 @@ RECOMMEND_MODEL（recommend_agent.py）。互不影响，换个环境变量就�
 EXTRACT_PROVIDER / RECOMMEND_PROVIDER，设成 "bedrock" 就切到任务 2 选定的
 Nova Lite（见 ML/docs/model_selection.md）。
 
-2026-08-09~08-23（2周测试/展示窗口）：EXTRACT_PROVIDER / RECOMMEND_PROVIDER
-默认改成了 "bedrock"（原来是 "ollama"）——Nova Lite 更快（~1.6s vs 本地几十秒）、
-任务2选型测试里唯一 0 漏抽/0 编造，这两周的调用量成本可忽略（远低于 $1）。
-FILTER_PROVIDER 默认保持 "ollama" 不变（这次没测过 Bedrock 版本的降噪效果）。
-窗口结束后是否改回本地默认需要重新评估，别不检查就沿用。
+2026-08-11 起，EXTRACT_PROVIDER / FILTER_PROVIDER / RECOMMEND_PROVIDER 三个
+默认值都固定成 "bedrock"，不是临时测试窗口，不会自动回退到本地——Nova Lite
+更快（~1.6s vs 本地 Ollama CPU 推理几十秒）、任务2选型测试里唯一 0 漏抽/0 编造，
+实测调用量下成本可忽略（远低于 $1）。FILTER_PROVIDER 切 bedrock 后本机验证过
+能正常过滤寒暄/保留行程相关内容。三个变量仍可各自显式设成 "ollama" / "mock"
+临时切走做本地调试，但那不是常规路径。
 """
 import os
 import sys
@@ -49,7 +50,7 @@ from recommend_agent import (  # noqa: E402
 )
 from trip_models import TripExtraction  # noqa: E402
 
-# 跟 main.py 的 EXTRACT_PROVIDER 说明一致：2周测试窗口默认 Bedrock Nova Lite，
+# 跟 main.py 的 EXTRACT_PROVIDER 说明一致：固定默认 Bedrock Nova Lite，
 # 显式设 EXTRACT_PROVIDER=ollama / mock 才切走。
 # chat_filter / recommend_agent 各自的 Provider 由它们自己的环境变量
 # （FILTER_PROVIDER / RECOMMEND_PROVIDER）控制，这里不用管。
