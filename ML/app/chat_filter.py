@@ -17,9 +17,10 @@ from local_llm_client import call_local_model
 
 # 这一步走本地 Ollama 还是 Bedrock，独立于抽取阶段的 EXTRACT_PROVIDER——
 # 三段各自能单独选，参考 main.py/orchestrator.py 里 EXTRACT_PROVIDER 的说明。
-# 默认还是 "ollama"：这步任务简单（判断相关/不相关），本地小模型够用，没必要
-# 默认就占用 Bedrock 调用额度/费用，想切的话显式设 FILTER_PROVIDER=bedrock。
-FILTER_PROVIDER = os.environ.get("FILTER_PROVIDER", "ollama")
+# 2026-08-11：默认切到 "bedrock"，跟 EXTRACT_PROVIDER/RECOMMEND_PROVIDER 的
+# 测试窗口默认保持一致（同一个 Nova Lite 模型，同一份 AWS 凭证），本机验证过
+# 能正常过滤寒暄/保留行程相关内容。想切回本地就显式设 FILTER_PROVIDER=ollama。
+FILTER_PROVIDER = os.environ.get("FILTER_PROVIDER", "bedrock")
 
 # 过滤这一步默认用哪个模型，独立于抽取阶段的 EXTRACT_MODEL，
 # 体现"多个模型分工"：这步任务简单（判断相关/不相关），可以配一个更轻量的模型，
