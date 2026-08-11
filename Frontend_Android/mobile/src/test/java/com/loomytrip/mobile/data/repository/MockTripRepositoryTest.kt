@@ -38,4 +38,19 @@ class MockTripRepositoryTest {
         assertFalse(deleted.any { it.id == custom.id })
         assertEquals(original.size, deleted.size)
     }
+    @Test
+    fun addActivity_movesConflictingTimeAfterTheLastStop() {
+        val original = repository.initialItinerary()
+        val added = repository.addActivity(original, 1, "Late snack", "10:00")
+
+        assertEquals("20:15", added.first { it.title == "Late snack" }.startTime)
+    }
+
+    @Test
+    fun addActivity_choosesTheNextAvailableTimeWhenTimeIsBlank() {
+        val original = repository.initialItinerary()
+        val added = repository.addActivity(original, 2, "Coffee workshop", "")
+
+        assertEquals("16:15", added.first { it.title == "Coffee workshop" }.startTime)
+    }
 }

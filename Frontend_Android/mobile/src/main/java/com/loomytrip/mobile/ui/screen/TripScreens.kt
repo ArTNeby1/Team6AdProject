@@ -313,7 +313,8 @@ private fun AddActivityDialog(
     onAdd: (String, String) -> Unit
 ) {
     var title by remember { mutableStateOf("") }
-    var time by remember { mutableStateOf("12:00") }
+    var time by remember { mutableStateOf("") }
+    val validTime = time.isBlank() || Regex("(?:[01]\\d|2[0-3]):[0-5]\\d").matches(time)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add activity to Day $day") },
@@ -327,14 +328,29 @@ private fun AddActivityDialog(
                 )
                 OutlinedTextField(
                     value = time,
-                    onValueChange = { time = it },
-                    label = { Text("Start time") },
+                    onValueChange = { time = it.take(5) },
+                    label = { Text("Preferred start time (optional)") },
+                    supportingText = {
+                        Text(
+                            if (time.isBlank()) {
+                                "We will place it after the last stop"
+                            } else if (validTime) {
+                                "It will move later if this time overlaps"
+                            } else {
+                                "Use a time such as 09:30"
+                            }
+                        )
+                    },
+                    isError = !validTime,
                     singleLine = true
                 )
             }
         },
         confirmButton = {
-            TextButton(onClick = { onAdd(title, time) }, enabled = title.isNotBlank()) {
+            TextButton(
+                onClick = { onAdd(title, time) },
+                enabled = title.isNotBlank() && validTime
+            ) {
                 Text("Add")
             }
         },
