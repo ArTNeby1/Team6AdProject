@@ -27,17 +27,16 @@ export const TripProvider = ({ children }) => {
     setError(null);
     try {
       const response = await api.get('/trips');
+      // Normalize data from backend to frontend state
       const mappedTrips = response.data.map(t => ({
         id: t.id.toString(),
         title: t.tripName,
         date: t.startDate || 'TBD',
         status: t.status || 'NOT_STARTED',
-        progress: 0,
+        progress: t.status === 'FINISHED' ? 1 : (t.status === 'ACTIVE' ? 0.5 : 0),
         shortName: t.tripName.substring(0, 2).toUpperCase(),
         dayCount: t.durationDays || 1,
         coverImage: t.coverImage,
-        travelStyle: t.travelStyle,
-        preferTransport: t.preferTransport,
         locations: t.schedules ? t.schedules.map(s => ({
           id: s.id.toString(),
           name: s.destination.name,
@@ -48,10 +47,11 @@ export const TripProvider = ({ children }) => {
           activityType: s.activityType || 'Visit',
           duration: s.plannedDurationMinutes ? (s.plannedDurationMinutes / 60).toFixed(1) : '1.5',
           transport: '🚕 TBD',
-          lat: s.destination.latitude,
-          lng: s.destination.longitude
+          lat: s.destination.latitude || 0,
+          lng: s.destination.longitude || 0
         })) : []
       }));
+
       setTrips(mappedTrips);
       if (mappedTrips.length > 0 && !activeTripId) {
         setActiveTripId(mappedTrips[0].id);
@@ -67,10 +67,23 @@ export const TripProvider = ({ children }) => {
   const getActiveTrip = () => trips.find(t => t.id === activeTripId) || trips[0];
   const getTripById = (id) => trips.find(t => t.id === id?.toString());
 
+  const deleteTrip = async (tripId) => {
+    try {
+      await api.delete(`/trips/${tripId}`);
+      setTrips(prev => prev.filter(t => t.id !== tripId));
+      if (activeTripId === tripId) {
+        setActiveTripId(null);
+      }
+    } catch (err) {
+      console.error('Failed to delete trip:', err);
+      throw err;
+    }
+  };
+
   const createNewTrip = async (locationNames, preferences = {}) => {
     try {
       const response = await api.post('/trips', {
-        tripName: 'New Trip',
+        tripName: 'Newly Imported Trip',
         startDate: new Date().toISOString().split('T')[0],
         durationDays: 1,
         travelStyle: preferences.travelStyle,
@@ -111,20 +124,22 @@ export const TripProvider = ({ children }) => {
   };
 
   const addLocationsToTripDay = async (tripId, day, locationNames) => {
+    if (!locationNames || locationNames.length === 0) return;
     try {
+      // Backend expects 'day' and 'locationNames' (matching AddTripScheduleRequest)
       await api.post(`/trips/${tripId}/schedules`, {
         day: parseInt(day),
-        locationNames
+        locationNames: locationNames
       });
       await fetchTrips();
     } catch (error) {
       console.error('Failed to add locations:', error);
-      throw error;
     }
   };
 
   const saveTripEdits = async (tripId, newLocations, newDayCount) => {
     try {
+      setLoading(true);
       await api.put(`/trips/${tripId}`, { durationDays: newDayCount });
 
       // EditPage.jsx's "Delete" only drops the item from local draft state — the schedule
@@ -163,15 +178,16 @@ export const TripProvider = ({ children }) => {
       await fetchTrips();
     } catch (error) {
       console.error('Failed to save edits:', error);
-      throw error;
+    } finally {
+      setLoading(false);
     }
   };
 
   const addDayToTrip = async (tripId) => {
     const trip = trips.find(t => t.id === tripId);
     if (!trip) return;
-    const newDayCount = trip.dayCount + 1;
     try {
+      const newDayCount = trip.dayCount + 1;
       await api.put(`/trips/${tripId}`, { durationDays: newDayCount });
       await fetchTrips();
     } catch (error) {
@@ -182,11 +198,20 @@ export const TripProvider = ({ children }) => {
   const fetchAttractionData = async (name) => {
     try {
       const response = await api.get(`/destinations?q=${encodeURIComponent(name)}`);
-      return response.data[0]; // Return the first match
+      return response.data[0];
     } catch (error) {
-      console.error('Failed to fetch attraction:', error);
+      console.error('Failed to fetch destination info:', error);
       return null;
     }
+  };
+
+  const removeLocationFromActive = (id) => {
+    setTrips(prev => prev.map(trip => {
+      if (trip.id === activeTripId) {
+        return { ...trip, locations: trip.locations.filter(l => l.id !== id) };
+      }
+      return trip;
+    }));
   };
 
   return (
@@ -197,17 +222,16 @@ export const TripProvider = ({ children }) => {
       getActiveTrip,
       getTripById,
       addDayToTrip,
+      saveTripEdits,
       createNewTrip,
       updateTripTitle,
       addLocationsToTripDay,
       updateTripCover,
       fetchAttractionData,
-      saveTripEdits,
       loading,
-      loadingTrips: loading,
-      tripsError: error,
       fetchTrips,
-      refreshTrips: fetchTrips
+      removeLocationFromActive,
+      deleteTrip
     }}>
       {children}
     </TripContext.Provider>

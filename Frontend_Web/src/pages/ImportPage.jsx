@@ -126,9 +126,19 @@ const ImportPage = () => {
 
       // POST /planning-sessions/{id}/confirm — backend creates a brand new Trip.
       const response = await api.post(`/planning-sessions/${sessionId}/confirm`);
-      const newTripId = response.data.id;
+
+      const { id: newTripId, weatherSummary, suggestedAdditions } = response.data;
+
       await fetchTrips();
-      navigate(`/itinerary/${newTripId}`);
+
+      // Pass the AI summary data to the next page to show a welcome message
+      navigate(`/itinerary/${newTripId}`, {
+        state: {
+          showAiSummary: true,
+          weatherSummary,
+          suggestedAdditions
+        }
+      });
     } catch (error) {
       alert("Confirmation failed. Please try again.");
     } finally {
