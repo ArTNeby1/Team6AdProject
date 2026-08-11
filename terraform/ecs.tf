@@ -113,7 +113,11 @@ resource "aws_ecs_task_definition" "ml" {
         { name = "FILTER_PROVIDER", value = "bedrock" },
         # Bedrock 的 Model access 和账单在另一个账号，容器先 AssumeRole 再调。
         # 留空则退回用 task role 自己的权限（同账号调用）。
-        { name = "BEDROCK_ASSUME_ROLE_ARN", value = var.bedrock_assume_role_arn }
+        { name = "BEDROCK_ASSUME_ROLE_ARN", value = var.bedrock_assume_role_arn },
+        # 显式写出来，不靠 bedrock_client.py 里的代码默认值 —— 代码默认值改了
+        # 线上会跟着悄悄变（PR #25 踩过这个坑）。跟部署 region 不是一回事，
+        # 见 variables.tf 里 bedrock_region 的说明。
+        { name = "BEDROCK_REGION", value = var.bedrock_region }
       ]
       logConfiguration = {
         logDriver = "awslogs"
