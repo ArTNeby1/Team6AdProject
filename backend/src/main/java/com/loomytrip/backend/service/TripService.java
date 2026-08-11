@@ -19,6 +19,8 @@ import com.loomytrip.backend.repository.TripRepository;
 import com.loomytrip.backend.repository.TripScheduleRepository;
 import com.loomytrip.backend.repository.UserRepository;
 import com.loomytrip.backend.util.SecurityUtils;
+import java.time.LocalTime;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -235,6 +237,15 @@ public class TripService {
                     .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "TRIP_DAY_NOT_FOUND", "Trip day not found")));
             schedules.get(i).setTripDay(day);
             schedules.get(i).setSequence(update.sequence());
+            if (update.startTime() != null && !update.startTime().isBlank()) {
+                try {
+                    schedules.get(i).setStartTime(LocalTime.parse(update.startTime()));
+                } catch (DateTimeParseException ignored) {
+                    // EditPage.jsx's time input is masked to HH:mm, but a half-typed value
+                    // could in theory slip through — skip rather than fail the whole
+                    // reorder/save over one bad time string.
+                }
+            }
         }
         tripScheduleRepository.saveAllAndFlush(schedules);
 

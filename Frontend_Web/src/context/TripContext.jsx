@@ -42,7 +42,9 @@ export const TripProvider = ({ children }) => {
           id: s.id.toString(),
           name: s.destination.name,
           day: s.tripDay?.daySequence || 1,
-          time: s.startTime || '09:00',
+          // Backend serializes LocalTime as "HH:mm:ss" — trim to "HH:mm" for display/editing
+          // (EditPage.jsx's time input expects that shape too).
+          time: s.startTime ? s.startTime.slice(0, 5) : '09:00',
           activityType: s.activityType || 'Visit',
           duration: s.plannedDurationMinutes ? (s.plannedDurationMinutes / 60).toFixed(1) : '1.5',
           transport: '🚕 TBD',
@@ -148,8 +150,11 @@ export const TripProvider = ({ children }) => {
         .forEach((loc) => {
           (scheduleByDay[loc.day] ||= []).push(loc);
         });
+      // startTime: EditPage.jsx's time input only ever updated local draft state — nothing
+      // sent it to the backend, so an edited time always reverted on the next fetch even
+      // though Save otherwise "succeeded" (the reorder/durationDays part did go through).
       const schedules = Object.entries(scheduleByDay).flatMap(([day, locs]) =>
-        locs.map((loc, idx) => ({ id: parseInt(loc.id, 10), day: parseInt(day, 10), sequence: idx + 1 }))
+        locs.map((loc, idx) => ({ id: parseInt(loc.id, 10), day: parseInt(day, 10), sequence: idx + 1, startTime: loc.time || null }))
       );
       if (schedules.length > 0) {
         await api.put(`/trips/${tripId}/schedules/bulk`, { schedules });
