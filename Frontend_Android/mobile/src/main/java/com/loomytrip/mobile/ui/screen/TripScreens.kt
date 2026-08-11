@@ -77,10 +77,12 @@ import kotlin.math.hypot
 @Composable
 fun RouteScreen(
     activities: List<TripActivity>,
+    tripName: String,
     onViewMap: (Int) -> Unit,
     onEdit: (Int) -> Unit
 ) {
     var selectedDay by rememberSaveable { mutableIntStateOf(1) }
+    val dayCount = (activities.maxOfOrNull { it.day } ?: 1).coerceAtLeast(1)
     val dayActivities = activities.filter { it.day == selectedDay }
 
     Column(
@@ -89,12 +91,12 @@ fun RouteScreen(
             .padding(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text("Chiang Mai · 3 days", fontSize = 27.sp, fontWeight = FontWeight.Bold)
+        Text("$tripName · $dayCount ${if (dayCount == 1) "day" else "days"}", fontSize = 27.sp, fontWeight = FontWeight.Bold)
         Text(
             "${activities.size} stops in this trip",
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
         )
-        DaySelector(selectedDay = selectedDay, onDaySelected = { selectedDay = it })
+        DaySelector(selectedDay = selectedDay, dayCount = dayCount, onDaySelected = { selectedDay = it })
         if (dayActivities.isEmpty()) {
             EmptyDay(modifier = Modifier.weight(1f))
         } else {
@@ -210,6 +212,7 @@ fun EditTripScreen(
 ) {
     var selectedDay by rememberSaveable { mutableIntStateOf(initialDay) }
     var showAddDialog by remember { mutableStateOf(false) }
+    val dayCount = (activities.maxOfOrNull { it.day } ?: 1).coerceAtLeast(selectedDay)
     val dayActivities = activities.filter { it.day == selectedDay }
 
     LaunchedEffect(initialDay) { selectedDay = initialDay }
@@ -226,7 +229,7 @@ fun EditTripScreen(
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
             lineHeight = 20.sp
         )
-        DaySelector(selectedDay = selectedDay, onDaySelected = { selectedDay = it })
+        DaySelector(selectedDay = selectedDay, dayCount = dayCount, onDaySelected = { selectedDay = it })
         LazyColumn(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(9.dp)
@@ -365,6 +368,7 @@ fun MapScreen(
     onEdit: (Int) -> Unit
 ) {
     var selectedDay by rememberSaveable { mutableIntStateOf(initialDay) }
+    val dayCount = (activities.maxOfOrNull { it.day } ?: 1).coerceAtLeast(selectedDay)
     val dayActivities = activities.filter { it.day == selectedDay }
     val context = LocalContext.current
 
@@ -376,7 +380,7 @@ fun MapScreen(
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        DaySelector(selectedDay = selectedDay, onDaySelected = { selectedDay = it })
+        DaySelector(selectedDay = selectedDay, dayCount = dayCount, onDaySelected = { selectedDay = it })
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -422,12 +426,12 @@ fun MapScreen(
 }
 
 @Composable
-private fun DaySelector(selectedDay: Int, onDaySelected: (Int) -> Unit) {
+private fun DaySelector(selectedDay: Int, dayCount: Int, onDaySelected: (Int) -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        (1..3).forEach { day ->
+        (1..dayCount).forEach { day ->
             FilterChip(
                 selected = selectedDay == day,
                 onClick = { onDaySelected(day) },

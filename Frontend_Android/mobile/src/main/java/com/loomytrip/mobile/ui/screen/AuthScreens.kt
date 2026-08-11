@@ -38,11 +38,13 @@ import androidx.compose.ui.unit.sp
 
 @Composable
 fun LoginScreen(
-    onLogin: (String) -> Unit,
-    onCreateAccount: () -> Unit
+    onLogin: (String, String) -> Unit,
+    onCreateAccount: () -> Unit,
+    isLoading: Boolean = false,
+    serverError: String? = null
 ) {
-    var email by remember { mutableStateOf("traveler@loomytrip.com") }
-    var password by remember { mutableStateOf("loomytrip") }
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
 
     AuthPage(
@@ -70,20 +72,22 @@ fun LoginScreen(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             shape = RoundedCornerShape(16.dp)
         )
-        error?.let {
+        (error ?: serverError)?.let {
             Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
         }
         Button(
+            enabled = !isLoading,
             onClick = {
                 if (!email.contains("@") || password.length < 6) {
                     error = "Enter a valid email and a password of at least 6 characters."
                 } else {
-                    onLogin(email)
+                    error = null
+                    onLogin(email, password)
                 }
             },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Sign in", fontWeight = FontWeight.Bold)
+            Text(if (isLoading) "Signing in..." else "Sign in", fontWeight = FontWeight.Bold)
         }
         OutlinedButton(
             onClick = onCreateAccount,
@@ -91,19 +95,15 @@ fun LoginScreen(
         ) {
             Text("Create an account")
         }
-        Text(
-            text = "Demo login: any email and password will work.",
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
-            fontSize = 12.sp,
-            lineHeight = 17.sp
-        )
     }
 }
 
 @Composable
 fun RegisterScreen(
-    onRegister: (String) -> Unit,
-    onBackToLogin: () -> Unit
+    onRegister: (String, String, String) -> Unit,
+    onBackToLogin: () -> Unit,
+    isLoading: Boolean = false,
+    serverError: String? = null
 ) {
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
@@ -142,23 +142,25 @@ fun RegisterScreen(
             leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            supportingText = { Text("At least 6 characters") },
+            supportingText = { Text("At least 8 characters") },
             shape = RoundedCornerShape(16.dp)
         )
-        error?.let {
+        (error ?: serverError)?.let {
             Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
         }
         Button(
+            enabled = !isLoading,
             onClick = {
-                if (name.isBlank() || !email.contains("@") || password.length < 6) {
-                    error = "Complete all fields with a valid email and password."
+                if (name.isBlank() || !email.contains("@") || password.length < 8) {
+                    error = "Complete all fields with a valid email and a password of at least 8 characters."
                 } else {
-                    onRegister(email)
+                    error = null
+                    onRegister(name, email, password)
                 }
             },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Create account", fontWeight = FontWeight.Bold)
+            Text(if (isLoading) "Creating account..." else "Create account", fontWeight = FontWeight.Bold)
         }
         OutlinedButton(
             onClick = onBackToLogin,

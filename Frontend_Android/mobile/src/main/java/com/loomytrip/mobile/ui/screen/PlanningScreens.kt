@@ -36,7 +36,11 @@ import androidx.compose.ui.unit.sp
 import com.loomytrip.mobile.data.model.ExtractedPlace
 
 @Composable
-fun ImportGuideScreen(onExtract: (String) -> Unit) {
+fun ImportGuideScreen(
+    onExtract: (String) -> Unit,
+    isLoading: Boolean = false,
+    errorMessage: String? = null
+) {
     var guide by remember {
         mutableStateOf("Chiang Mai in 3 days — Wat Chedi Luang, Tha Phae Gate, Nimman Road and Sunday Market.")
     }
@@ -77,20 +81,23 @@ fun ImportGuideScreen(onExtract: (String) -> Unit) {
             ) {
                 Icon(Icons.Default.AutoAwesome, contentDescription = null)
                 Text(
-                    "For this demo, places are extracted from the text above.",
+                    "The AI reads this text and proposes real places for your itinerary.",
                     fontSize = 12.sp,
                     lineHeight = 17.sp
                 )
             }
         }
+        errorMessage?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+        }
         Button(
             onClick = { onExtract(guide) },
             modifier = Modifier.fillMaxWidth(),
-            enabled = guide.isNotBlank()
+            enabled = guide.isNotBlank() && !isLoading
         ) {
             Icon(Icons.Default.AutoAwesome, contentDescription = null)
             Spacer(Modifier.size(8.dp))
-            Text("Extract places with AI", fontWeight = FontWeight.Bold)
+            Text(if (isLoading) "Analyzing with AI..." else "Extract places with AI", fontWeight = FontWeight.Bold)
         }
     }
 }

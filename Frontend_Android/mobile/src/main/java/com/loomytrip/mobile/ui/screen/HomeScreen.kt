@@ -74,7 +74,13 @@ private val destinationPreviews = listOf(
 )
 
 @Composable
-fun HomeScreen(onStartPlanning: () -> Unit) {
+fun HomeScreen(
+    onStartPlanning: () -> Unit,
+    onViewTrip: () -> Unit,
+    tripName: String?,
+    tripDayCount: Int,
+    tripStopCount: Int
+) {
     var searchQuery by remember { mutableStateOf("") }
 
     LazyColumn(
@@ -134,7 +140,19 @@ fun HomeScreen(onStartPlanning: () -> Unit) {
         }
 
         item {
-            CurrentTripCard(onClick = onStartPlanning)
+            if (tripName != null) {
+                CurrentTripCard(
+                    tripName = tripName,
+                    dayCount = tripDayCount,
+                    stopCount = tripStopCount,
+                    onClick = onViewTrip
+                )
+            } else {
+                Text(
+                    text = "No saved trips yet. Import a guide to start one.",
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+                )
+            }
         }
 
         item {
@@ -248,7 +266,7 @@ private fun SectionHeader(title: String, action: String) {
 }
 
 @Composable
-private fun CurrentTripCard(onClick: () -> Unit) {
+private fun CurrentTripCard(tripName: String, dayCount: Int, stopCount: Int, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -284,7 +302,7 @@ private fun CurrentTripCard(onClick: () -> Unit) {
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text("Chiang Mai", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text(tripName, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         Icons.Default.CalendarMonth,
@@ -294,24 +312,9 @@ private fun CurrentTripCard(onClick: () -> Unit) {
                     )
                     Spacer(Modifier.width(5.dp))
                     Text(
-                        "3 days · 4 saved stops",
+                        "$dayCount ${if (dayCount == 1) "day" else "days"} · $stopCount saved stops",
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
                         fontSize = 13.sp
-                    )
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(7.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.secondary)
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        "Draft itinerary",
-                        color = MaterialTheme.colorScheme.secondary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
                     )
                 }
             }
