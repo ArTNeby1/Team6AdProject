@@ -36,6 +36,15 @@ loomytrip:
   ai:
     # ML/app 那个 FastAPI 服务的地址（uvicorn main:app --app-dir ML/app --port 8001）
     base-url: ${AI_SERVICE_BASE_URL:http://localhost:8001}
+  map:
+    nominatim-base-url: ${NOMINATIM_BASE_URL:https://nominatim.openstreetmap.org}
+    tile-url-template: ${MAP_TILE_URL_TEMPLATE:https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png}
+    attribution: ${MAP_ATTRIBUTION:© OpenStreetMap contributors}
+    default-latitude: ${MAP_DEFAULT_LAT:1.3521}
+    default-longitude: ${MAP_DEFAULT_LNG:103.8198}
+    default-zoom: ${MAP_DEFAULT_ZOOM:12}
+  routing:
+    osrm-base-url: ${OSRM_BASE_URL:https://router.project-osrm.org}
 
 logging:
   level:

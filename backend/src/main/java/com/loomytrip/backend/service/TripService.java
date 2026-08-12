@@ -1,15 +1,22 @@
 package com.loomytrip.backend.service;
 
+import com.loomytrip.backend.client.AiPlanItineraryResult;
+import com.loomytrip.backend.client.AiPlanningClient;
+import com.loomytrip.backend.client.RoutingClient;
 import com.loomytrip.backend.dto.request.AddTripScheduleRequest;
 import com.loomytrip.backend.dto.request.BulkUpdateSchedulesRequest;
 import com.loomytrip.backend.dto.request.CreateTripRequest;
 import com.loomytrip.backend.dto.request.UpdateTripRequest;
+import com.loomytrip.backend.dto.response.GenerateItineraryResponse;
+import com.loomytrip.backend.dto.response.TripRouteResponse;
 import com.loomytrip.backend.dto.response.TripSummaryResponse;
+import com.loomytrip.backend.dto.response.TripTransportResponse;
 import com.loomytrip.backend.entity.Destination;
 import com.loomytrip.backend.entity.Trip;
 import com.loomytrip.backend.entity.TripDay;
 import com.loomytrip.backend.entity.TripPreference;
 import com.loomytrip.backend.entity.TripSchedule;
+import com.loomytrip.backend.entity.TripTransport;
 import com.loomytrip.backend.entity.User;
 import com.loomytrip.backend.exception.ApiException;
 import com.loomytrip.backend.mapper.EntityMapper;
@@ -17,14 +24,21 @@ import com.loomytrip.backend.repository.TripDayRepository;
 import com.loomytrip.backend.repository.TripPreferenceRepository;
 import com.loomytrip.backend.repository.TripRepository;
 import com.loomytrip.backend.repository.TripScheduleRepository;
+import com.loomytrip.backend.repository.TripTransportRepository;
 import com.loomytrip.backend.repository.UserRepository;
 import com.loomytrip.backend.util.SecurityUtils;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,30 +48,41 @@ public class TripService {
 
     /** Staging offset for bulkUpdateSchedules's two-pass reorder — see its Javadoc. */
     private static final int TEMP_SEQUENCE_OFFSET = 1_000_000;
+    private static final int DEFAULT_VISIT_SLOT_MINUTES = 90;
+    private static final int NOTE_MAX_LENGTH = 255;
 
     private final TripRepository tripRepository;
     private final TripDayRepository tripDayRepository;
     private final TripScheduleRepository tripScheduleRepository;
+    private final TripTransportRepository tripTransportRepository;
     private final TripPreferenceRepository tripPreferenceRepository;
     private final UserRepository userRepository;
     private final DestinationService destinationService;
+    private final RoutingClient routingClient;
+    private final AiPlanningClient aiPlanningClient;
     private final EntityMapper entityMapper;
 
     public TripService(
             TripRepository tripRepository,
             TripDayRepository tripDayRepository,
             TripScheduleRepository tripScheduleRepository,
+            TripTransportRepository tripTransportRepository,
             TripPreferenceRepository tripPreferenceRepository,
             UserRepository userRepository,
             DestinationService destinationService,
+            RoutingClient routingClient,
+            AiPlanningClient aiPlanningClient,
             EntityMapper entityMapper
     ) {
         this.tripRepository = tripRepository;
         this.tripDayRepository = tripDayRepository;
         this.tripScheduleRepository = tripScheduleRepository;
+        this.tripTransportRepository = tripTransportRepository;
         this.tripPreferenceRepository = tripPreferenceRepository;
         this.userRepository = userRepository;
         this.destinationService = destinationService;
+        this.routingClient = routingClient;
+        this.aiPlanningClient = aiPlanningClient;
         this.entityMapper = entityMapper;
     }
 
@@ -273,15 +298,293 @@ public class TripService {
     }
 
     /**
-     * Placeholder for F-09 AI itinerary generation.
+     * Builds pairwise driving estimates for one trip day, persists {@code trip_transport}
+     * rows, and returns map/navigation data for the frontend.
      */
-    public Object generateItinerary(Long tripId) {
-        getTrip(tripId);
-        throw new ApiException(
-                HttpStatus.NOT_IMPLEMENTED,
-                "NOT_IMPLEMENTED",
-                "Itinerary generation will call AiPlanningClient in a later iteration"
+    @Transactional
+    public TripRouteResponse estimateRoute(Long tripId, int day) {
+        Trip trip = loadOwnedTrip(tripId);
+        if (day < 1) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_DAY", "day must be >= 1");
+        }
+
+        TripDay tripDay = tripDayRepository.findByTrip_IdAndDaySequence(tripId, day)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "TRIP_DAY_NOT_FOUND", "Trip day not found"));
+        List<TripSchedule> schedules = tripScheduleRepository.findByTripDay_IdOrderBySequenceAsc(tripDay.getId());
+
+        String transportType = tripPreferenceRepository.findByTrip_Id(tripId)
+                .map(TripPreference::getPreferTransport)
+                .filter(value -> value != null && !value.isBlank())
+                .orElse("driving");
+
+        tripTransportRepository.deleteByTripDay_Id(tripDay.getId());
+
+        List<TripRouteResponse.RouteLegResponse> legs = new ArrayList<>();
+        List<TripTransportResponse> transports = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+        BigDecimal totalDistance = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        int totalMinutes = 0;
+
+        for (int i = 0; i < schedules.size() - 1; i++) {
+            TripSchedule from = schedules.get(i);
+            TripSchedule to = schedules.get(i + 1);
+            String fromLabel = from.getDestination() != null ? from.getDestination().getName() : "Stop " + from.getId();
+            String toLabel = to.getDestination() != null ? to.getDestination().getName() : "Stop " + to.getId();
+
+            Destination fromDest = geocodeScheduleDestination(from, warnings);
+            Destination toDest = geocodeScheduleDestination(to, warnings);
+            if (fromDest == null || toDest == null) {
+                continue;
+            }
+
+            RoutingClient.RouteEstimate estimate = routingClient.estimate(
+                    fromDest.getLatitude(), fromDest.getLongitude(),
+                    toDest.getLatitude(), toDest.getLongitude()
+            ).orElse(null);
+            if (estimate == null) {
+                warnings.add("Could not estimate route leg: " + fromLabel + " → " + toLabel);
+                continue;
+            }
+
+            totalDistance = totalDistance.add(estimate.distanceKm());
+            totalMinutes += estimate.durationMinutes();
+            legs.add(new TripRouteResponse.RouteLegResponse(
+                    from.getId(),
+                    to.getId(),
+                    fromDest.getName(),
+                    toDest.getName(),
+                    estimate.distanceKm(),
+                    estimate.durationMinutes(),
+                    estimate.googleMapLink()
+            ));
+
+            TripTransport transport = new TripTransport();
+            transport.setTripDay(tripDay);
+            transport.setPrevSchedule(from);
+            transport.setNextSchedule(to);
+            transport.setTransportType(transportType);
+            transport.setDistanceKm(estimate.distanceKm());
+            transport.setDurationMinutes(estimate.durationMinutes());
+            transport.setGoogleMapLink(estimate.googleMapLink());
+            transport.setRouteDesc(fromDest.getName() + " → " + toDest.getName());
+            TripTransport saved = tripTransportRepository.save(transport);
+            transports.add(new TripTransportResponse(
+                    saved.getId(),
+                    from.getId(),
+                    to.getId(),
+                    fromDest.getName(),
+                    toDest.getName(),
+                    transportType,
+                    estimate.distanceKm(),
+                    estimate.durationMinutes(),
+                    estimate.googleMapLink(),
+                    transport.getRouteDesc()
+            ));
+        }
+
+        if (schedules.size() >= 2 && legs.isEmpty()) {
+            warnings.add("No route legs could be calculated for this day; check destination coordinates.");
+        } else if (schedules.size() >= 2 && legs.size() < schedules.size() - 1) {
+            warnings.add("Some route legs were skipped; totals may be incomplete.");
+        }
+
+        String googleMapsUrl = buildMultiStopGoogleMapsUrl(schedules);
+        return new TripRouteResponse(
+                trip.getId(),
+                day,
+                schedules.size(),
+                totalDistance,
+                totalMinutes,
+                googleMapsUrl,
+                legs,
+                transports,
+                warnings
         );
+    }
+
+    private Destination geocodeScheduleDestination(TripSchedule schedule, List<String> warnings) {
+        if (schedule.getDestination() == null) {
+            warnings.add("Schedule " + schedule.getId() + " has no destination");
+            return null;
+        }
+        try {
+            return destinationService.ensureGeocoded(schedule.getDestination());
+        } catch (ApiException ex) {
+            warnings.add("Could not geocode " + schedule.getDestination().getName() + ": " + ex.getMessage());
+            return null;
+        }
+    }
+
+    private static String buildMultiStopGoogleMapsUrl(List<TripSchedule> schedules) {
+        List<TripSchedule> withCoords = schedules.stream()
+                .filter(s -> s.getDestination() != null
+                        && DestinationService.hasUsableCoordinates(
+                                s.getDestination().getLatitude(),
+                                s.getDestination().getLongitude()))
+                .toList();
+        if (withCoords.isEmpty()) {
+            return null;
+        }
+        Destination first = withCoords.get(0).getDestination();
+        Destination last = withCoords.get(withCoords.size() - 1).getDestination();
+        StringBuilder url = new StringBuilder("https://www.google.com/maps/dir/?api=1")
+                .append("&origin=").append(first.getLatitude()).append(",").append(first.getLongitude())
+                .append("&destination=").append(last.getLatitude()).append(",").append(last.getLongitude())
+                .append("&travelmode=driving");
+        if (withCoords.size() > 2) {
+            String waypoints = withCoords.subList(1, withCoords.size() - 1).stream()
+                    .map(s -> s.getDestination().getLatitude() + "," + s.getDestination().getLongitude())
+                    .collect(Collectors.joining("|"));
+            url.append("&waypoints=").append(waypoints);
+        }
+        return url.toString();
+    }
+
+    /**
+     * F-09: calls ML {@code POST /plan-itinerary} to redistribute existing schedules across
+     * trip days, then writes back day/sequence/start_time.
+     */
+    @Transactional
+    public GenerateItineraryResponse generateItinerary(Long tripId) {
+        Trip trip = loadOwnedTrip(tripId);
+        List<TripSchedule> schedules = tripScheduleRepository
+                .findByTripDay_Trip_IdOrderByTripDay_DaySequenceAscSequenceAsc(tripId);
+        if (schedules.isEmpty()) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "NO_SCHEDULES", "Trip has no stops to plan");
+        }
+
+        List<Map<String, Object>> places = new ArrayList<>();
+        Map<String, TripSchedule> scheduleByNormalizedName = new HashMap<>();
+        for (TripSchedule schedule : schedules) {
+            if (schedule.getDestination() == null) {
+                continue;
+            }
+            Destination destination = destinationService.ensureGeocoded(schedule.getDestination());
+            scheduleByNormalizedName.put(normalizeName(destination.getName()), schedule);
+            places.add(toAiPlace(destination, schedule.getNote()));
+        }
+
+        if (places.isEmpty()) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "NO_GEOCODED_STOPS", "No stops with resolvable coordinates");
+        }
+
+        AiPlanItineraryResult result = aiPlanningClient.planItinerary(
+                places,
+                trip.getStartDate().toString(),
+                trip.getDurationDays()
+        );
+        if (result == null || result.days() == null || result.days().isEmpty()) {
+            throw new ApiException(
+                    HttpStatus.BAD_GATEWAY,
+                    "AI_SERVICE_UNAVAILABLE",
+                    "Itinerary planning service is unavailable"
+            );
+        }
+
+        List<GenerateItineraryResponse.PlannedDayResponse> responseDays = new ArrayList<>();
+        java.util.Set<Long> assignedScheduleIds = new java.util.HashSet<>();
+
+        for (AiPlanItineraryResult.PlannedDay plannedDay : result.days()) {
+            TripDay tripDay = tripDayRepository.findByTrip_IdAndDaySequence(tripId, plannedDay.day())
+                    .orElseThrow(() -> new ApiException(
+                            HttpStatus.NOT_FOUND,
+                            "TRIP_DAY_NOT_FOUND",
+                            "Trip day not found: " + plannedDay.day()
+                    ));
+
+            LocalTime clockCursor = LocalTime.of(9, 0);
+            List<GenerateItineraryResponse.PlannedStopResponse> stopResponses = new ArrayList<>();
+            int sequence = 1;
+            for (AiPlanItineraryResult.PlannedStop stop : plannedDay.stops()) {
+                TripSchedule schedule = scheduleByNormalizedName.get(normalizeName(stop.name()));
+                if (schedule == null) {
+                    continue;
+                }
+                schedule.setTripDay(tripDay);
+                schedule.setSequence(sequence++);
+                clockCursor = nextStartTime(clockCursor, stop.timeOfDay());
+                schedule.setStartTime(clockCursor);
+                schedule.setNote(truncate(stop.reason()));
+                tripScheduleRepository.save(schedule);
+                assignedScheduleIds.add(schedule.getId());
+                clockCursor = clockCursor.plusMinutes(DEFAULT_VISIT_SLOT_MINUTES);
+
+                stopResponses.add(new GenerateItineraryResponse.PlannedStopResponse(
+                        schedule.getId(),
+                        stop.name(),
+                        stop.order(),
+                        stop.timeOfDay(),
+                        stop.reason()
+                ));
+            }
+
+            responseDays.add(new GenerateItineraryResponse.PlannedDayResponse(
+                    plannedDay.day(),
+                    plannedDay.date(),
+                    plannedDay.weatherSummary(),
+                    stopResponses
+            ));
+        }
+
+        List<TripSchedule> unassigned = schedules.stream()
+                .filter(schedule -> !assignedScheduleIds.contains(schedule.getId()))
+                .toList();
+        if (!unassigned.isEmpty()) {
+            TripDay lastDay = tripDayRepository.findByTrip_IdAndDaySequence(tripId, trip.getDurationDays())
+                    .orElseThrow(() -> new ApiException(
+                            HttpStatus.NOT_FOUND,
+                            "TRIP_DAY_NOT_FOUND",
+                            "Trip day not found: " + trip.getDurationDays()
+                    ));
+            int sequence = tripScheduleRepository.findByTripDay_IdOrderBySequenceAsc(lastDay.getId()).size() + 1;
+            for (TripSchedule schedule : unassigned) {
+                schedule.setTripDay(lastDay);
+                schedule.setSequence(sequence++);
+                tripScheduleRepository.save(schedule);
+                assignedScheduleIds.add(schedule.getId());
+            }
+        }
+
+        return new GenerateItineraryResponse(
+                tripId,
+                result.status() != null ? result.status() : "OK",
+                responseDays
+        );
+    }
+
+    private Map<String, Object> toAiPlace(Destination destination, String note) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("name", destination.getName());
+        map.put("type", destination.getCategory() != null ? destination.getCategory() : "attraction");
+        map.put("lat", destination.getLatitude());
+        map.put("lng", destination.getLongitude());
+        map.put("activities", note != null && !note.isBlank() ? List.of(note) : List.of());
+        return map;
+    }
+
+    private static String normalizeName(String name) {
+        if (name == null) {
+            return "";
+        }
+        return name.replaceAll("[^A-Za-z0-9]", "").toLowerCase(Locale.ROOT);
+    }
+
+    private LocalTime nextStartTime(LocalTime cursor, String timeOfDay) {
+        LocalTime bucketStart = switch (timeOfDay == null ? "" : timeOfDay.toLowerCase(Locale.ROOT)) {
+            case "morning" -> LocalTime.of(9, 0);
+            case "afternoon" -> LocalTime.of(13, 0);
+            case "evening" -> LocalTime.of(18, 0);
+            default -> cursor;
+        };
+        LocalTime next = bucketStart.isAfter(cursor) ? bucketStart : cursor;
+        return next.isBefore(LocalTime.of(22, 30)) ? next : LocalTime.of(22, 30);
+    }
+
+    private String truncate(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.length() > NOTE_MAX_LENGTH ? value.substring(0, NOTE_MAX_LENGTH) : value;
     }
 
     private TripSummaryResponse toSummary(Trip trip) {

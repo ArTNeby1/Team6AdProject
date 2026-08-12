@@ -78,7 +78,15 @@ public class AiPlanningClientHttp implements AiPlanningClient {
     }
 
     @Override
-    public AiRecommendResult recommend(List<Map<String, Object>> places, String date, String preferenceText) {
+    public AiRecommendResult recommend(
+            List<Map<String, Object>> places,
+            String date,
+            String preferenceText,
+            String mode,
+            Integer topN,
+            Double maxDistanceKm,
+            String destination
+    ) {
         if (places == null || places.isEmpty()) {
             return new AiRecommendResult("UNAVAILABLE", null, List.of(), List.of());
         }
@@ -86,6 +94,10 @@ public class AiPlanningClientHttp implements AiPlanningClient {
         body.put("places", places);
         body.put("date", date);
         body.put("preference_text", preferenceText);
+        body.put("mode", mode != null ? mode : "hybrid");
+        body.put("top_n", topN != null ? topN : 3);
+        body.put("max_distance_km", maxDistanceKm);
+        body.put("destination", destination != null ? destination : "Singapore");
 
         try {
             return restClient.post()
@@ -99,14 +111,24 @@ public class AiPlanningClientHttp implements AiPlanningClient {
     }
 
     @Override
-    public Map<String, Object> generateDailyItinerary(Long tripId, List<Long> confirmedPlaceIds) {
-        // 行程生成（F-09）还没在 Python 侧实现——目前 orchestrator.py 只有
-        // 抽取 + 推荐两个 agent，没有按天排程的第三个 agent，先保留 stub 行为。
-        return Map.of(
-                "status", "STUB",
-                "tripId", tripId,
-                "days", List.of()
-        );
+    public AiPlanItineraryResult planItinerary(List<Map<String, Object>> places, String startDate, int numDays) {
+        if (places == null || places.isEmpty()) {
+            return new AiPlanItineraryResult("UNAVAILABLE", List.of());
+        }
+        Map<String, Object> body = new HashMap<>();
+        body.put("places", places);
+        body.put("start_date", startDate);
+        body.put("num_days", numDays);
+
+        try {
+            return restClient.post()
+                    .uri("/plan-itinerary")
+                    .body(body)
+                    .retrieve()
+                    .body(AiPlanItineraryResult.class);
+        } catch (RestClientException e) {
+            return new AiPlanItineraryResult("AI_SERVICE_UNAVAILABLE", List.of());
+        }
     }
 
     private Map<String, Object> unavailableResponse(String status) {
