@@ -41,8 +41,8 @@ object AiPlanningRepository {
     /** Returns the id of the newly created Trip. */
     suspend fun confirm(sessionId: Long): Long = planningApi.confirm(sessionId).id
 
-    private fun toExtractedPlaces(places: List<DraftPlaceDto>?): List<ExtractedPlace> =
-        (places ?: emptyList()).map { place ->
+    private fun toExtractedPlaces(places: List<DraftPlaceDto>): List<ExtractedPlace> =
+        places.map { place ->
             ExtractedPlace(
                 id = place.id.toString(),
                 name = place.name,

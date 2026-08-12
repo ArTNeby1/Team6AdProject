@@ -1,5 +1,6 @@
 package com.loomytrip.mobile.ui.screen
 
+import android.app.DatePickerDialog
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -21,6 +22,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Directions
 import androidx.compose.material.icons.filled.Edit
@@ -71,19 +75,36 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.loomytrip.mobile.BuildConfig
 import com.loomytrip.mobile.data.model.TripActivity
+import com.loomytrip.mobile.ui.component.GoogleTripMap
+import com.loomytrip.mobile.ui.component.hasMapCoordinates
+import java.time.LocalDate
+import java.time.ZoneId
 import kotlin.math.hypot
+
+data class MapTripOption(
+    val id: Long,
+    val name: String
+)
 
 @Composable
 fun RouteScreen(
     activities: List<TripActivity>,
     tripName: String,
+    startDate: String?,
+    tripStatus: String?,
+    totalDays: Int,
+    isUpdatingStartDate: Boolean = false,
+    startDateError: String? = null,
+    onStartDateChange: (LocalDate) -> Unit = {},
     onViewMap: (Int) -> Unit,
     onEdit: (Int) -> Unit
 ) {
     var selectedDay by rememberSaveable { mutableIntStateOf(1) }
-    val dayCount = (activities.maxOfOrNull { it.day } ?: 1).coerceAtLeast(1)
+    val dayCount = totalDays.coerceAtLeast(1)
     val dayActivities = activities.filter { it.day == selectedDay }
+    val context = LocalContext.current
 
     Column(
         modifier = Modifier
@@ -91,11 +112,31 @@ fun RouteScreen(
             .padding(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text("$tripName · $dayCount ${if (dayCount == 1) "day" else "days"}", fontSize = 27.sp, fontWeight = FontWeight.Bold)
+        Text("$tripName • $dayCount ${if (dayCount == 1) "day" else "days"}", fontSize = 27.sp, fontWeight = FontWeight.Bold)
         Text(
             "${activities.size} stops in this trip",
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
         )
+        OutlinedButton(
+            onClick = {
+                showStartDatePicker(
+                    context = context,
+                    currentDate = startDate,
+                    onDateSelected = onStartDateChange
+                )
+            },
+            enabled = startDate != null && tripStatus != "FINISHED" && !isUpdatingStartDate,
+            modifier = Modifier.semantics { contentDescription = "Change start date" }
+        ) {
+            Icon(Icons.Default.CalendarMonth, contentDescription = null)
+            Spacer(Modifier.width(7.dp))
+            Text(
+                if (isUpdatingStartDate) "Updating start date..." else "Start date: ${startDate ?: "TBD"}"
+            )
+        }
+        startDateError?.let { error ->
+            Text(error, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+        }
         DaySelector(selectedDay = selectedDay, dayCount = dayCount, onDaySelected = { selectedDay = it })
         if (dayActivities.isEmpty()) {
             EmptyDay(modifier = Modifier.weight(1f))
@@ -175,7 +216,7 @@ private fun ItineraryActivityCard(index: Int, activity: TripActivity) {
                     )
                     Spacer(Modifier.width(5.dp))
                     Text(
-                        "${activity.startTime} · ${activity.durationLabel}",
+                        "${activity.startTime} • ${activity.durationLabel}",
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
                     )
@@ -205,14 +246,17 @@ private fun ItineraryActivityCard(index: Int, activity: TripActivity) {
 fun EditTripScreen(
     activities: List<TripActivity>,
     initialDay: Int,
+    totalDays: Int,
     onMove: (String, Int) -> Unit,
     onDelete: (String) -> Unit,
     onAdd: (Int, String, String) -> Unit,
-    onSave: () -> Unit
+    onSave: () -> Unit,
+    isSaving: Boolean = false,
+    errorMessage: String? = null
 ) {
     var selectedDay by rememberSaveable { mutableIntStateOf(initialDay) }
     var showAddDialog by remember { mutableStateOf(false) }
-    val dayCount = (activities.maxOfOrNull { it.day } ?: 1).coerceAtLeast(selectedDay)
+    val dayCount = totalDays.coerceAtLeast(selectedDay)
     val dayActivities = activities.filter { it.day == selectedDay }
 
     LaunchedEffect(initialDay) { selectedDay = initialDay }
@@ -253,8 +297,15 @@ fun EditTripScreen(
             Spacer(Modifier.width(6.dp))
             Text("Add activity to Day $selectedDay")
         }
-        Button(onClick = onSave, modifier = Modifier.fillMaxWidth()) {
-            Text("Save changes", fontWeight = FontWeight.Bold)
+        errorMessage?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+        }
+        Button(
+            onClick = onSave,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isSaving
+        ) {
+            Text(if (isSaving) "Saving…" else "Save changes", fontWeight = FontWeight.Bold)
         }
     }
 
@@ -287,7 +338,7 @@ private fun EditActivityCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(activity.title, fontWeight = FontWeight.Bold)
                 Text(
-                    "${activity.startTime} · ${activity.durationLabel}",
+                    "${activity.startTime} • ${activity.durationLabel}",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f)
                 )
@@ -365,14 +416,26 @@ private fun AddActivityDialog(
 fun MapScreen(
     activities: List<TripActivity>,
     initialDay: Int,
+    totalDays: Int,
+    tripOptions: List<MapTripOption> = emptyList(),
+    selectedTripId: Long? = null,
+    onTripSelected: (Long) -> Unit = {},
     onEdit: (Int) -> Unit
 ) {
     var selectedDay by rememberSaveable { mutableIntStateOf(initialDay) }
-    val dayCount = (activities.maxOfOrNull { it.day } ?: 1).coerceAtLeast(selectedDay)
+    var displayedTripId by remember { mutableStateOf(selectedTripId) }
+    val dayCount = totalDays.coerceAtLeast(selectedDay)
     val dayActivities = activities.filter { it.day == selectedDay }
+    val mappedStopCount = dayActivities.count(TripActivity::hasMapCoordinates)
     val context = LocalContext.current
 
     LaunchedEffect(initialDay) { selectedDay = initialDay }
+    LaunchedEffect(selectedTripId) {
+        if (displayedTripId != selectedTripId) {
+            displayedTripId = selectedTripId
+            selectedDay = 1
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -380,6 +443,13 @@ fun MapScreen(
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        if (tripOptions.isNotEmpty()) {
+            TripSelector(
+                options = tripOptions,
+                selectedTripId = selectedTripId,
+                onTripSelected = onTripSelected
+            )
+        }
         DaySelector(selectedDay = selectedDay, dayCount = dayCount, onDaySelected = { selectedDay = it })
         Card(
             modifier = Modifier
@@ -387,13 +457,20 @@ fun MapScreen(
                 .weight(1f),
             shape = RoundedCornerShape(20.dp)
         ) {
-            InteractiveRouteMap(activities = dayActivities)
+            TripMapComponent(activities = dayActivities)
         }
         Text(
-            "Day $selectedDay route · ${dayActivities.size} stops",
+            "Day $selectedDay route • ${dayActivities.size} stops",
             fontWeight = FontWeight.Bold,
             fontSize = 16.sp
         )
+        if (BuildConfig.MAPS_API_KEY_CONFIGURED && mappedStopCount < dayActivities.size) {
+            Text(
+                "${dayActivities.size - mappedStopCount} stop(s) are waiting for coordinates.",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
         if (dayActivities.isNotEmpty()) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -418,10 +495,83 @@ fun MapScreen(
             }
         }
         Text(
-            "Drag to move. Pinch to zoom. Tap a stop for details.",
+            if (BuildConfig.MAPS_API_KEY_CONFIGURED) {
+                "Tap a marker for details. Pinch to zoom the map."
+            } else {
+                "Route preview. Add the team Google Maps key to enable the live map."
+            },
             fontSize = 11.sp,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
         )
+    }
+}
+
+private fun showStartDatePicker(
+    context: Context,
+    currentDate: String?,
+    onDateSelected: (LocalDate) -> Unit
+) {
+    val today = LocalDate.now()
+    val parsedDate = runCatching { LocalDate.parse(currentDate) }.getOrNull()
+    val initialDate = parsedDate?.takeUnless { it.isBefore(today) } ?: today
+
+    DatePickerDialog(
+        context,
+        { _, year, month, day -> onDateSelected(LocalDate.of(year, month + 1, day)) },
+        initialDate.year,
+        initialDate.monthValue - 1,
+        initialDate.dayOfMonth
+    ).apply {
+        datePicker.minDate = today
+            .atStartOfDay(ZoneId.systemDefault())
+            .toInstant()
+            .toEpochMilli()
+        show()
+    }
+}
+
+@Composable
+private fun TripSelector(
+    options: List<MapTripOption>,
+    selectedTripId: Long?,
+    onTripSelected: (Long) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            "Choose itinerary",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+        )
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(options, key = { it.id }) { option ->
+                FilterChip(
+                    selected = option.id == selectedTripId,
+                    onClick = { onTripSelected(option.id) },
+                    label = {
+                        Text(
+                            option.name,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TripMapComponent(activities: List<TripActivity>) {
+    when {
+        activities.isEmpty() -> EmptyDay(modifier = Modifier.fillMaxSize())
+        BuildConfig.MAPS_API_KEY_CONFIGURED && activities.any(TripActivity::hasMapCoordinates) -> {
+            GoogleTripMap(
+                activities = activities,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+        else -> InteractiveRouteMap(activities)
     }
 }
 
@@ -472,6 +622,7 @@ private fun InteractiveRouteMap(activities: List<TripActivity>) {
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFFF2EFE7))
+            .semantics { contentDescription = "Route map preview" }
     ) {
         // Draw the route locally because the map API is not connected yet.
         Canvas(
@@ -576,7 +727,7 @@ private fun InteractiveRouteMap(activities: List<TripActivity>) {
                     Column {
                         Text(selectedActivity.title, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         Text(
-                            "${selectedActivity.startTime} · ${selectedActivity.category}",
+                            "${selectedActivity.startTime} • ${selectedActivity.category}",
                             fontSize = 10.sp,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )

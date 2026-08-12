@@ -20,6 +20,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -41,31 +42,37 @@ import com.loomytrip.mobile.data.model.ExtractedPlace
 import com.loomytrip.mobile.data.model.TripActivity
 import com.loomytrip.mobile.data.network.ScheduleDto
 import com.loomytrip.mobile.data.network.TokenStore
+import com.loomytrip.mobile.data.network.TripDto
 import com.loomytrip.mobile.data.repository.AiPlanningRepository
 import com.loomytrip.mobile.data.repository.AuthRepository
 import com.loomytrip.mobile.data.repository.MockTripRepository
 import com.loomytrip.mobile.data.repository.TripSyncRepository
 import com.loomytrip.mobile.ui.screen.AttractionScreen
-import kotlinx.coroutines.launch
 import com.loomytrip.mobile.ui.screen.EditTripScreen
 import com.loomytrip.mobile.ui.screen.HomeScreen
 import com.loomytrip.mobile.ui.screen.ImportGuideScreen
 import com.loomytrip.mobile.ui.screen.LoginScreen
 import com.loomytrip.mobile.ui.screen.MapScreen
+import com.loomytrip.mobile.ui.screen.MapTripOption
 import com.loomytrip.mobile.ui.screen.RegisterScreen
 import com.loomytrip.mobile.ui.screen.ReviewExtractedScreen
 import com.loomytrip.mobile.ui.screen.RouteScreen
+import com.loomytrip.mobile.ui.screen.TripsListScreen
+import java.io.IOException
+import kotlinx.coroutines.launch
+import retrofit2.HttpException
 
 private enum class Destination(val route: String, val label: String) {
     Login("login", "Sign in"),
     Register("register", "Create account"),
     Home("home", "Home"),
-    Import("import", "Import guide"),
+    Import("import", "Smart AI Import"),
     Review("review", "Review places"),
     Attraction("attraction", "Attraction"),
-    Route("route", "Trips"),
+    Trips("trips", "My Itineraries"),
+    Itinerary("itinerary", "Itinerary Details"),
     Map("map", "Map"),
-    Edit("edit", "Edit trip"),
+    Edit("edit", "Edit Itinerary"),
     Profile("profile", "Profile")
 }
 
@@ -81,26 +88,47 @@ fun LoomyTripApp() {
     val scope = rememberCoroutineScope()
     val tripRepository = remember { MockTripRepository() }
     val extractedPlaces = remember { mutableStateListOf<ExtractedPlace>() }
+    val trips = remember { mutableStateListOf<TripDto>() }
     val tripActivities = remember { mutableStateListOf<TripActivity>() }
     var signedInEmail by remember { mutableStateOf<String?>(null) }
     var selectedMapDay by remember { mutableIntStateOf(1) }
     var selectedEditDay by remember { mutableIntStateOf(1) }
     var authLoading by remember { mutableStateOf(false) }
     var authError by remember { mutableStateOf<String?>(null) }
-    var currentTripId by remember { mutableStateOf<Long?>(null) }
-    var currentTripName by remember { mutableStateOf<String?>(null) }
+    var activeTripId by remember { mutableStateOf<Long?>(null) }
+    var tripsLoading by remember { mutableStateOf(false) }
+    var tripsError by remember { mutableStateOf<String?>(null) }
     var baselineSchedules by remember { mutableStateOf<List<ScheduleDto>>(emptyList()) }
     var planningSessionId by remember { mutableStateOf<Long?>(null) }
     var planningLoading by remember { mutableStateOf(false) }
     var planningError by remember { mutableStateOf<String?>(null) }
+    var editSaving by remember { mutableStateOf(false) }
+    var editError by remember { mutableStateOf<String?>(null) }
+    var startDateUpdating by remember { mutableStateOf(false) }
+    var startDateError by remember { mutableStateOf<String?>(null) }
 
-    suspend fun loadLatestTrip() {
-        val trip = TripSyncRepository.fetchLatestTrip()
-        currentTripId = trip?.id
-        currentTripName = trip?.tripName
+    fun selectTrip(tripId: Long?) {
+        val trip = trips.firstOrNull { it.id == tripId } ?: trips.firstOrNull()
+        startDateError = null
+        activeTripId = trip?.id
         baselineSchedules = trip?.schedules ?: emptyList()
         tripActivities.clear()
         if (trip != null) tripActivities.addAll(TripSyncRepository.toActivities(trip))
+    }
+
+    suspend fun loadTrips(preferredTripId: Long? = activeTripId) {
+        tripsLoading = true
+        tripsError = null
+        try {
+            val remoteTrips = TripSyncRepository.fetchTrips()
+            trips.clear()
+            trips.addAll(remoteTrips)
+            selectTrip(preferredTripId)
+        } catch (error: Exception) {
+            tripsError = error.userMessage("Could not load trips from Backend.")
+        } finally {
+            tripsLoading = false
+        }
     }
 
     val backStackEntry = navController.currentBackStackEntryAsState().value
@@ -109,7 +137,7 @@ fun LoomyTripApp() {
     val authDestinations = setOf(Destination.Login, Destination.Register)
     val bottomDestinations = setOf(
         Destination.Home,
-        Destination.Route,
+        Destination.Trips,
         Destination.Map,
         Destination.Profile
     )
@@ -117,7 +145,7 @@ fun LoomyTripApp() {
     val showBottomBar = current in bottomDestinations
     val bottomItems = listOf(
         BottomItem(Destination.Home, Icons.Default.Home),
-        BottomItem(Destination.Route, Icons.Default.Route),
+        BottomItem(Destination.Trips, Icons.Default.Route),
         BottomItem(Destination.Map, Icons.Default.Map),
         BottomItem(Destination.Profile, Icons.Default.Person)
     )
@@ -137,12 +165,20 @@ fun LoomyTripApp() {
         tripActivities.addAll(updated)
     }
 
+    LaunchedEffect(route, signedInEmail) {
+        if (signedInEmail != null && current in setOf(Destination.Home, Destination.Trips)) {
+            loadTrips()
+        }
+    }
+
+    val activeTrip = trips.firstOrNull { it.id == activeTripId } ?: trips.firstOrNull()
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             if (showAppChrome) {
                 TopAppBar(
-                    title = { Text(if (current == Destination.Home) "Loomytrip" else current.label) },
+                    title = { Text(if (current == Destination.Home) "LoomyTrip" else current.label) },
                     navigationIcon = {
                         if (current !in bottomDestinations) {
                             IconButton(onClick = { navController.popBackStack() }) {
@@ -191,12 +227,11 @@ fun LoomyTripApp() {
                             try {
                                 val auth = AuthRepository.login(email, password)
                                 signedInEmail = auth.email
-                                loadLatestTrip()
                                 navController.navigate(Destination.Home.route) {
                                     popUpTo(Destination.Login.route) { inclusive = true }
                                 }
                             } catch (e: Exception) {
-                                authError = e.message ?: "Sign in failed"
+                                authError = e.userMessage("Sign in failed. Check the account and try again.")
                             } finally {
                                 authLoading = false
                             }
@@ -216,12 +251,11 @@ fun LoomyTripApp() {
                             try {
                                 val auth = AuthRepository.register(name, email, password)
                                 signedInEmail = auth.email
-                                loadLatestTrip()
                                 navController.navigate(Destination.Home.route) {
                                     popUpTo(Destination.Login.route) { inclusive = true }
                                 }
                             } catch (e: Exception) {
-                                authError = e.message ?: "Registration failed"
+                                authError = e.userMessage("Registration failed. Please try again.")
                             } finally {
                                 authLoading = false
                             }
@@ -233,9 +267,12 @@ fun LoomyTripApp() {
             composable(Destination.Home.route) {
                 HomeScreen(
                     onStartPlanning = { navController.navigate(Destination.Import.route) },
-                    onViewTrip = { navigateToRoot(Destination.Route) },
-                    tripName = currentTripName,
-                    tripDayCount = (tripActivities.maxOfOrNull { it.day } ?: 1).coerceAtLeast(1),
+                    onViewTrip = {
+                        navigateToRoot(if (activeTrip == null) Destination.Trips else Destination.Itinerary)
+                    },
+                    onViewAllTrips = { navigateToRoot(Destination.Trips) },
+                    tripName = activeTrip?.tripName,
+                    tripDayCount = activeTrip?.durationDays ?: 1,
                     tripStopCount = tripActivities.size
                 )
             }
@@ -249,12 +286,15 @@ fun LoomyTripApp() {
                             planningError = null
                             try {
                                 val result = AiPlanningRepository.startSession(sourceText)
+                                if (result.places.isEmpty()) {
+                                    error("AI finished but did not return any places. Try adding a destination and dates.")
+                                }
                                 planningSessionId = result.sessionId
                                 extractedPlaces.clear()
                                 extractedPlaces.addAll(result.places)
                                 navController.navigate(Destination.Review.route)
                             } catch (e: Exception) {
-                                planningError = e.message ?: "AI extraction failed"
+                                planningError = e.userMessage("AI analysis failed. Please try again.")
                             } finally {
                                 planningLoading = false
                             }
@@ -274,36 +314,93 @@ fun LoomyTripApp() {
                     onConfirm = {
                         val sessionId = planningSessionId
                         scope.launch {
-                            if (sessionId != null) {
+                            if (sessionId == null) {
+                                planningError = "Start the AI import again before confirming."
+                            } else {
+                                planningLoading = true
+                                planningError = null
                                 try {
                                     extractedPlaces.filterNot { it.isIncluded }.forEach { place ->
                                         place.id.toLongOrNull()?.let { AiPlanningRepository.deletePlace(it) }
                                     }
-                                    AiPlanningRepository.confirm(sessionId)
-                                    loadLatestTrip()
-                                } catch (_: Exception) {
-                                    // Best-effort: still let the user see whatever is on the backend.
+                                    val newTripId = AiPlanningRepository.confirm(sessionId)
+                                    loadTrips(newTripId)
+                                    if (trips.any { it.id == newTripId }) {
+                                        navController.navigate(Destination.Itinerary.route) {
+                                            popUpTo(Destination.Home.route)
+                                        }
+                                    } else {
+                                        planningError = tripsError ?: "The itinerary was created but could not be loaded."
+                                    }
+                                } catch (error: Exception) {
+                                    planningError = error.userMessage("Could not create the itinerary.")
+                                } finally {
+                                    planningLoading = false
                                 }
                             }
-                            navigateToRoot(Destination.Route)
                         }
                     },
-                    onImportAgain = { navController.popBackStack() }
+                    onImportAgain = { navController.popBackStack() },
+                    isLoading = planningLoading,
+                    errorMessage = planningError
                 )
             }
             composable(Destination.Attraction.route) {
-                AttractionScreen(onAddToTrip = { navController.navigate(Destination.Route.route) })
+                AttractionScreen(onAddToTrip = { navController.navigate(Destination.Itinerary.route) })
             }
-            composable(Destination.Route.route) {
+            composable(Destination.Trips.route) {
+                TripsListScreen(
+                    trips = trips,
+                    isLoading = tripsLoading,
+                    errorMessage = tripsError,
+                    onRefresh = { scope.launch { loadTrips() } },
+                    onStartPlanning = { navController.navigate(Destination.Import.route) },
+                    onTripSelected = { tripId ->
+                        selectTrip(tripId)
+                        navController.navigate(Destination.Itinerary.route)
+                    }
+                )
+            }
+            composable(Destination.Itinerary.route) {
                 RouteScreen(
                     activities = tripActivities,
-                    tripName = currentTripName ?: "Your trip",
+                    tripName = activeTrip?.tripName ?: "Your itinerary",
+                    startDate = activeTrip?.startDate,
+                    tripStatus = activeTrip?.status,
+                    totalDays = activeTrip?.durationDays ?: 1,
+                    isUpdatingStartDate = startDateUpdating,
+                    startDateError = startDateError,
+                    onStartDateChange = { newDate ->
+                        val tripId = activeTrip?.id
+                        if (tripId == null) {
+                            startDateError = "Select an itinerary before changing its start date."
+                        } else {
+                            scope.launch {
+                                startDateUpdating = true
+                                startDateError = null
+                                try {
+                                    val updated = TripSyncRepository.updateStartDate(tripId, newDate)
+                                    val sortedTrips = TripSyncRepository.sortForDisplay(
+                                        trips.filterNot { it.id == updated.id } + updated
+                                    )
+                                    trips.clear()
+                                    trips.addAll(sortedTrips)
+                                    selectTrip(updated.id)
+                                } catch (error: Exception) {
+                                    startDateError = error.userMessage("Could not update the start date.")
+                                } finally {
+                                    startDateUpdating = false
+                                }
+                            }
+                        }
+                    },
                     onViewMap = { day ->
                         selectedMapDay = day
                         navController.navigate(Destination.Map.route)
                     },
                     onEdit = { day ->
                         selectedEditDay = day
+                        editError = null
                         navController.navigate(Destination.Edit.route)
                     }
                 )
@@ -312,8 +409,16 @@ fun LoomyTripApp() {
                 MapScreen(
                     activities = tripActivities,
                     initialDay = selectedMapDay,
+                    totalDays = activeTrip?.durationDays ?: 1,
+                    tripOptions = trips.map { MapTripOption(it.id, it.tripName) },
+                    selectedTripId = activeTrip?.id,
+                    onTripSelected = { tripId ->
+                        selectTrip(tripId)
+                        selectedMapDay = 1
+                    },
                     onEdit = { day ->
                         selectedEditDay = day
+                        editError = null
                         navController.navigate(Destination.Edit.route)
                     }
                 )
@@ -322,6 +427,7 @@ fun LoomyTripApp() {
                 EditTripScreen(
                     activities = tripActivities,
                     initialDay = selectedEditDay,
+                    totalDays = activeTrip?.durationDays ?: 1,
                     onMove = { id, direction ->
                         replaceTripActivities(
                             tripRepository.moveActivity(tripActivities.toList(), id, direction)
@@ -338,21 +444,33 @@ fun LoomyTripApp() {
                         )
                     },
                     onSave = {
-                        val tripId = currentTripId
+                        val tripId = activeTripId
                         if (tripId == null) {
-                            navController.popBackStack()
+                            editError = "Select a Backend itinerary before saving."
                         } else {
                             scope.launch {
+                                editSaving = true
+                                editError = null
                                 try {
-                                    TripSyncRepository.syncEdits(tripId, tripActivities.toList(), baselineSchedules)
-                                    loadLatestTrip()
-                                } catch (_: Exception) {
-                                    // Best-effort: keep local state even if the sync call failed.
+                                    val updated = TripSyncRepository.syncEdits(
+                                        tripId,
+                                        tripActivities.toList(),
+                                        baselineSchedules
+                                    )
+                                    val index = trips.indexOfFirst { it.id == updated.id }
+                                    if (index >= 0) trips[index] = updated else trips.add(0, updated)
+                                    selectTrip(updated.id)
+                                    navController.popBackStack()
+                                } catch (error: Exception) {
+                                    editError = error.userMessage("Could not save this itinerary.")
+                                } finally {
+                                    editSaving = false
                                 }
-                                navController.popBackStack()
                             }
                         }
-                    }
+                    },
+                    isSaving = editSaving,
+                    errorMessage = editError
                 )
             }
             composable(Destination.Profile.route) {
@@ -361,11 +479,13 @@ fun LoomyTripApp() {
                     onSignOut = {
                         signedInEmail = null
                         extractedPlaces.clear()
+                        trips.clear()
                         tripActivities.clear()
-                        currentTripId = null
-                        currentTripName = null
+                        activeTripId = null
                         baselineSchedules = emptyList()
-                        TokenStore.token = null
+                        startDateError = null
+                        startDateUpdating = false
+                        TokenStore.clear()
                         navController.navigate(Destination.Login.route) {
                             popUpTo(navController.graph.id) { inclusive = true }
                         }
@@ -397,4 +517,16 @@ private fun ProfileScreen(email: String, onSignOut: () -> Unit) {
             Text("Sign out")
         }
     }
+}
+
+private fun Throwable.userMessage(fallback: String): String = when (this) {
+    is IOException -> "Cannot reach LoomyTrip Backend. Check the network and try again."
+    is HttpException -> when (code()) {
+        400 -> "The request was not accepted. Check the entered information."
+        401, 403 -> "The session is not authorized. Sign in again with the same account used on Web."
+        404 -> "The requested itinerary could not be found."
+        in 500..599 -> "LoomyTrip Backend is temporarily unavailable. Please retry."
+        else -> fallback
+    }
+    else -> message?.takeIf { it.isNotBlank() } ?: fallback
 }

@@ -1,5 +1,6 @@
 package com.loomytrip.mobile.data.network
 
+import com.loomytrip.mobile.BuildConfig
 import java.util.concurrent.TimeUnit
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -14,18 +15,17 @@ import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
 
-/**
- * Dev machine's LAN IP, reachable from a physical phone on the same Wi-Fi
- * (localhost/10.0.2.2 only work for the Android emulator, not a real device).
- * Update this if the machine's IP changes, and keep it in sync with
- * network_security_config.xml's cleartext allowlist.
- */
 object ApiConfig {
-    var baseUrl: String = "http://192.168.0.14:8091/api/v1/"
+    val baseUrl: String = "${BuildConfig.BACKEND_BASE_URL.trimEnd('/')}/api/v1/"
 }
 
 object TokenStore {
+    @Volatile
     var token: String? = null
+
+    fun clear() {
+        token = null
+    }
 }
 
 private val authInterceptor = Interceptor { chain ->
@@ -38,11 +38,16 @@ private val authInterceptor = Interceptor { chain ->
 private val okHttpClient: OkHttpClient by lazy {
     OkHttpClient.Builder()
         .addInterceptor(authInterceptor)
-        .addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
-        // AI planning calls (create session / refine) go through Bedrock and can take a while.
+        .apply {
+            if (BuildConfig.DEBUG) {
+                addInterceptor(HttpLoggingInterceptor().apply {
+                    level = HttpLoggingInterceptor.Level.BASIC
+                })
+            }
+        }
         .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(90, TimeUnit.SECONDS)
-        .writeTimeout(90, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS)
+        .writeTimeout(120, TimeUnit.SECONDS)
         .build()
 }
 
@@ -66,6 +71,12 @@ interface TripApi {
     @GET("trips")
     suspend fun getTrips(): List<TripDto>
 
+    @GET("trips/{id}")
+    suspend fun getTrip(@Path("id") tripId: Long): TripDto
+
+    @PUT("trips/{id}")
+    suspend fun updateTrip(@Path("id") tripId: Long, @Body request: UpdateTripRequest): TripDto
+
     @POST("trips/{id}/schedules")
     suspend fun addSchedules(@Path("id") tripId: Long, @Body request: AddSchedulesRequest): TripDto
 
@@ -73,7 +84,7 @@ interface TripApi {
     suspend fun bulkUpdateSchedules(@Path("id") tripId: Long, @Body request: BulkUpdateSchedulesRequest): TripDto
 
     @DELETE("trips/{id}/schedules/{scheduleId}")
-    suspend fun deleteSchedule(@Path("id") tripId: Long, @Path("scheduleId") scheduleId: Long)
+    suspend fun deleteSchedule(@Path("id") tripId: Long, @Path("scheduleId") scheduleId: Long): TripDto
 }
 
 interface PlanningApi {

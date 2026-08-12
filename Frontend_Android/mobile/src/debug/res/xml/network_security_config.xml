@@ -6,10 +6,5 @@
         <domain includeSubdomains="false">ad-project-dev-593875640.ap-southeast-1.elb.amazonaws.com</domain>
         <domain includeSubdomains="false">localhost</domain>
         <domain includeSubdomains="false">10.0.2.2</domain>
-        <!-- Dev machine's LAN IP so a physical phone on the same Wi-Fi can reach the
-             backend directly (see ApiConfig.kt). Update if the machine's IP changes. -->
-        <domain includeSubdomains="false">172.20.10.3</domain>
-        <domain includeSubdomains="false">10.176.180.81</domain>
-        <domain includeSubdomains="false">192.168.0.14</domain>
     </domain-config>
 </network-security-config>
