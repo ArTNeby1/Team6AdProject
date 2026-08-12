@@ -339,6 +339,7 @@ main {
   padding: 32px;
   box-shadow: var(--shadow-sm);
   margin-bottom: 24px;
+  position: relative; /* Added to support absolute positioned children like Share button */
 }
 
 .info-card h2, .info-card h3 {
@@ -1277,5 +1278,84 @@ main {
 
 .menu-item.logout-btn:hover {
   background: #FFF5F5;
+}
+
+/* Trip Date Modifier */
+/* Standardized Shadow Buttons (Matching Date Modifier) */
+.btn-shadow-style {
+  background: #fff;
+  border: 1px solid var(--line-soft);
+  padding: 6px 20px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--jade-deep);
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: var(--shadow-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 38px;
+}
+
+.btn-shadow-style:hover {
+  border-color: var(--jade);
+  background: var(--paper);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow);
+}
+
+.trip-date-modifier {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff;
+  border: 1px solid var(--line-soft);
+  padding: 6px 16px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  box-shadow: var(--shadow-sm);
+  height: 38px;
+}
+
+.trip-date-modifier:hover {
+  border-color: var(--jade);
+  background: var(--paper);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow);
+}
+
+.trip-date-modifier .label {
+  color: var(--muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.trip-date-modifier .date-val {
+  color: var(--jade-deep);
+  white-space: nowrap;
+}
+
+.trip-date-modifier input[type="date"] {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  left: 0;
+  top: 0;
+  cursor: pointer;
+  z-index: 10; /* Ensure it's on top to catch clicks */
+}
+
+/* For some browsers, we need to ensure the calendar icon itself triggers the picker */
+.trip-date-modifier .cal-icon {
+  font-size: 18px;
+  pointer-events: none; /* Let the click pass through to the hidden input */
 }
 
