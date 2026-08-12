@@ -31,7 +31,9 @@ from content_recommender import recommend_from_dataset  # noqa: E402
 
 
 def expect(name, condition):
+    # 原本只打印，接进 CI 的 pytest 后补 assert，不然条件为假 pytest 也会显示通过。
     print(f"[{'PASS' if condition else 'FAIL'}] {name}")
+    assert condition, name
 
 
 TRIP = {
@@ -61,10 +63,23 @@ def _fake_llm_response(recommended: list[dict]):
 
 
 def patch_llm(fake_response_text: str):
-    """把 recommend_agent 模块里绑定的 call_local_model 换掉，返回还原用的原函数。"""
-    original = recommend_agent.call_local_model
+    """把 recommend_agent 模块里绑定的 call_local_model 换掉，返回还原用的 (原函数, 原 provider)。
+
+    同时把 RECOMMEND_PROVIDER 强制设成 "ollama"：recommend_agent.py 里这个变量的默认值
+    已经改成了 "bedrock"（部署到 ECS 用的），不强制设的话 recommend_grounded() 走的是
+    call_bedrock_model 分支，根本不会调这里替换掉的 call_local_model——测试会真的打线上
+    Bedrock，而不是本文件开头说的"不需要 Ollama、不需要联网"。
+    """
+    original_fn = recommend_agent.call_local_model
+    original_provider = recommend_agent.RECOMMEND_PROVIDER
     recommend_agent.call_local_model = lambda *a, **k: fake_response_text
-    return original
+    recommend_agent.RECOMMEND_PROVIDER = "ollama"
+    return original_fn, original_provider
+
+
+def restore_llm(original_fn, original_provider):
+    recommend_agent.call_local_model = original_fn
+    recommend_agent.RECOMMEND_PROVIDER = original_provider
 
 
 def test_invented_place_is_dropped():
@@ -78,7 +93,7 @@ def test_invented_place_is_dropped():
              "reason": "A place I made up.", "activities": []},
         ]
     )
-    original = patch_llm(fake_text)
+    original_fn, original_provider = patch_llm(fake_text)
     try:
         result = recommend_agent.recommend_grounded(TRIP, top_n=5)
         names = [r["name"] for r in result]
@@ -86,7 +101,7 @@ def test_invented_place_is_dropped():
         expect(f"真实候选被保留（实际返回 {names}）", real_name in names)
         expect("结果只剩 1 条（丢了 1 个编造的）", len(result) == 1)
     finally:
-        recommend_agent.call_local_model = original
+        restore_llm(original_fn, original_provider)
 
 
 def test_trademark_symbol_variant_still_matches():
@@ -102,7 +117,7 @@ def test_trademark_symbol_variant_still_matches():
         [{"name": "Marina Bay Sands", "type": source["type"],  # 模型输出：没有 ® 符号
           "reason": "Iconic landmark nearby.", "activities": []}]
     )
-    original = patch_llm(fake_text)
+    original_fn, original_provider = patch_llm(fake_text)
     try:
         result = recommend_agent.recommend_grounded(TRIP, top_n=5, candidate_pool=30)
         expect("去掉商标符号的写法仍然匹配到候选", len(result) == 1)
@@ -112,7 +127,7 @@ def test_trademark_symbol_variant_still_matches():
                 result[0]["name"] == source["name"],
             )
     finally:
-        recommend_agent.call_local_model = original
+        restore_llm(original_fn, original_provider)
 
 
 def test_coords_come_from_dataset_not_model():
@@ -123,13 +138,13 @@ def test_coords_come_from_dataset_not_model():
     fake_text = _fake_llm_response(
         [{"name": real["name"], "type": real["type"], "reason": "test", "activities": []}]
     )
-    original = patch_llm(fake_text)
+    original_fn, original_provider = patch_llm(fake_text)
     try:
         result = recommend_agent.recommend_grounded(TRIP, top_n=1)
         expect(f"lat 来自数据集（实际 {result[0]['lat']}，期望 {real['lat']}）", result[0]["lat"] == real["lat"])
         expect(f"lng 来自数据集（实际 {result[0]['lng']}，期望 {real['lng']}）", result[0]["lng"] == real["lng"])
     finally:
-        recommend_agent.call_local_model = original
+        restore_llm(original_fn, original_provider)
 
 
 def test_top_n_is_respected_even_with_extra_valid_picks():
@@ -140,12 +155,12 @@ def test_top_n_is_respected_even_with_extra_valid_picks():
         for c in candidates[:5]
     ]
     fake_text = _fake_llm_response(picks)
-    original = patch_llm(fake_text)
+    original_fn, original_provider = patch_llm(fake_text)
     try:
         result = recommend_agent.recommend_grounded(TRIP, top_n=2, candidate_pool=10)
         expect(f"top_n=2 时最多返回 2 条（实际 {len(result)}）", len(result) == 2)
     finally:
-        recommend_agent.call_local_model = original
+        restore_llm(original_fn, original_provider)
 
 
 def test_all_invented_returns_empty_not_error():
@@ -154,17 +169,17 @@ def test_all_invented_returns_empty_not_error():
         [{"name": "Made Up Place One", "type": "attraction", "reason": "x", "activities": []},
          {"name": "Made Up Place Two", "type": "attraction", "reason": "y", "activities": []}]
     )
-    original = patch_llm(fake_text)
+    original_fn, original_provider = patch_llm(fake_text)
     try:
         result = recommend_agent.recommend_grounded(TRIP, top_n=5)
         expect("全部编造时不报错，返回空列表", result == [])
     finally:
-        recommend_agent.call_local_model = original
+        restore_llm(original_fn, original_provider)
 
 
 def test_no_candidates_skips_llm_call():
     # 候选池为空（比如 max_distance_km 卡得太死）时，不该白调一次 LLM
-    original = patch_llm(_fake_llm_response([]))
+    original_fn, original_provider = patch_llm(_fake_llm_response([]))
     call_count = {"n": 0}
     real_fn = recommend_agent.call_local_model
 
@@ -178,7 +193,7 @@ def test_no_candidates_skips_llm_call():
         expect("候选为空时直接返回空列表", result == [])
         expect(f"候选为空时不调用 LLM（实际调用 {call_count['n']} 次）", call_count["n"] == 0)
     finally:
-        recommend_agent.call_local_model = original
+        restore_llm(original_fn, original_provider)
 
 
 def test_mock_provider_returns_real_places_with_mock_reason():

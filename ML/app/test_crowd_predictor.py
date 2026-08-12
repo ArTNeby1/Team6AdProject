@@ -18,7 +18,9 @@ from crowd_predictor import _classify, _quarter_of, get_seasonal_crowd_hint  # n
 
 
 def expect(name, condition):
+    # 原本只打印，接进 CI 的 pytest 后补 assert，不然条件为假 pytest 也会显示通过。
     print(f"[{'PASS' if condition else 'FAIL'}] {name}")
+    assert condition, name
 
 
 def test_quarter_boundaries():
