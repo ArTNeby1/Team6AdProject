@@ -42,11 +42,33 @@ const MapPage = () => {
   });
   const [loading, setLoading] = useState(false);
 
-  // Fetch initial map config
+  const dayLocations = useMemo(() => {
+    return (trip?.locations || [])
+      .filter((loc) => loc.day === selectedDay)
+      .map((loc) => ({
+        id: loc.id,
+        name: loc.name,
+        time: loc.time,
+        activityType: loc.activityType || 'Visit',
+        latitude: loc.lat,
+        longitude: loc.lng,
+      }));
+  }, [trip, selectedDay]);
+
+  // Fetch initial map config — backend fields are tileUrlTemplate / defaultLatitude / ...
   useEffect(() => {
     mapApi.getConfig()
-      .then(res => setMapConfig(res.data))
-      .catch(err => console.error('Failed to fetch map config', err));
+      .then((res) => {
+        const cfg = res.data || {};
+        const lat = Number(cfg.defaultLatitude);
+        const lng = Number(cfg.defaultLongitude);
+        setMapConfig({
+          tileUrl: cfg.tileUrlTemplate || 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+          center: Number.isFinite(lat) && Number.isFinite(lng) ? [lat, lng] : [1.3521, 103.8198],
+          zoom: cfg.defaultZoom || 12,
+        });
+      })
+      .catch((err) => console.error('Failed to fetch map config', err));
   }, []);
 
   // Reset selected day when trip changes
@@ -54,30 +76,39 @@ const MapPage = () => {
     setSelectedDay(1);
   }, [activeTripId]);
 
-  // Fetch route data
+  // Stats come from GET /trips/{id}/route; stop list/coords come from GET /trips (TripContext).
   useEffect(() => {
-    if (activeTripId) {
-      setLoading(true);
-      mapApi.getRoute(activeTripId, selectedDay)
-        .then(res => {
-          setRouteData(res.data);
-          // If we have locations, we might want to center the map on the first one
-          if (res.data.locations && res.data.locations.length > 0) {
-            // map.setView is handled by RecenterMap component
-          }
-        })
-        .catch(err => {
-          console.error('Failed to fetch route data', err);
-          setRouteData({
-            totalLocations: 0,
-            estimatedDistanceKm: 0,
-            travelTimeMinutes: 0,
-            locations: []
-          });
-        })
-        .finally(() => setLoading(false));
+    if (!activeTripId) {
+      setRouteData({
+        totalLocations: dayLocations.length,
+        estimatedDistanceKm: 0,
+        travelTimeMinutes: 0,
+        locations: dayLocations,
+      });
+      return;
     }
-  }, [activeTripId, selectedDay]);
+    setLoading(true);
+    mapApi.getRoute(activeTripId, selectedDay)
+      .then((res) => {
+        const data = res.data || {};
+        setRouteData({
+          totalLocations: data.stopCount ?? dayLocations.length,
+          estimatedDistanceKm: Number(data.totalDistanceKm) || 0,
+          travelTimeMinutes: Number(data.totalDurationMinutes) || 0,
+          locations: dayLocations,
+        });
+      })
+      .catch((err) => {
+        console.error('Failed to fetch route data', err);
+        setRouteData({
+          totalLocations: dayLocations.length,
+          estimatedDistanceKm: 0,
+          travelTimeMinutes: 0,
+          locations: dayLocations,
+        });
+      })
+      .finally(() => setLoading(false));
+  }, [activeTripId, selectedDay, dayLocations]);
 
   // Get active trips for the selector
   const activeTrips = useMemo(() => {
@@ -94,7 +125,7 @@ const MapPage = () => {
     if (polylinePositions.length > 0) {
       return polylinePositions[0];
     }
-    return mapConfig.center;
+    return mapConfig.center || [1.3521, 103.8198];
   }, [polylinePositions, mapConfig.center]);
 
   const daysArray = Array.from({ length: trip?.dayCount || 1 }, (_, i) => i + 1);
@@ -200,7 +231,7 @@ const MapPage = () => {
             </div>
             <div className="meta-item">
               <div className="val-row">
-                <strong>{routeData.estimatedDistanceKm.toFixed(1)}</strong>
+                <strong>{Number(routeData.estimatedDistanceKm || 0).toFixed(1)}</strong>
                 <span className="unit">km</span>
               </div>
               <span className="label">Est. Distance</span>
