@@ -751,14 +751,156 @@ main {
 }
 
 /* ---------- Map Page ---------- */
+.map-header-layout {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 40px;
+}
+
+.header-text {
+  flex: 1;
+}
+
+.header-text h1 {
+  text-align: left !important;
+}
+
+.header-text p {
+  text-align: left !important;
+}
+
+.trip-selector-container {
+  max-width: 520px;
+  overflow: hidden;
+  padding: 10px 0;
+}
+
+.trip-selector-scroll {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scrollbar-width: none;
+}
+
+.trip-selector-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.trip-selector-container:hover .trip-selector-scroll {
+  scrollbar-width: thin;
+}
+
+.trip-select-btn {
+  flex: 0 0 160px;
+  background: #fff;
+  border: 2px solid var(--line-soft);
+  border-radius: 16px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: var(--shadow-sm);
+}
+
+.trip-select-btn:hover {
+  border-color: var(--jade);
+  transform: translateY(-2px);
+}
+
+.trip-select-btn.active {
+  border-color: var(--jade);
+  background: var(--mint);
+  box-shadow: 0 4px 12px rgba(14, 158, 142, 0.2);
+}
+
+.trip-dot {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--jade);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.trip-name-text {
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink);
+}
+
 .map-container {
   display: grid;
-  grid-template-columns: 1fr 380px;
+  grid-template-columns: 80px 1fr 380px; /* Added 80px for day selector */
   height: 700px;
   background: #fff;
   border-radius: 32px;
   overflow: hidden;
   box-shadow: var(--shadow);
+}
+
+.map-day-selector {
+  background: var(--paper);
+  border-right: 1px solid var(--line-soft);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 0;
+  gap: 16px;
+}
+
+.map-day-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  border: 2px solid transparent;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: var(--shadow-sm);
+}
+
+.map-day-btn .num {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.map-day-btn .label {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.map-day-btn:hover {
+  border-color: var(--jade);
+  transform: translateX(2px);
+}
+
+.map-day-btn.active {
+  background: var(--jade);
+  border-color: var(--jade);
+  box-shadow: 0 4px 12px rgba(14, 158, 142, 0.3);
+}
+
+.map-day-btn.active .num, .map-day-btn.active .label {
+  color: #fff;
 }
 
 .map-view {
@@ -768,10 +910,25 @@ main {
 
 .map-sidebar {
   padding: 32px;
-  overflow-y: auto;
-  border-left: 1px solid var(--line);
+  background: #fff;
+  border-left: 1px solid var(--line-soft);
   display: flex;
   flex-direction: column;
+}
+
+.sidebar-header {
+  margin-bottom: 24px;
+}
+
+.sidebar-header h3 {
+  font-size: 20px;
+  margin-bottom: 4px;
+}
+
+.trip-sub {
+  font-size: 14px;
+  color: var(--muted);
+  font-weight: 600;
 }
 
 .map-controls {
@@ -810,8 +967,71 @@ main {
 .route-meta-web {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-  margin-top: 24px;
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+.meta-item {
+  background: var(--paper);
+  padding: 12px 8px;
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  transition: transform 0.2s;
+}
+
+.meta-item:hover {
+  transform: translateY(-2px);
+  background: var(--mint);
+}
+
+.meta-item .val-row {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.meta-item strong {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.meta-item .unit {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--jade-deep);
+}
+
+.meta-item .label {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-top: 4px;
+  line-height: 1.2;
+}
+
+.place-list-web {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.place-list-web::-webkit-scrollbar {
+  width: 4px;
+}
+
+.place-list-web::-webkit-scrollbar-thumb {
+  background: var(--line-soft);
+  border-radius: 10px;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding-top: 24px;
 }
 
 .place-item-web {

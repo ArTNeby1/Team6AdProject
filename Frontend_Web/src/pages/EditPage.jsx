@@ -266,31 +266,19 @@ const EditPage = () => {
                                       />
                                     </div>
 
-                                    {/* Requirement 3: Separated Activity Label and Duration */}
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    {/* Duration (In DB) */}
+                                    <div style={{ display: 'flex', alignItems: 'center', background: 'var(--paper)', borderRadius: '8px', padding: '2px 8px' }}>
                                       <input
                                         type="text"
-                                        value={item.activityType || 'Visit'}
-                                        onChange={(e) => updateItemField(item.id, 'activityType', e.target.value)}
-                                        placeholder="Activity"
+                                        value={item.duration}
+                                        onChange={(e) => updateItemField(item.id, 'duration', e.target.value)}
+                                        placeholder="1.5"
                                         style={{
-                                          width: '60px', padding: '6px 8px', borderRadius: '8px', border: '1px solid var(--line-soft)',
-                                          background: '#fff', fontSize: '13px', textAlign: 'center'
+                                          width: '40px', border: 'none', background: 'transparent',
+                                          fontSize: '13px', fontWeight: '700', textAlign: 'center', outline: 'none'
                                         }}
                                       />
-                                      <div style={{ display: 'flex', alignItems: 'center', background: 'var(--paper)', borderRadius: '8px', padding: '2px 8px' }}>
-                                        <input
-                                          type="text"
-                                          value={item.duration}
-                                          onChange={(e) => updateItemField(item.id, 'duration', e.target.value)}
-                                          placeholder="1.5"
-                                          style={{
-                                            width: '40px', border: 'none', background: 'transparent',
-                                            fontSize: '13px', fontWeight: '700', textAlign: 'center', outline: 'none'
-                                          }}
-                                        />
-                                        <span style={{ fontSize: '12px', color: 'var(--muted)' }}>h</span>
-                                      </div>
+                                      <span style={{ fontSize: '12px', color: 'var(--muted)' }}>h</span>
                                     </div>
                                   </div>
                                 </div>

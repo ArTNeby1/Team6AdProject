@@ -314,7 +314,7 @@ const ItineraryDetailPage = () => {
                           <div className="tl-time">{item.time || '10:00'}</div>
                           <div className="tl-info">
                             <h3>{item.name}</h3>
-                            <p>Suggested Duration {item.duration || '1.5h'} · {idx === 0 ? 'Starting Point' : 'Check-in Point'}</p>
+                            <p>Duration {item.duration || '1.5'}h · Activity</p>
                           </div>
                           <div className="tl-actions">
                             <button onClick={() => navigate(`/attraction/${encodeURIComponent(item.name)}`)}>View Details</button>
