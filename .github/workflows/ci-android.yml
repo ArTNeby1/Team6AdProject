@@ -46,6 +46,40 @@ jobs:
       - name: 赋予 gradlew 执行权限
         run: chmod +x gradlew
 
+      # ============================================================
+      # SCA：依赖漏洞扫描
+      # ============================================================
+      # 按周滚动的缓存 key，不跟依赖内容绑定——绑定内容的话每次改一次依赖
+      # 版本缓存就失效，逼着全量重新同步 NVD 数据库（Java 那边踩过这个坑，
+      # 见 ci-java.yml 的缓存 key 注释）。
+      - name: 生成按周滚动的缓存 key
+        id: cache-week
+        run: echo "week=$(date -u +%Y-W%V)" >> "$GITHUB_OUTPUT"
+
+      - name: 缓存 NVD 数据
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/dependency-check-data
+          key: nvd-${{ runner.os }}-${{ steps.cache-week.outputs.week }}
+          restore-keys: |
+            nvd-${{ runner.os }}-
+
+      - name: SCA 依赖漏洞扫描
+        run: ./gradlew :mobile:dependencyCheckAnalyze --continue || true
+        continue-on-error: true
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+
+      - name: 上传 SCA 报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-sca-report
+          path: Frontend_Android/mobile/build/reports/dependency-check-report.json
+
+      # ============================================================
+      # SAST：静态代码扫描
+      # ============================================================
       - name: SAST 静态代码扫描
         run: ./gradlew :mobile:lintDebug --continue || true
         continue-on-error: true
