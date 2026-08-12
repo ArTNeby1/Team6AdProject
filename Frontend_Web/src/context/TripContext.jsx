@@ -262,7 +262,11 @@ export const TripProvider = ({ children }) => {
       updateTripCover,
       fetchAttractionData,
       loading,
+      loadingTrips: loading,
       fetchTrips,
+      refreshTrips: fetchTrips,
+      error,
+      tripsError: error,
       removeLocationFromActive,
       deleteTrip
     }}>

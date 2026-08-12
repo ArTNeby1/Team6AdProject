@@ -32,6 +32,7 @@ import com.loomytrip.backend.repository.TripRepository;
 import com.loomytrip.backend.repository.TripScheduleRepository;
 import com.loomytrip.backend.repository.UserRepository;
 import com.loomytrip.backend.util.SecurityUtils;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
@@ -152,6 +153,7 @@ public class PlanningService {
                 .toList();
 
         Map<String, Object> result = aiPlanningClient.refineFromChat(messages, buildPreferenceText(currentUser()));
+        validateExtractionResult(result);
 
         draftActivityRepository.deleteBySession_Id(sessionId);
         draftPlaceRepository.deleteBySession_Id(sessionId);
@@ -161,16 +163,57 @@ public class PlanningService {
     }
 
     /**
-     * Placeholder: validate draft places via map provider.
+     * Validates each draft place via the map provider, writing back coordinates / address
+     * and {@link ValidationStatus}. Places that already have coordinates are marked VALID
+     * without a network call.
      */
-    public Object validateDraftPlaces(Long sessionId) {
-        loadOwnedSession(sessionId);
-        mapPlacesClient.validatePlace(null, null);
-        throw new ApiException(
-                HttpStatus.NOT_IMPLEMENTED,
-                "NOT_IMPLEMENTED",
-                "Draft place validation will update validation_status in a later iteration"
-        );
+    @Transactional
+    public PlanningSessionDetailResponse validateDraftPlaces(Long sessionId) {
+        PlanningSession session = loadOwnedSession(sessionId);
+        List<DraftPlace> places = draftPlaceRepository.findBySession_Id(sessionId);
+
+        for (DraftPlace place : places) {
+            if (place.getLatitude() != null && place.getLongitude() != null) {
+                place.setValidationStatus(ValidationStatus.VALID);
+                if (place.getDestination() == null) {
+                    place.setDestination(destinationService.findOrCreateByName(
+                            place.getName(), place.getCategory(), place.getLatitude(), place.getLongitude()
+                    ));
+                }
+                draftPlaceRepository.save(place);
+                continue;
+            }
+
+            var match = mapPlacesClient.validatePlace(place.getName(), place.getAddress());
+            if (match.isEmpty()) {
+                place.setValidationStatus(ValidationStatus.INVALID);
+                draftPlaceRepository.save(place);
+                continue;
+            }
+
+            MapPlacesClient.PlaceMatch placeMatch = match.get();
+            place.setAddress(placeMatch.address());
+            place.setLatitude(placeMatch.latitude());
+            place.setLongitude(placeMatch.longitude());
+            place.setValidationStatus(ValidationStatus.VALID);
+            place.setDestination(destinationService.findOrCreateByName(
+                    place.getName(),
+                    place.getCategory(),
+                    placeMatch.latitude(),
+                    placeMatch.longitude()
+            ));
+            draftPlaceRepository.save(place);
+
+            // Nominatim asks for max ~1 request/second for the public instance.
+            try {
+                Thread.sleep(1100L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+
+        return loadSessionDetail(session.getId());
     }
 
     /**
@@ -190,14 +233,12 @@ public class PlanningService {
                 .map(place -> toAiPlace(place, activitiesByPlaceId.getOrDefault(place.getId(), List.of())))
                 .toList();
 
-        // 🔴 gap closed: this used to pass (places, null, null) — the AI agent never got a
-        // date or the user's travel_style/prefer_transport, so it could only ever fall back
-        // to its no-date/no-preference behavior (distance-only ordering, weather_summary
-        // always null — see ai_contract.md section 7/9). trip.getStartDate() below reuses
-        // the same LocalDate.now() so the Trip we save and the date we send the AI agree.
+        ensureDraftPlacesValidated(draftPlaces);
+
         User user = currentUser();
         LocalDate startDate = LocalDate.now();
         AiRecommendResult result = aiPlanningClient.recommend(places, startDate.toString(), buildPreferenceText(user));
+        List<AiRecommendResult.OrderedStop> orderedStops = resolveOrderedStops(result, places);
 
         Trip trip = new Trip();
         trip.setUser(user);
@@ -218,7 +259,7 @@ public class PlanningService {
         // each bucket into a real, increasing start_time per stop (see nextStartTime javadoc).
         int sequence = 1;
         LocalTime clockCursor = LocalTime.of(9, 0);
-        for (AiRecommendResult.OrderedStop stop : result.orderedStops()) {
+        for (AiRecommendResult.OrderedStop stop : orderedStops) {
             Destination destination = destinationService.findOrCreateByName(stop.name(), stop.type(), stop.lat(), stop.lng());
             clockCursor = nextStartTime(clockCursor, stop.timeOfDay());
             TripSchedule schedule = new TripSchedule();
@@ -374,6 +415,85 @@ public class PlanningService {
         map.put("lng", place.getLongitude());
         map.put("activities", activities.stream().map(DraftActivity::getTitle).toList());
         return map;
+    }
+
+    private void validateExtractionResult(Map<String, Object> result) {
+        if (result == null) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "AI_SERVICE_UNAVAILABLE", "AI service returned no response");
+        }
+        Object status = result.get("status");
+        if (status != null && !"OK".equalsIgnoreCase(String.valueOf(status))) {
+            throw new ApiException(
+                    HttpStatus.BAD_GATEWAY,
+                    "AI_EXTRACTION_FAILED",
+                    "AI extraction failed (" + status + "); existing draft places were kept unchanged"
+            );
+        }
+        Object placesValue = result.get("places");
+        if (!(placesValue instanceof List<?> rawPlaces) || rawPlaces.isEmpty()) {
+            throw new ApiException(
+                    HttpStatus.BAD_GATEWAY,
+                    "AI_NO_PLACES",
+                    "AI returned no places; existing draft places were kept unchanged"
+            );
+        }
+    }
+
+    private void ensureDraftPlacesValidated(List<DraftPlace> draftPlaces) {
+        List<String> invalid = new ArrayList<>();
+        for (DraftPlace place : draftPlaces) {
+            if (place.getValidationStatus() != ValidationStatus.VALID
+                    || !DestinationService.hasUsableCoordinates(place.getLatitude(), place.getLongitude())) {
+                invalid.add(place.getName());
+            }
+        }
+        if (!invalid.isEmpty()) {
+            throw new ApiException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "PLACES_NOT_VALIDATED",
+                    "Validate places before confirm: " + String.join(", ", invalid)
+            );
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<AiRecommendResult.OrderedStop> resolveOrderedStops(
+            AiRecommendResult result,
+            List<Map<String, Object>> draftPlaces
+    ) {
+        if (result != null
+                && "OK".equalsIgnoreCase(result.status())
+                && !result.orderedStops().isEmpty()) {
+            return result.orderedStops();
+        }
+
+        List<AiRecommendResult.OrderedStop> fallback = new ArrayList<>();
+        int order = 1;
+        for (Map<String, Object> place : draftPlaces) {
+            Object lat = place.get("lat");
+            Object lng = place.get("lng");
+            fallback.add(new AiRecommendResult.OrderedStop(
+                    String.valueOf(place.get("name")),
+                    String.valueOf(place.getOrDefault("type", "other")),
+                    lat instanceof BigDecimal bigLat ? bigLat : null,
+                    lng instanceof BigDecimal bigLng ? bigLng : null,
+                    place.get("activities") instanceof List<?> activities
+                            ? (List<String>) activities
+                            : List.of(),
+                    order++,
+                    null,
+                    null,
+                    "Fallback order (AI recommendation unavailable)"
+            ));
+        }
+        if (fallback.isEmpty()) {
+            throw new ApiException(
+                    HttpStatus.BAD_GATEWAY,
+                    "RECOMMENDATION_FAILED",
+                    "Could not build an itinerary from confirmed places"
+            );
+        }
+        return fallback;
     }
 
     /**

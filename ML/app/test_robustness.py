@@ -19,12 +19,15 @@ from pydantic import ValidationError  # noqa: E402
 
 
 def expect_raises(name, exc_type, fn):
+    # 这个脚本原本是独立跑的自测脚本，PASS/FAIL 只是打印，不会让 pytest 真的判失败。
+    # 现在要接进 CI 的 pytest 里，光打印不够——补一个 assert，pytest 才能真的拦下回归。
     try:
         fn()
     except exc_type as e:
         print(f"[PASS] {name} -> correctly raised {type(e).__name__}")
     else:
         print(f"[FAIL] {name} -> did not raise expected {exc_type.__name__}")
+        assert False, f"{name}: did not raise {exc_type.__name__}"
 
 
 def test_bad_json():

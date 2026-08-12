@@ -1,0 +1,79 @@
+name: DAST Scan
+
+# DAST 扫的是已经跑起来的真实服务，不是代码——跟其他 CI 不一样，不挂在
+# PR/push 上（PR 阶段还没有部署出新版本可扫）。改成每天定时扫一遍现在
+# 部署好的 dev 环境，也支持随时手动触发。
+on:
+  schedule:
+    - cron: '0 18 * * *' # 每天 UTC 18:00（北京时间凌晨 2 点，避开正常使用时段）
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# 目标地址是 ALB 的 DNS 名 / S3 网站端点，跟其他流水线里硬编码 ECS 集群名
+# 一个道理，但如果以后 ALB 被重建、或者 Web 换成 CloudFront（域名会变），
+# 要记得同步改这里。
+env:
+  TARGET_HOST: ad-project-dev-593875640.ap-southeast-1.elb.amazonaws.com
+  TARGET_WEB: ad-project-frontend-web-dev.s3-website-ap-southeast-1.amazonaws.com
+
+jobs:
+  # ============================================================
+  # Java 后端：接了 springdoc-openapi 之后有 /v3/api-docs 了，换成跟 ML
+  # 一样的 api-scan，覆盖面比之前裸 baseline 打一个 /health 好得多——
+  # 会针对 OpenAPI 里声明的每个接口发测试请求。注意这仍然是未认证扫描，
+  # JWT 后面的业务接口（/trips、/planning-sessions 等）扫到的大多是 401，
+  # 真要覆盖到这些还需要一次认证态扫描，是后续的事。
+  # ============================================================
+  zap-java:
+    name: ZAP API Scan - Java 后端
+    runs-on: ubuntu-latest
+    steps:
+      - name: ZAP OpenAPI 扫描
+        uses: zaproxy/action-api-scan@v0.10.0
+        with:
+          target: "http://${{ env.TARGET_HOST }}/v3/api-docs"
+          format: openapi
+          allow_issue_writing: false # 定时任务每天跑，不然天天开新 issue
+          fail_action: false # 只做记录，不拦截；真要拦截合并用 PR 阶段的 SAST/SCA
+          artifact_name: zap-java-report
+
+  # ============================================================
+  # ML 服务：FastAPI 默认会暴露 /openapi.json，用专门做 API 扫描的
+  # action-api-scan，能针对 OpenAPI 里声明的每个接口发测试请求，
+  # 覆盖面比裸 baseline 扫描好。
+  # ============================================================
+  zap-ml:
+    name: ZAP API Scan - ML 服务
+    runs-on: ubuntu-latest
+    steps:
+      - name: ZAP OpenAPI 扫描
+        uses: zaproxy/action-api-scan@v0.10.0
+        with:
+          target: "http://${{ env.TARGET_HOST }}/openapi.json"
+          format: openapi
+          allow_issue_writing: false
+          fail_action: false
+          artifact_name: zap-ml-report
+
+  # ============================================================
+  # Web 前端：S3 静态网站托管，真的部署稳定之后才补的这块——之前写这个
+  # workflow 的时候前端还没稳定上线。React SPA 用客户端路由，纯静态爬虫
+  # 找不到几个链接，加 -a 开 ajax spider（跑 headless 浏览器点/执行 JS
+  # 发现的路由）覆盖面会好一些。主要能查的是安全响应头缺失（CSP、
+  # X-Frame-Options 这些）、混合内容之类，不是业务逻辑漏洞——静态站点
+  # 本身没有服务端逻辑可打。
+  # ============================================================
+  zap-web:
+    name: ZAP Baseline - Web 前端
+    runs-on: ubuntu-latest
+    steps:
+      - name: ZAP Baseline 被动扫描
+        uses: zaproxy/action-baseline@v0.15.0
+        with:
+          target: "http://${{ env.TARGET_WEB }}/"
+          cmd_options: "-a"
+          allow_issue_writing: false
+          fail_action: false
+          artifact_name: zap-web-report

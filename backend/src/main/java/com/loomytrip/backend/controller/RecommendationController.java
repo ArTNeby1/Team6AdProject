@@ -18,7 +18,11 @@ public class RecommendationController {
     }
 
     @GetMapping
-    public RecommendationResponse recommend(@RequestParam(required = false) Long destinationId) {
-        return recommendationService.recommendNearby(destinationId);
+    public RecommendationResponse recommend(
+            @RequestParam(required = false) Long destinationId,
+            @RequestParam(required = false, defaultValue = "hybrid") String mode,
+            @RequestParam(required = false, defaultValue = "5") Integer topN
+    ) {
+        return recommendationService.recommendNearby(destinationId, mode, topN);
     }
 }

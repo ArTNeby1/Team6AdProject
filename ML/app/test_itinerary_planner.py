@@ -27,7 +27,9 @@ from itinerary_planner import (  # noqa: E402
 
 
 def expect(name, condition):
+    # 原本只打印，接进 CI 的 pytest 后补 assert，不然条件为假 pytest 也会显示通过。
     print(f"[{'PASS' if condition else 'FAIL'}] {name}")
+    assert condition, name
 
 
 # 三个地点：两个室外、一个室内，坐标是真实的

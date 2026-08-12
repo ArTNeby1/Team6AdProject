@@ -4,6 +4,15 @@ import { useTrip } from '../context/TripContext';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 
+const mapDraftPlaces = (draftPlaces) =>
+  draftPlaces.map((p) => ({
+    id: p.id,
+    name: p.name,
+    selected: true,
+    status: p.validationStatus === 'VALID' ? 'ok' : 'warn',
+    label: p.validationStatus === 'VALID' ? 'Located' : 'Check Location',
+  }));
+
 const ImportPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -13,7 +22,6 @@ const ImportPage = () => {
   const targetTripId = searchParams.get('tripId');
   const targetDay = searchParams.get('day');
 
-  // Planning Session State
   const [sessionId, setSessionId] = useState(null);
   const [text, setText] = useState("");
   const [results, setResults] = useState([]);
@@ -21,7 +29,18 @@ const ImportPage = () => {
   const [isFinished, setIsFinished] = useState(false);
   const [refineText, setRefineText] = useState("");
 
-  // 1. Start Session (User enters text -> POST /planning-sessions)
+  const loadDraftPlaces = async (sid, validate = true) => {
+    if (validate) {
+      await api.post(`/planning-sessions/${sid}/validate-places`);
+    }
+    const response = await api.get(`/planning-sessions/${sid}`);
+    if (response.data.draftPlaces) {
+      setResults(mapDraftPlaces(response.data.draftPlaces));
+    } else {
+      setResults([]);
+    }
+  };
+
   const handleStartParsing = async () => {
     if (!text.trim() || isParsing) return;
     setIsParsing(true);
@@ -31,11 +50,7 @@ const ImportPage = () => {
         initialBrief: text
       });
       setSessionId(response.data.id);
-
-      // In a real AI flow, we'd poll or wait for the AI to populate draft_places
-      // For this implementation, we assume the backend triggers the Python extraction immediately
-      // and we fetch the results.
-      await fetchDraftPlaces(response.data.id);
+      await loadDraftPlaces(response.data.id);
       setIsFinished(true);
     } catch (error) {
       console.error("Failed to start session:", error);
@@ -45,30 +60,6 @@ const ImportPage = () => {
     }
   };
 
-  const fetchDraftPlaces = async (sid) => {
-    try {
-      // Assuming an endpoint to get session details including draft places
-      const response = await api.get(`/planning-sessions/${sid}`);
-      // Mapping backend draft_places to our results UI
-      if (response.data.draftPlaces) {
-        setResults(response.data.draftPlaces.map(p => ({
-          id: p.id,
-          name: p.name,
-          selected: true,
-          status: p.validationStatus === 'VALID' ? 'ok' : 'warn',
-          label: p.validationStatus === 'VALID' ? 'Located' : 'Check Location'
-        })));
-      }
-    } catch (e) {
-      // Fallback/Mock for demo if GET detail not ready
-      setResults([
-        { id: 'd1', name: 'Wat Chedi Luang', selected: true, status: 'ok', label: 'Located' },
-        { id: 'd2', name: 'Tha Phae Gate', selected: true, status: 'ok', label: 'Located' }
-      ]);
-    }
-  };
-
-  // 2. Edit Place Name (PUT /planning-sessions/draft-places/{id})
   const updateItemName = async (id, newName) => {
     setResults(prev => prev.map(item => item.id === id ? { ...item, name: newName } : item));
     try {
@@ -78,7 +69,6 @@ const ImportPage = () => {
     }
   };
 
-  // 3. Delete Place (DELETE /planning-sessions/draft-places/{id})
   const deleteItem = async (id) => {
     setResults(prev => prev.filter(item => item.id !== id));
     try {
@@ -88,7 +78,6 @@ const ImportPage = () => {
     }
   };
 
-  // 4. Refine (POST /messages + /refine)
   const handleRefine = async () => {
     if (!refineText.trim() || !sessionId) return;
     setIsParsing(true);
@@ -98,40 +87,35 @@ const ImportPage = () => {
         content: refineText
       });
       await api.post(`/planning-sessions/${sessionId}/refine`);
-      await fetchDraftPlaces(sessionId);
+      await loadDraftPlaces(sessionId);
       setRefineText("");
     } catch (e) {
-      alert("Refinement failed");
+      console.error(e);
+      alert(e.response?.data?.message || "Refinement failed");
     } finally {
       setIsParsing(false);
     }
   };
 
-  // 5. Confirm
   const handleConfirmImport = async () => {
     if (!sessionId) return;
     try {
       setIsParsing(true);
 
       if (targetTripId) {
-        // Came from an existing trip's empty day ("go import or add some!") — add the
-        // parsed places into THAT trip/day instead of confirm's default behavior, which
-        // always creates a brand new Trip (planning_session -> confirmed Trip is a 1:1
-        // creation flow, it has no notion of "import into an existing trip").
         await addLocationsToTripDay(targetTripId, targetDay || 1, results.map(r => r.name));
         await fetchTrips();
         navigate(`/itinerary/${targetTripId}`);
         return;
       }
 
-      // POST /planning-sessions/{id}/confirm — backend creates a brand new Trip.
+      await api.post(`/planning-sessions/${sessionId}/validate-places`);
       const response = await api.post(`/planning-sessions/${sessionId}/confirm`);
 
       const { id: newTripId, weatherSummary, suggestedAdditions } = response.data;
 
       await fetchTrips();
 
-      // Pass the AI summary data to the next page to show a welcome message
       navigate(`/itinerary/${newTripId}`, {
         state: {
           showAiSummary: true,
@@ -140,7 +124,8 @@ const ImportPage = () => {
         }
       });
     } catch (error) {
-      alert("Confirmation failed. Please try again.");
+      console.error(error);
+      alert(error.response?.data?.message || "Confirmation failed. Please try again.");
     } finally {
       setIsParsing(false);
     }
@@ -161,7 +146,6 @@ const ImportPage = () => {
           <p style={{ color: 'var(--muted)' }}>Turn your travel notes into a structured itinerary instantly.</p>
         </header>
 
-        {/* STEP 1: INPUT */}
         {!isFinished && (
           <div className="paste-area" style={{ background: '#fff', border: '2px dashed var(--jade)', borderRadius: '24px', padding: '24px' }}>
             <textarea
@@ -179,7 +163,6 @@ const ImportPage = () => {
           </div>
         )}
 
-        {/* STEPS 2-4: REVIEW & REFINE */}
         {isFinished && (
           <div className="parsing-results" style={{ marginTop: '20px' }}>
             <div className="agent-box" style={{ background: 'var(--mint)', padding: '20px', borderRadius: '16px', marginBottom: '24px', display: 'flex', gap: '16px' }}>
@@ -200,18 +183,18 @@ const ImportPage = () => {
                     onChange={(e) => updateItemName(res.id, e.target.value)}
                     style={{ flex: 1, border: 'none', background: 'transparent', fontSize: '16px', fontWeight: 'bold' }}
                   />
+                  <span style={{ fontSize: '12px', color: 'var(--muted)' }}>{res.label}</span>
                   <button onClick={() => deleteItem(res.id)} style={{ border: 'none', background: 'none', color: 'var(--coral)', cursor: 'pointer' }}>Delete</button>
                 </div>
               ))}
             </div>
 
-            {/* STEP 4: REFINE UI */}
             <div className="refine-area" style={{ marginTop: '32px', padding: '20px', background: 'var(--paper)', borderRadius: '16px' }}>
               <label style={{ display: 'block', marginBottom: '10px', fontWeight: 'bold' }}>Need adjustments?</label>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <input
                   type="text"
-                  placeholder="e.g., 'Add a coffee shop near Nimman Road'..."
+                  placeholder="e.g., 'Add a coffee shop near Marina Bay'..."
                   value={refineText}
                   onChange={(e) => setRefineText(e.target.value)}
                   style={{ flex: 1, padding: '12px', borderRadius: '10px', border: '1px solid var(--line)' }}
@@ -220,10 +203,9 @@ const ImportPage = () => {
               </div>
             </div>
 
-            {/* STEP 5: CONFIRM */}
             <div className="confirm-actions" style={{ marginTop: '48px', display: 'flex', justifyContent: 'center', gap: '16px' }}>
               <button className="btn-secondary" onClick={handleReset}>Restart</button>
-              <button className="btn-primary" style={{ padding: '14px 40px' }} onClick={handleConfirmImport} disabled={isParsing}>
+              <button className="btn-primary" style={{ padding: '14px 40px' }} onClick={handleConfirmImport} disabled={isParsing || results.length === 0}>
                 {isParsing ? 'Saving...' : 'Confirm & Generate Itinerary ➔'}
               </button>
             </div>

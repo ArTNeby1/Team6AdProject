@@ -59,13 +59,23 @@ class MockTripRepository : TripRepository {
         startTime: String
     ): List<TripActivity> {
         if (title.isBlank()) return activities
+        val requestedStart = startTime.toMinutesOrNull() ?: DEFAULT_DAY_START_MINUTES
+        val latestEnd = activities
+            .asSequence()
+            .filter { it.day == day }
+            .mapNotNull { activity ->
+                activity.startTime.toMinutesOrNull()?.plus(activity.durationMinutes)
+            }
+            .maxOrNull()
+        val automaticStart = latestEnd?.plus(NEW_STOP_BUFFER_MINUTES) ?: DEFAULT_DAY_START_MINUTES
+        val scheduledStart = maxOf(requestedStart, automaticStart).coerceAtMost(LATEST_START_MINUTES)
         val newActivity = TripActivity(
             id = "custom-${System.nanoTime()}",
             title = title.trim(),
             category = "Custom stop",
             day = day,
-            startTime = startTime.ifBlank { "12:00" },
-            durationMinutes = 60,
+            startTime = scheduledStart.toClockTime(),
+            durationMinutes = NEW_ACTIVITY_DURATION_MINUTES,
             address = "Address to be confirmed",
             latitude = 18.7883,
             longitude = 98.9853
@@ -75,3 +85,19 @@ class MockTripRepository : TripRepository {
         return activities.toMutableList().apply { add(lastDayIndex + 1, newActivity) }
     }
 }
+
+private const val DEFAULT_DAY_START_MINUTES = 9 * 60
+private const val NEW_ACTIVITY_DURATION_MINUTES = 60
+private const val NEW_STOP_BUFFER_MINUTES = 15
+private const val LATEST_START_MINUTES = 23 * 60 + 45
+
+private fun String.toMinutesOrNull(): Int? {
+    val parts = split(":")
+    if (parts.size != 2) return null
+    val hour = parts[0].toIntOrNull() ?: return null
+    val minute = parts[1].toIntOrNull() ?: return null
+    if (hour !in 0..23 || minute !in 0..59) return null
+    return hour * 60 + minute
+}
+
+private fun Int.toClockTime(): String = "%02d:%02d".format(this / 60, this % 60)
