@@ -4,6 +4,8 @@ import com.loomytrip.backend.dto.request.AddTripScheduleRequest;
 import com.loomytrip.backend.dto.request.BulkUpdateSchedulesRequest;
 import com.loomytrip.backend.dto.request.CreateTripRequest;
 import com.loomytrip.backend.dto.request.UpdateTripRequest;
+import com.loomytrip.backend.dto.response.GenerateItineraryResponse;
+import com.loomytrip.backend.dto.response.TripRouteResponse;
 import com.loomytrip.backend.dto.response.TripSummaryResponse;
 import com.loomytrip.backend.service.TripService;
 import jakarta.validation.Valid;
@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -72,8 +75,16 @@ public class TripController {
         return tripService.deleteSchedule(tripId, scheduleId);
     }
 
+    @GetMapping("/{tripId}/route")
+    public TripRouteResponse estimateRoute(
+            @PathVariable Long tripId,
+            @RequestParam(defaultValue = "1") int day
+    ) {
+        return tripService.estimateRoute(tripId, day);
+    }
+
     @PostMapping("/{tripId}/generate")
-    public Object generateItinerary(@PathVariable Long tripId) {
+    public GenerateItineraryResponse generateItinerary(@PathVariable Long tripId) {
         return tripService.generateItinerary(tripId);
     }
 }

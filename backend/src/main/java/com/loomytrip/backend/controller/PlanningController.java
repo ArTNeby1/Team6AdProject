@@ -61,7 +61,7 @@ public class PlanningController {
     }
 
     @PostMapping("/{sessionId}/validate-places")
-    public Object validatePlaces(@PathVariable Long sessionId) {
+    public PlanningSessionDetailResponse validatePlaces(@PathVariable Long sessionId) {
         return planningService.validateDraftPlaces(sessionId);
     }
 
