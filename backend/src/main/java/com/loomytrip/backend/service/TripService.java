@@ -1,5 +1,7 @@
 package com.loomytrip.backend.service;
 
+import com.loomytrip.backend.client.AiPlanningClient;
+import com.loomytrip.backend.client.AiRecommendResult;
 import com.loomytrip.backend.dto.request.AddTripScheduleRequest;
 import com.loomytrip.backend.dto.request.BulkUpdateSchedulesRequest;
 import com.loomytrip.backend.dto.request.CreateTripRequest;
@@ -19,10 +21,12 @@ import com.loomytrip.backend.repository.TripRepository;
 import com.loomytrip.backend.repository.TripScheduleRepository;
 import com.loomytrip.backend.repository.UserRepository;
 import com.loomytrip.backend.util.SecurityUtils;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
@@ -34,6 +38,9 @@ public class TripService {
 
     /** Staging offset for bulkUpdateSchedules's two-pass reorder — see its Javadoc. */
     private static final int TEMP_SEQUENCE_OFFSET = 1_000_000;
+    /** Default gap between consecutive stops when spacing out AI-timed additions — see
+     * addSchedules()'s Javadoc and PlanningService's identical constant. */
+    private static final int DEFAULT_VISIT_SLOT_MINUTES = 90;
 
     private final TripRepository tripRepository;
     private final TripDayRepository tripDayRepository;
@@ -42,6 +49,7 @@ public class TripService {
     private final UserRepository userRepository;
     private final DestinationService destinationService;
     private final EntityMapper entityMapper;
+    private final AiPlanningClient aiPlanningClient;
 
     public TripService(
             TripRepository tripRepository,
@@ -50,7 +58,8 @@ public class TripService {
             TripPreferenceRepository tripPreferenceRepository,
             UserRepository userRepository,
             DestinationService destinationService,
-            EntityMapper entityMapper
+            EntityMapper entityMapper,
+            AiPlanningClient aiPlanningClient
     ) {
         this.tripRepository = tripRepository;
         this.tripDayRepository = tripDayRepository;
@@ -59,6 +68,7 @@ public class TripService {
         this.userRepository = userRepository;
         this.destinationService = destinationService;
         this.entityMapper = entityMapper;
+        this.aiPlanningClient = aiPlanningClient;
     }
 
     @Transactional(readOnly = true)
@@ -138,6 +148,9 @@ public class TripService {
             resizeDays(trip, request.durationDays());
             trip.setDurationDays(request.durationDays());
         }
+        if (request.favorite() != null) {
+            trip.setFavorite(request.favorite());
+        }
         Trip saved = tripRepository.save(trip);
 
         if (request.travelStyle() != null || request.preferTransport() != null) {
@@ -163,6 +176,16 @@ public class TripService {
      * 🟠 gap closed: adds one or more named stops to a trip day, resolving each name to a
      * real {@code destination} row via {@link DestinationService#findOrCreateByName}
      * (same helper {@code PlanningService.confirmSession} uses for AI-recommended stops).
+     *
+     * <p>🔴 second gap closed: this is the "import into an existing day" path (Frontend_Web
+     * ImportPage.jsx's {@code targetTripId} branch) — unlike {@code confirmSession()}, it
+     * never called the AI {@code /recommend} agent at all, so the new stops always landed
+     * with {@code start_time = null} and the frontend fell back to displaying a flat 09:00
+     * for every one of them, regardless of what the AI would have said about morning/
+     * afternoon/evening. Now it asks the same agent, the same way confirmSession() does, and
+     * only falls back to the old "just create them in place" behavior if the AI service is
+     * unavailable (see AiPlanningClientHttp — network failures degrade to an empty result
+     * rather than throwing, so this never blocks the add on the AI being down).
      */
     @Transactional
     public TripSummaryResponse addSchedules(Long tripId, AddTripScheduleRequest request) {
@@ -177,15 +200,49 @@ public class TripService {
         TripDay tripDay = tripDayRepository.findByTrip_IdAndDaySequence(tripId, request.day())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "TRIP_DAY_NOT_FOUND", "Trip day not found"));
 
-        int nextSequence = tripScheduleRepository.findByTripDay_IdOrderBySequenceAsc(tripDay.getId()).size() + 1;
-        for (String name : request.locationNames()) {
-            Destination destination = destinationService.findOrCreateByName(name, null, null, null);
-            TripSchedule schedule = new TripSchedule();
-            schedule.setTripDay(tripDay);
-            schedule.setDestination(destination);
-            schedule.setSequence(nextSequence++);
-            schedule.setLocked(false);
-            tripScheduleRepository.save(schedule);
+        List<TripSchedule> existing = tripScheduleRepository.findByTripDay_IdOrderBySequenceAsc(tripDay.getId());
+        int nextSequence = existing.size() + 1;
+        LocalTime cursor = existing.isEmpty() || existing.get(existing.size() - 1).getStartTime() == null
+                ? LocalTime.of(9, 0)
+                : existing.get(existing.size() - 1).getStartTime().plusMinutes(DEFAULT_VISIT_SLOT_MINUTES);
+
+        List<Map<String, Object>> aiPlaces = request.locationNames().stream()
+                .map(name -> {
+                    Map<String, Object> place = new LinkedHashMap<>();
+                    place.put("name", name);
+                    place.put("type", "other");
+                    place.put("activities", List.of());
+                    return place;
+                })
+                .toList();
+        LocalDate date = trip.getStartDate() != null ? trip.getStartDate() : LocalDate.now();
+        AiRecommendResult result = aiPlanningClient.recommend(aiPlaces, date.toString(), buildPreferenceText(currentUser()));
+
+        if (!result.orderedStops().isEmpty()) {
+            for (AiRecommendResult.OrderedStop stop : result.orderedStops()) {
+                Destination destination = destinationService.findOrCreateByName(stop.name(), stop.type(), stop.lat(), stop.lng());
+                cursor = nextStartTime(cursor, stop.timeOfDay());
+                TripSchedule schedule = new TripSchedule();
+                schedule.setTripDay(tripDay);
+                schedule.setDestination(destination);
+                schedule.setSequence(nextSequence++);
+                schedule.setLocked(false);
+                schedule.setStartTime(cursor);
+                tripScheduleRepository.save(schedule);
+                cursor = cursor.plusMinutes(DEFAULT_VISIT_SLOT_MINUTES);
+            }
+        } else {
+            // AI service unavailable/degenerate — still add the stops so the import doesn't
+            // fail outright, just without AI-determined ordering/timing.
+            for (String name : request.locationNames()) {
+                Destination destination = destinationService.findOrCreateByName(name, null, null, null);
+                TripSchedule schedule = new TripSchedule();
+                schedule.setTripDay(tripDay);
+                schedule.setDestination(destination);
+                schedule.setSequence(nextSequence++);
+                schedule.setLocked(false);
+                tripScheduleRepository.save(schedule);
+            }
         }
 
         return toSummary(trip);
@@ -282,6 +339,39 @@ public class TripService {
                 "NOT_IMPLEMENTED",
                 "Itinerary generation will call AiPlanningClient in a later iteration"
         );
+    }
+
+    /**
+     * Builds the `preference_text` string the AI `/recommend` endpoint expects (ai_contract.md:
+     * "用户偏好，比如 travel_style=culture"). Mirrors PlanningService.buildPreferenceText() —
+     * kept as a separate copy here rather than shared to avoid coupling the two services over
+     * something this small; revisit if a third caller shows up.
+     */
+    private String buildPreferenceText(User user) {
+        List<String> parts = new ArrayList<>();
+        if (user.getTravelStyle() != null && !user.getTravelStyle().isBlank()) {
+            parts.add("travel_style=" + user.getTravelStyle());
+        }
+        if (user.getPreferTransport() != null && !user.getPreferTransport().isBlank()) {
+            parts.add("prefer_transport=" + user.getPreferTransport());
+        }
+        return parts.isEmpty() ? null : String.join(", ", parts);
+    }
+
+    /**
+     * Converts a stop's `time_of_day` bucket (morning/afternoon/evening/null) into a concrete,
+     * strictly-increasing {@link LocalTime}. Mirrors PlanningService.nextStartTime() — see its
+     * Javadoc for the reasoning (time_of_day is a coarse bucket, not an exact clock time).
+     */
+    private LocalTime nextStartTime(LocalTime cursor, String timeOfDay) {
+        LocalTime bucketStart = switch (timeOfDay == null ? "" : timeOfDay.toLowerCase()) {
+            case "morning" -> LocalTime.of(9, 0);
+            case "afternoon" -> LocalTime.of(13, 0);
+            case "evening" -> LocalTime.of(18, 0);
+            default -> cursor;
+        };
+        LocalTime next = bucketStart.isAfter(cursor) ? bucketStart : cursor;
+        return next.isBefore(LocalTime.of(22, 30)) ? next : LocalTime.of(22, 30);
     }
 
     private TripSummaryResponse toSummary(Trip trip) {

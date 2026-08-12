@@ -37,6 +37,9 @@ public class Trip {
     @Column(name = "duration_days", nullable = false)
     private Integer durationDays;
 
+    @Column(name = "is_favorite", nullable = false)
+    private boolean favorite;
+
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private Instant createdAt;
 

@@ -15,6 +15,7 @@ public record UpdateTripRequest(
         LocalDate startDate,
         Integer durationDays,
         String travelStyle,
-        String preferTransport
+        String preferTransport,
+        Boolean favorite
 ) {
 }
