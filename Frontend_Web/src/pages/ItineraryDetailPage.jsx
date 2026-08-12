@@ -12,6 +12,7 @@ const ItineraryDetailPage = () => {
     setActiveTripId,
     addDayToTrip,
     updateTripTitle,
+    updateTripDate,
     updateTripCover,
     loadingTrips,
   } = useTrip();
@@ -22,6 +23,8 @@ const ItineraryDetailPage = () => {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitleValue, setEditTitleValue] = useState('');
   const [showImageModal, setShowImageModal] = useState(false);
+
+  const dateInputRef = useRef(null);
 
   // AI Summary State from Import flow
   const [aiSummary, setAiSummary] = useState(location.state?.showAiSummary ? location.state : null);
@@ -73,16 +76,22 @@ const ItineraryDetailPage = () => {
 
   const dayLocations = trip.locations.filter(loc => loc.day === selectedDay);
 
+  const handleDateClick = () => {
+    if (dateInputRef.current && typeof dateInputRef.current.showPicker === 'function') {
+      dateInputRef.current.showPicker();
+    }
+  };
+
   return (
     <div className="route-page">
-      <header className="page-header" style={{marginBottom: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end'}}>
-        <div style={{ flex: 1 }}>
-          <button className="btn-secondary" style={{padding: '6px 16px', marginBottom: '12px', fontSize: '14px'}} onClick={() => navigate('/route')}>
+      <header className="page-header" style={{marginBottom: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <button className="btn-secondary" style={{alignSelf: 'flex-start', padding: '6px 16px', marginBottom: '12px', fontSize: '14px'}} onClick={() => navigate('/route')}>
             ← Back to List
           </button>
           <div className="kicker" style={{color: 'var(--muted)', fontSize: '14px', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '2px'}}>My Trip Itinerary</div>
 
-          <div className="title-area" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div className="title-area" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
             {isEditingTitle ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <input
@@ -123,18 +132,49 @@ const ItineraryDetailPage = () => {
           </div>
         </div>
 
-        <div className="header-actions" style={{display: 'flex', gap: '12px'}}>
+        <div className="header-actions" style={{display: 'flex', gap: '12px', alignItems: 'center', height: 'fit-content', marginTop: 'auto'}}>
+          {/* START DATE MODIFIER MOVED HERE */}
+          <div className="trip-date-modifier" style={{ cursor: 'default' }}>
+            <span className="label">Start Time:</span>
+            <span className="date-val">{trip.date}</span>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <span
+                className="cal-icon"
+                style={{ cursor: 'pointer', fontSize: '18px' }}
+              >
+                📅
+              </span>
+              {trip.status !== 'FINISHED' && (
+                <input
+                  type="date"
+                  min={new Date().toISOString().split('T')[0]}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      updateTripDate(trip.id, e.target.value);
+                    }
+                  }}
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    opacity: 0,
+                    cursor: 'pointer',
+                    zIndex: 20
+                  }}
+                  title="Click to change start date"
+                />
+              )}
+            </div>
+          </div>
+
           {trip.status !== 'FINISHED' ? (
             <>
-              <button className="btn-secondary" onClick={() => navigate('/edit')}>Edit Itinerary</button>
-              <button className="btn-secondary" onClick={() => navigate('/map')}>View on Map</button>
-              <button className="btn-secondary" onClick={() => navigate('/route')}>Save</button>
-              <button className="btn-primary">Share</button>
+              <button className="btn-shadow-style" onClick={() => navigate('/edit')}>Edit Itinerary</button>
+              <button className="btn-shadow-style" onClick={() => navigate('/map')}>View on Map</button>
+              <button className="btn-shadow-style" onClick={() => navigate('/route')}>Save</button>
             </>
           ) : (
             <>
-              <button className="btn-secondary" onClick={() => navigate('/map')}>View on Map</button>
-              <button className="btn-primary">Share</button>
+              <button className="btn-shadow-style" onClick={() => navigate('/map')}>View on Map</button>
             </>
           )}
         </div>
@@ -175,6 +215,19 @@ const ItineraryDetailPage = () => {
           </div>
 
           <div className="info-card">
+            <button
+              className="btn-primary"
+              style={{
+                position: 'absolute',
+                top: '24px',
+                right: '24px',
+                padding: '8px 20px',
+                fontSize: '14px',
+                borderRadius: '12px'
+              }}
+            >
+              Share
+            </button>
             <h3>Trip Overview</h3>
             <div className="aibadge" style={{background: '#FCEFD6', border: '1px solid #F3DDAF', padding: '12px', borderRadius: '12px', margin: '16px 0', fontSize: '14px'}}>
               <span className="s">🪄</span>
@@ -261,7 +314,7 @@ const ItineraryDetailPage = () => {
                           <div className="tl-time">{item.time || '10:00'}</div>
                           <div className="tl-info">
                             <h3>{item.name}</h3>
-                            <p>Suggested Duration {item.duration || '1.5h'} · {idx === 0 ? 'Starting Point' : 'Check-in Point'}</p>
+                            <p>Duration {item.duration || '1.5'}h · Activity</p>
                           </div>
                           <div className="tl-actions">
                             <button onClick={() => navigate(`/attraction/${encodeURIComponent(item.name)}`)}>View Details</button>

@@ -95,8 +95,10 @@ jobs:
           name: sast-report
           path: ML/sast-report.json
 
+      # 之前只跑 test_app.py（只测部署用的健康检查桩服务），app/ 目录下 5 个测试文件
+      # （抽取重试健壮性、推荐防编造、行程排序、人群预测、内容推荐）从来没在 CI 里跑过。
       - name: 测试
-        run: python3 -m pytest test_app.py --junit-xml=results.xml -v
+        run: python3 -m pytest test_app.py app/ --junit-xml=results.xml -v
 
       - name: 发布测试报告
         if: always()  # 测试失败也上传
@@ -156,4 +158,18 @@ jobs:
             --cluster ad-project-dev \
             --service ad-project-ml-dev \
             --force-new-deployment \
+            --region ${{ env.AWS_REGION }}
+
+      # ============================================================
+      # 等部署真正稳定：ML 服务之前就出现过新任务健康检查一直不过、
+      # 触发熔断自动回滚的情况，那次 update-service 本身没报错，CI 是
+      # 绿的，只有手动查 AWS 才发现其实回滚了。加这一步让部署失败时
+      # CI 直接标红，不用每次手动查。
+      # ============================================================
+      - name: 等待 ECS 部署稳定
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          aws ecs wait services-stable \
+            --cluster ad-project-dev \
+            --services ad-project-ml-dev \
             --region ${{ env.AWS_REGION }}

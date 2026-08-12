@@ -74,7 +74,12 @@ jobs:
       # ============================================================
       # 构建
       # ============================================================
+      # VITE_API_BASE_URL 是 Vite 编译时写死进 JS 包的，不是运行时读取——
+      # 不设的话会回退成 src/services/api.js 里的 localhost:8080，线上用户的
+      # 浏览器请求会打到访问者自己的电脑，注册/登录这类请求直接失败且无提示。
       - name: 构建项目
+        env:
+          VITE_API_BASE_URL: http://ad-project-dev-593875640.ap-southeast-1.elb.amazonaws.com
         run: npm run build
 
       - name: 上传构建产物

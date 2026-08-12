@@ -114,6 +114,18 @@ export const TripProvider = ({ children }) => {
     }
   };
 
+  const updateTripDate = async (tripId, newDate) => {
+    try {
+      await api.put(`/trips/${tripId}`, { startDate: newDate });
+      // We trigger a full refresh to let the backend/context re-derive the status
+      // (Active vs Upcoming) based on the new date.
+      await fetchTrips();
+    } catch (error) {
+      console.error('Failed to update date:', error);
+      alert('Failed to update start date');
+    }
+  };
+
   const updateTripCover = async (tripId, imageUrl) => {
     try {
       await api.put(`/trips/${tripId}`, { coverImage: imageUrl });
@@ -258,11 +270,16 @@ export const TripProvider = ({ children }) => {
       saveTripEdits,
       createNewTrip,
       updateTripTitle,
+      updateTripDate,
       addLocationsToTripDay,
       updateTripCover,
       fetchAttractionData,
       loading,
+      loadingTrips: loading,
       fetchTrips,
+      refreshTrips: fetchTrips,
+      error,
+      tripsError: error,
       removeLocationFromActive,
       deleteTrip
     }}>

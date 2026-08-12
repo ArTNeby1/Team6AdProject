@@ -20,11 +20,12 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     try {
       const response = await api.post('/auth/login', { email, password });
-      const { accessToken, userId, username, email: userEmail, travelStyle, preferTransport } = response.data;
+      const { accessToken, userId, email: userEmail } = response.data;
 
-      const userData = { id: userId, username, email: userEmail, travelStyle, preferTransport };
+      // Mock username as it's not in the DB schema
+      const mockUsername = userEmail.split('@')[0];
+      const userData = { id: userId, username: mockUsername, email: userEmail };
 
-      // Save to local storage
       localStorage.setItem('loomytrip_token', accessToken);
       localStorage.setItem('loomytrip_user', JSON.stringify(userData));
 

@@ -49,7 +49,9 @@ resource "aws_ecs_task_definition" "java" {
       ]
       environment = [
         { name = "SPRING_PROFILES_ACTIVE", value = "prod" },
-        { name = "CORS_ALLOWED_ORIGINS", value = "http://${aws_s3_bucket_website_configuration.frontend_web.website_endpoint}" }
+        { name = "CORS_ALLOWED_ORIGINS", value = "http://${aws_s3_bucket_website_configuration.frontend_web.website_endpoint}" },
+        # ALB 默认转发到 ML（非 /api/*），Java 通过同一 DNS 调用 /extract-travel-info、/refine、/recommend
+        { name = "AI_SERVICE_BASE_URL", value = "http://${aws_lb.main.dns_name}" }
       ]
       secrets = [
         { name = "DB_HOST", valueFrom = "${aws_secretsmanager_secret.db.arn}:host::" },
