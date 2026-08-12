@@ -52,6 +52,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/admin/auth/**").permitAll()
                         .requestMatchers("/api/v1/health").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                        // OpenAPI 定义本身不是业务数据，放开访问；DAST 的 ZAP api-scan
+                        // 靠读 /v3/api-docs 才能知道有哪些接口可以测，见 dast-scan.yml
+                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/v1/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
                         .anyRequest().authenticated()
