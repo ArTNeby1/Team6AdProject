@@ -16,6 +16,7 @@ public record TripSummaryResponse(
         /** From `trip_preference` — null if the trip has none set. */
         String travelStyle,
         String preferTransport,
+        boolean favorite,
         List<TripScheduleResponse> schedules
 ) {
 }

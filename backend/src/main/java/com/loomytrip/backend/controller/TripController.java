@@ -5,6 +5,7 @@ import com.loomytrip.backend.dto.request.BulkUpdateSchedulesRequest;
 import com.loomytrip.backend.dto.request.CreateTripRequest;
 import com.loomytrip.backend.dto.request.UpdateTripRequest;
 import com.loomytrip.backend.dto.response.GenerateItineraryResponse;
+import com.loomytrip.backend.dto.response.ShareTripResponse;
 import com.loomytrip.backend.dto.response.TripRouteResponse;
 import com.loomytrip.backend.dto.response.TripSummaryResponse;
 import com.loomytrip.backend.service.TripService;
@@ -86,5 +87,15 @@ public class TripController {
     @PostMapping("/{tripId}/generate")
     public GenerateItineraryResponse generateItinerary(@PathVariable Long tripId) {
         return tripService.generateItinerary(tripId);
+    }
+
+    @PostMapping("/{tripId}/share")
+    public ShareTripResponse shareTrip(@PathVariable Long tripId) {
+        return tripService.shareTrip(tripId);
+    }
+
+    @DeleteMapping("/{tripId}/share")
+    public ShareTripResponse unshareTrip(@PathVariable Long tripId) {
+        return tripService.unshareTrip(tripId);
     }
 }

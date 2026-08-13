@@ -116,6 +116,12 @@ public class PlanningService {
             chatMessageRepository.save(briefMessage);
 
             Map<String, Object> result = aiPlanningClient.extractTravelInfo(request.initialBrief(), null);
+            if (outOfScopeDestination(result) != null) {
+                // 大概率是 Bedrock 这次抽取把地标名当成了 destination（见
+                // outOfScopeDestination 的注释），不是真的出了新加坡——重试一次，
+                // persistExtraction() 下面还是会做最终校验，真出了新加坡照样会被拒绝。
+                result = aiPlanningClient.extractTravelInfo(request.initialBrief(), null);
+            }
             persistExtraction(saved, result);
         }
 
@@ -154,6 +160,11 @@ public class PlanningService {
 
         Map<String, Object> result = aiPlanningClient.refineFromChat(messages, buildPreferenceText(currentUser()));
         validateExtractionResult(result);
+        if (outOfScopeDestination(result) != null) {
+            // 同 createSession() 的理由：先重试一次，避免误判。
+            result = aiPlanningClient.refineFromChat(messages, buildPreferenceText(currentUser()));
+            validateExtractionResult(result);
+        }
 
         draftActivityRepository.deleteBySession_Id(sessionId);
         draftPlaceRepository.deleteBySession_Id(sessionId);
@@ -259,9 +270,15 @@ public class PlanningService {
         // each bucket into a real, increasing start_time per stop (see nextStartTime javadoc).
         int sequence = 1;
         LocalTime clockCursor = LocalTime.of(9, 0);
+        boolean isFirstStopOfDay = true;
         for (AiRecommendResult.OrderedStop stop : orderedStops) {
             Destination destination = destinationService.findOrCreateByName(stop.name(), stop.type(), stop.lat(), stop.lng());
-            clockCursor = nextStartTime(clockCursor, stop.timeOfDay());
+            // 每天第一站固定 09:00，不给天气建议顶掉——见 TripService#addSchedules 的同款注释。
+            if (isFirstStopOfDay) {
+                isFirstStopOfDay = false;
+            } else {
+                clockCursor = nextStartTime(clockCursor, stop.timeOfDay());
+            }
             TripSchedule schedule = new TripSchedule();
             schedule.setTripDay(savedDay);
             schedule.setDestination(destination);
@@ -334,20 +351,39 @@ public class PlanningService {
     // ---------------------------------------------------------------------
 
     /**
+     * Returns the offending {@code destination} string if the extraction landed outside
+     * Singapore, or {@code null} if it's in scope (blank/missing destination counts as
+     * in-scope — the AI just didn't say). Split out of {@link #persistExtraction} so
+     * {@link #createSession} can check it without committing to throwing: Bedrock's
+     * destination field is noisy on short, landmark-only notes (e.g. "Gardens by the Bay
+     * this morning...") — it sometimes echoes back the landmark name instead of inferring
+     * "Singapore", even though the trip is obviously local. One retry of the same extraction
+     * call clears this up in practice far more often than it doesn't, so createSession()
+     * gives it a second try before persistExtraction makes the final, throwing call.
+     */
+    private String outOfScopeDestination(Map<String, Object> result) {
+        Object destinationValue = result.get("destination");
+        if (destinationValue instanceof String destination
+                && !destination.isBlank()
+                && !destination.toLowerCase(java.util.Locale.ROOT).contains(DEFAULT_DESTINATION.toLowerCase(java.util.Locale.ROOT))) {
+            return destination;
+        }
+        return null;
+    }
+
+    /**
      * Persists an extraction result (`/extract-travel-info` or `/refine` — same JSON
      * shape) as DraftPlace/DraftActivity rows. Rejects out-of-scope destinations
      * (ML/docs/ai_contract.md section 6, item 6).
      */
     @SuppressWarnings("unchecked")
     private void persistExtraction(PlanningSession session, Map<String, Object> result) {
-        Object destinationValue = result.get("destination");
-        if (destinationValue instanceof String destination
-                && !destination.isBlank()
-                && !destination.toLowerCase().contains(DEFAULT_DESTINATION.toLowerCase())) {
+        String outOfScopeDestination = outOfScopeDestination(result);
+        if (outOfScopeDestination != null) {
             throw new ApiException(
                     HttpStatus.UNPROCESSABLE_ENTITY,
                     "OUT_OF_SCOPE",
-                    "This app only plans trips within Singapore (got: " + destination + ")"
+                    "This app only plans trips within Singapore (got: " + outOfScopeDestination + ")"
             );
         }
 
