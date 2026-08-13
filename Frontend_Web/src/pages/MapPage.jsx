@@ -1,8 +1,9 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useTrip } from '../context/TripContext';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, Tooltip, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+import 'leaflet.heat'; // 🟢 Import Leaflet Heat plugin
 import { mapApi } from '../services/api';
 
 // Fix default Leaflet icon paths
@@ -24,6 +25,51 @@ const RecenterMap = ({ center, zoom }) => {
   return null;
 };
 
+// Component to render the Heatmap around a specific point
+const HeatmapLayer = ({ center, level, visible }) => {
+  const map = useMap();
+  const heatLayerRef = React.useRef(null);
+
+  useEffect(() => {
+    if (heatLayerRef.current) {
+      map.removeLayer(heatLayerRef.current);
+      heatLayerRef.current = null;
+    }
+
+    if (!visible || !center || !level) return;
+
+    // Generate random points around the center to simulate a real heatmap blob
+    const points = [];
+    const intensity = level.toUpperCase() === 'HIGH' ? 0.8 : (level.toUpperCase() === 'MODERATE' ? 0.5 : 0.3);
+    const count = level.toUpperCase() === 'HIGH' ? 100 : 50;
+    const spread = 0.008; // How far the heatmap spreads
+
+    for (let i = 0; i < count; i++) {
+      const latOffset = (Math.random() - 0.5) * spread;
+      const lngOffset = (Math.random() - 0.5) * spread;
+      points.push([center[0] + latOffset, center[1] + lngOffset, intensity]);
+    }
+
+    // Add center point with high intensity
+    points.push([center[0], center[1], intensity * 1.5]);
+
+    heatLayerRef.current = L.heatLayer(points, {
+      radius: 25,
+      blur: 15,
+      maxZoom: 17,
+      gradient: { 0.4: 'blue', 0.6: 'lime', 0.8: 'yellow', 1: 'red' }
+    }).addTo(map);
+
+    return () => {
+      if (heatLayerRef.current) {
+        map.removeLayer(heatLayerRef.current);
+      }
+    };
+  }, [center, level, visible, map]);
+
+  return null;
+};
+
 // Custom Marker Icon with Number
 const createCustomIcon = (number) => {
   return new L.DivIcon({
@@ -35,17 +81,40 @@ const createCustomIcon = (number) => {
   });
 };
 
+// Custom Icon for Nearby Recommendations
+const nearbyIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
+
+// Component to handle map clicks
+const MapClickHandler = ({ onMapClick }) => {
+  useMapEvents({
+    click: (e) => {
+      onMapClick(e.latlng);
+    },
+  });
+  return null;
+};
+
 const MapPage = () => {
   const { trips, activeTripId, setActiveTripId, getActiveTrip } = useTrip();
   const trip = getActiveTrip();
 
   const [selectedDay, setSelectedDay] = useState(1);
   const [mapConfig, setMapConfig] = useState({
-    tileUrl: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    tileUrl: 'https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png', // 🟢 Fresh Mint Style (Alidade Smooth)
     center: [1.3521, 103.8198], // Default to Singapore
     zoom: 12
   });
   const [manualCenter, setManualCenter] = useState(null);
+  const [nearbyAttractions, setNearbyAttractions] = useState([]);
+  const [crowdData, setCrowdData] = useState(null);
+  const [showHeatmap, setShowHeatmap] = useState(false);
   const [routeData, setRouteData] = useState({
     totalLocations: 0,
     estimatedDistanceKm: 0,
@@ -76,7 +145,7 @@ const MapPage = () => {
         const lat = Number(cfg.defaultLatitude);
         const lng = Number(cfg.defaultLongitude);
         setMapConfig({
-          tileUrl: cfg.tileUrlTemplate || 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+          tileUrl: cfg.tileUrlTemplate || 'https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png',
           center: Number.isFinite(lat) && Number.isFinite(lng) ? [lat, lng] : [1.3521, 103.8198],
           zoom: cfg.defaultZoom || 12,
         });
@@ -158,6 +227,34 @@ const MapPage = () => {
     }
   };
 
+  const handleMapClick = (latlng) => {
+    mapApi.getNearby(latlng.lat, latlng.lng)
+      .then(res => {
+        if (res.data && res.data.items) {
+          setNearbyAttractions(res.data.items);
+        }
+      })
+      .catch(err => console.error('Failed to fetch nearby attractions', err));
+  };
+
+  const toggleHeatmap = () => {
+    const nextState = !showHeatmap;
+    setShowHeatmap(nextState);
+    if (nextState && !crowdData) {
+      mapApi.getCrowdHint(trip?.date)
+        .then(res => setCrowdData(res.data))
+        .catch(err => console.error('Failed to fetch crowd data', err));
+    }
+  };
+
+  const getHeatmapColor = (level) => {
+    switch (level?.toUpperCase()) {
+      case 'HIGH': return 'rgba(211, 47, 47, 0.2)';
+      case 'MODERATE': return 'rgba(240, 160, 56, 0.15)';
+      default: return 'rgba(14, 158, 142, 0.1)';
+    }
+  };
+
   return (
     <div className="map-page">
       <header className="page-header map-header-layout" style={{marginBottom: '32px'}}>
@@ -201,12 +298,65 @@ const MapPage = () => {
         </div>
 
         <div className="map-view" style={{ position: 'relative' }}>
+          {/* MAP OVERLAY CONTROLS */}
+          <div style={{
+            position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)',
+            zIndex: 1000, display: 'flex', gap: '10px'
+          }}>
+            <button
+              className={`btn-shadow-style ${showHeatmap ? 'active' : ''}`}
+              onClick={toggleHeatmap}
+              style={{
+                background: showHeatmap ? 'var(--jade)' : '#fff',
+                color: showHeatmap ? '#fff' : 'var(--jade-deep)',
+                borderRadius: '99px',
+                padding: '8px 24px',
+                border: 'none',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                cursor: 'pointer',
+                fontWeight: 'bold'
+              }}
+            >
+              🔥 {showHeatmap ? 'Disable Heatmap' : 'Show Traffic Heatmap'}
+            </button>
+          </div>
+
+          {/* CROWD INFO BOX */}
+          {showHeatmap && crowdData && (
+            <div style={{
+              position: 'absolute', bottom: '20px', left: '20px', zIndex: 1000,
+              background: 'rgba(255, 255, 255, 0.9)', padding: '16px', borderRadius: '16px',
+              border: '1px solid var(--jade)', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxWidth: '240px'
+            }}>
+              <h4 style={{ margin: '0 0 8px', fontSize: '14px' }}>📈 Seasonal Crowd Level</h4>
+              <div style={{
+                display: 'inline-block', padding: '4px 10px', borderRadius: '8px',
+                background: crowdData.level === 'HIGH' ? 'var(--coral)' : 'var(--mint)',
+                color: crowdData.level === 'HIGH' ? '#fff' : 'var(--jade-deep)',
+                fontWeight: 'bold', marginBottom: '8px', fontSize: '12px'
+              }}>
+                {crowdData.level}
+              </div>
+              <p style={{ margin: 0, fontSize: '12px', color: 'var(--muted)', lineHeight: '1.4' }}>
+                {crowdData.note}
+              </p>
+            </div>
+          )}
+
           <MapContainer
             center={mapCenter}
             zoom={mapConfig.zoom}
             style={{ height: '100%', width: '100%', borderRadius: '24px' }}
           >
             <TileLayer url={mapConfig.tileUrl} />
+
+            <HeatmapLayer
+              center={manualCenter || (dayLocations.length > 0 ? [dayLocations[0].latitude, dayLocations[0].longitude] : null)}
+              level={crowdData?.level}
+              visible={showHeatmap}
+            />
+
+            <MapClickHandler onMapClick={handleMapClick} />
 
             <RecenterMap center={manualCenter || mapCenter} zoom={manualCenter ? 15 : mapConfig.zoom} />
 
@@ -229,6 +379,29 @@ const MapPage = () => {
                   <Popup>
                     <div style={{ fontWeight: 'bold' }}>{loc.name}</div>
                     <div>{loc.time} | {loc.activityType}</div>
+                  </Popup>
+                </Marker>
+              )
+            ))}
+
+            {/* NEARBY RECOMMENDATIONS */}
+            {nearbyAttractions.map((item, idx) => (
+              item.latitude && item.longitude && (
+                <Marker
+                  key={`nearby-${idx}`}
+                  position={[item.latitude, item.longitude]}
+                  icon={nearbyIcon}
+                  eventHandlers={{
+                    click: () => {
+                      setManualCenter([item.latitude, item.longitude]);
+                    },
+                  }}
+                >
+                  <Popup>
+                    <div style={{ fontWeight: 'bold', color: '#f0a038' }}>✨ Nearby Gem</div>
+                    <div style={{ fontWeight: 'bold' }}>{item.name}</div>
+                    <div style={{ fontSize: '12px', color: 'var(--muted)' }}>{item.category}</div>
+                    <p style={{ marginTop: '8px', fontSize: '13px' }}>{item.description}</p>
                   </Popup>
                 </Marker>
               )

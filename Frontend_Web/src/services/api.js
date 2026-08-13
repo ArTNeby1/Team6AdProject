@@ -41,6 +41,8 @@ api.interceptors.response.use(
 export const mapApi = {
   getConfig: () => api.get('/map/config'),
   getRoute: (tripId, day) => api.get(`/trips/${tripId}/route?day=${day}`),
+  getNearby: (lat, lng) => api.get(`/map/nearby?lat=${lat}&lng=${lng}`),
+  getCrowdHint: (date) => api.get(`/map/crowd${date ? `?date=${date}` : ''}`),
 };
 
 export default api;
