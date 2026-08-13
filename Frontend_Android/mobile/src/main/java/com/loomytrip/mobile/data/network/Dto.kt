@@ -20,6 +20,16 @@ data class AuthResponseDto(
     val preferTransport: String?
 )
 
+data class UserProfileDto(
+    val id: Long,
+    val username: String?,
+    val email: String,
+    val age: Int?,
+    val gender: String?,
+    val travelStyle: String?,
+    val preferTransport: String?
+)
+
 data class DestinationDto(
     val id: Long? = null,
     val name: String,
@@ -59,13 +69,92 @@ data class TripDto(
     val schedules: List<ScheduleDto> = emptyList()
 )
 
-data class UpdateTripRequest(val startDate: String)
+data class UpdateTripRequest(
+    val tripName: String? = null,
+    val startDate: String? = null,
+    val durationDays: Int? = null,
+    val travelStyle: String? = null,
+    val preferTransport: String? = null
+)
 
 data class AddSchedulesRequest(val day: Int, val locationNames: List<String>)
 
 data class BulkScheduleItem(val id: Long, val day: Int, val sequence: Int, val startTime: String?)
 
 data class BulkUpdateSchedulesRequest(val schedules: List<BulkScheduleItem>)
+
+data class TripRouteDto(
+    val tripId: Long,
+    val day: Int,
+    val stopCount: Int,
+    val totalDistanceKm: Double? = null,
+    val totalDurationMinutes: Int? = null,
+    val googleMapsUrl: String? = null,
+    val legs: List<RouteLegDto> = emptyList(),
+    val warnings: List<String> = emptyList()
+)
+
+data class GenerateItineraryResponseDto(
+    val tripId: Long,
+    val status: String? = null,
+    val days: List<GeneratedDayDto> = emptyList()
+)
+
+data class GeneratedDayDto(
+    val day: Int,
+    val date: String? = null,
+    val weatherSummary: String? = null,
+    val stops: List<GeneratedStopDto> = emptyList()
+)
+
+data class GeneratedStopDto(
+    val scheduleId: Long? = null,
+    val name: String,
+    val order: Int? = null,
+    val timeOfDay: String? = null,
+    val reason: String? = null
+)
+
+data class RouteLegDto(
+    val fromScheduleId: Long?,
+    val toScheduleId: Long?,
+    val fromName: String,
+    val toName: String,
+    val distanceKm: Double? = null,
+    val durationMinutes: Int? = null,
+    val googleMapLink: String? = null
+)
+
+data class NearbyRecommendationDto(
+    val id: Long? = null,
+    val name: String,
+    val address: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val category: String? = null,
+    val distanceKm: Double? = null,
+    val reason: String? = null,
+    val activities: List<String> = emptyList()
+)
+
+data class RecommendationResponseDto(
+    val items: List<NearbyRecommendationDto> = emptyList()
+)
+
+data class CrowdHintDto(
+    val quarter: Int,
+    val seasonalIndex: Double,
+    val level: String,
+    val note: String
+)
+
+data class MapConfigDto(
+    val tileUrlTemplate: String = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    val attribution: String = "© OpenStreetMap contributors",
+    val defaultLatitude: Double = 1.3521,
+    val defaultLongitude: Double = 103.8198,
+    val defaultZoom: Int = 12
+)
 
 enum class ChatRole { user, assistant, system }
 
@@ -95,6 +184,15 @@ data class PlanningSessionDetailDto(
     val status: String? = null,
     val confirmedTripId: Long? = null,
     val draftPlaces: List<DraftPlaceDto> = emptyList()
+)
+
+data class PlanningSessionSummaryDto(
+    val id: Long,
+    val title: String? = null,
+    val initialBrief: String? = null,
+    val status: String? = null,
+    val confirmedTripId: Long? = null,
+    val updatedAt: String? = null
 )
 
 data class ConfirmSessionResponseDto(

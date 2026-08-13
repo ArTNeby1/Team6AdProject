@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,6 +14,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -23,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,16 +37,24 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.loomytrip.mobile.data.model.ExtractedPlace
+import com.loomytrip.mobile.data.network.PlanningSessionSummaryDto
 
 @Composable
 fun ImportGuideScreen(
+    initialGuide: String = DEFAULT_IMPORT_GUIDE,
     onExtract: (String) -> Unit,
     isLoading: Boolean = false,
-    errorMessage: String? = null
+    errorMessage: String? = null,
+    history: List<PlanningSessionSummaryDto> = emptyList(),
+    isHistoryLoading: Boolean = false,
+    historyErrorMessage: String? = null,
+    onRefreshHistory: () -> Unit = {},
+    onHistorySelected: (PlanningSessionSummaryDto) -> Unit = {}
 ) {
-    var guide by remember {
-        mutableStateOf("Singapore for 2 days. I want Gardens by the Bay, Chinatown, Marina Bay and local food.")
+    var guide by remember(initialGuide) {
+        mutableStateOf(initialGuide)
     }
+    var showHistory by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -57,6 +68,59 @@ fun ImportGuideScreen(
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
             lineHeight = 21.sp
         )
+        OutlinedButton(
+            onClick = {
+                showHistory = !showHistory
+                if (showHistory && history.isEmpty()) onRefreshHistory()
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Default.History, contentDescription = null)
+            Spacer(Modifier.size(7.dp))
+            Text(
+                when {
+                    isHistoryLoading -> "Loading previous imports…"
+                    history.isEmpty() -> "Previous AI imports"
+                    else -> "Previous AI imports (${history.size})"
+                }
+            )
+        }
+        if (showHistory) {
+            when {
+                historyErrorMessage != null -> {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                    ) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text(historyErrorMessage, color = MaterialTheme.colorScheme.onErrorContainer, fontSize = 12.sp)
+                            TextButton(onClick = onRefreshHistory) { Text("Try again") }
+                        }
+                    }
+                }
+                isHistoryLoading -> {
+                    Text("Loading your saved parsing sessions…", fontSize = 12.sp)
+                }
+                history.isEmpty() -> {
+                    Text(
+                        "No previous imports yet. Your next AI import will appear here.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f)
+                    )
+                }
+                else -> {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 210.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(history, key = { it.id }) { session ->
+                            PlanningHistoryCard(session = session, onClick = { onHistorySelected(session) })
+                        }
+                    }
+                }
+            }
+        }
         OutlinedTextField(
             value = guide,
             onValueChange = { guide = it },
@@ -101,6 +165,59 @@ fun ImportGuideScreen(
         }
     }
 }
+
+@Composable
+private fun PlanningHistoryCard(
+    session: PlanningSessionSummaryDto,
+    onClick: () -> Unit
+) {
+    val confirmed = session.confirmedTripId != null
+    val deletedConfirmedTrip = session.status == "CONFIRMED" && session.confirmedTripId == null
+    Card(
+        onClick = onClick,
+        enabled = !deletedConfirmedTrip,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Text(session.title ?: "AI import #${session.id}", fontWeight = FontWeight.Bold, maxLines = 1)
+                Text(
+                    session.initialBrief?.replace('\n', ' ')?.take(72) ?: "No source text",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    maxLines = 2
+                )
+                Text(
+                    session.updatedAt?.take(10) ?: "Saved session",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                )
+            }
+            Text(
+                when {
+                    confirmed -> "Open trip"
+                    deletedConfirmedTrip -> "Trip deleted"
+                    else -> "Continue"
+                },
+                color = MaterialTheme.colorScheme.primary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+internal const val DEFAULT_IMPORT_GUIDE =
+    "Plan a one-day trip in Singapore. Visit Merlion Park Singapore, Gardens by the Bay Singapore, " +
+        "ArtScience Museum Singapore, and Singapore Botanic Gardens."
 
 @Composable
 fun ReviewExtractedScreen(

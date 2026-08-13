@@ -7,12 +7,21 @@ import com.loomytrip.mobile.data.network.CreatePlanningSessionRequest
 import com.loomytrip.mobile.data.network.DraftPlaceDto
 import com.loomytrip.mobile.data.network.UpdateDraftPlaceRequest
 import com.loomytrip.mobile.data.network.ValidationStatus
+import com.loomytrip.mobile.data.network.PlanningSessionSummaryDto
 import com.loomytrip.mobile.data.network.planningApi
 
 /** Ports Frontend_Web's ImportPage.jsx flow (POST /planning-sessions -> GET detail -> ... -> confirm) to mobile. */
 object AiPlanningRepository {
 
     data class SessionResult(val sessionId: Long, val places: List<ExtractedPlace>)
+
+    suspend fun sessions(): List<PlanningSessionSummaryDto> =
+        planningApi.getSessions().sortedByDescending { it.updatedAt.orEmpty() }
+
+    suspend fun resumeSession(sessionId: Long): SessionResult {
+        val detail = planningApi.getSession(sessionId)
+        return SessionResult(detail.id, toExtractedPlaces(detail.draftPlaces))
+    }
 
     suspend fun startSession(sourceText: String): SessionResult {
         val created = planningApi.createSession(

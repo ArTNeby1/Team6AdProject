@@ -18,17 +18,27 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -43,10 +53,15 @@ fun TripsListScreen(
     trips: List<TripDto>,
     isLoading: Boolean,
     errorMessage: String?,
+    deleteErrorMessage: String? = null,
+    deletingTripId: Long? = null,
     onRefresh: () -> Unit,
     onStartPlanning: () -> Unit,
-    onTripSelected: (Long) -> Unit
+    onTripSelected: (Long) -> Unit,
+    onDeleteTrip: (Long) -> Unit
 ) {
+    var pendingDelete by remember { mutableStateOf<TripDto?>(null) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -95,6 +110,9 @@ fun TripsListScreen(
                 }
             }
         }
+        deleteErrorMessage?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+        }
 
         when {
             isLoading && trips.isEmpty() -> {
@@ -130,7 +148,12 @@ fun TripsListScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(trips, key = { it.id }) { trip ->
-                        TripListCard(trip = trip, onClick = { onTripSelected(trip.id) })
+                        TripListCard(
+                            trip = trip,
+                            onClick = { onTripSelected(trip.id) },
+                            onDelete = { pendingDelete = trip },
+                            isDeleting = deletingTripId == trip.id
+                        )
                     }
                 }
             }
@@ -142,10 +165,37 @@ fun TripsListScreen(
             Text("Plan a new trip", fontWeight = FontWeight.Bold)
         }
     }
+
+    pendingDelete?.let { trip ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("Delete ${trip.tripName}?") },
+            text = { Text("This removes the whole itinerary from Mobile, Web and the database.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingDelete = null
+                        onDeleteTrip(trip.id)
+                    }
+                ) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("Cancel") }
+            }
+        )
+    }
 }
 
 @Composable
-private fun TripListCard(trip: TripDto, onClick: () -> Unit) {
+private fun TripListCard(
+    trip: TripDto,
+    onClick: () -> Unit,
+    onDelete: () -> Unit,
+    isDeleting: Boolean
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
     val statusLabel = when (trip.status) {
         "ACTIVE" -> "Active"
         "FINISHED" -> "Finished"
@@ -216,11 +266,34 @@ private fun TripListCard(trip: TripDto, onClick: () -> Unit) {
                 }
             }
             Spacer(Modifier.size(6.dp))
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowForward,
-                contentDescription = "Open ${trip.tripName}",
-                tint = MaterialTheme.colorScheme.primary
-            )
+            if (isDeleting) {
+                Text("Deleting…", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
+            } else {
+                Box {
+                    IconButton(onClick = { menuExpanded = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "More options for ${trip.tripName}")
+                    }
+                    DropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Delete itinerary", color = MaterialTheme.colorScheme.error) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                onDelete()
+                            }
+                        )
+                    }
+                }
+            }
         }
     }
 }
