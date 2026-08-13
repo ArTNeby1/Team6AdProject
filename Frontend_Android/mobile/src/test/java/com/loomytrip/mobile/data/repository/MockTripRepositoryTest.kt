@@ -22,7 +22,20 @@ class MockTripRepositoryTest {
         val moved = repository.moveActivity(original, "tha-phae-gate", -1)
 
         assertEquals("Tha Phae Gate", moved.first().title)
+        assertEquals("11:00", moved.first().startTime)
+        assertEquals("09:00", moved[1].startTime)
         assertEquals(original.filter { it.day == 2 }, moved.filter { it.day == 2 })
+    }
+
+    @Test
+    fun reorderActivity_movesAStopToAnotherDayAndKeepsItsTime() {
+        val original = repository.initialItinerary()
+        val moved = repository.reorderActivity(original, "tha-phae-gate", 2, 1)
+        val activity = moved.first { it.id == "tha-phae-gate" }
+
+        assertEquals(2, activity.day)
+        assertEquals("11:00", activity.startTime)
+        assertEquals("tha-phae-gate", moved.filter { it.day == 2 }[1].id)
     }
 
     @Test

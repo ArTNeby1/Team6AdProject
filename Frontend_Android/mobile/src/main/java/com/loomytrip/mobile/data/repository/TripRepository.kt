@@ -5,11 +5,27 @@ import com.loomytrip.mobile.data.model.TripActivity
 interface TripRepository {
     fun initialItinerary(): List<TripActivity>
     fun moveActivity(activities: List<TripActivity>, id: String, direction: Int): List<TripActivity>
+    fun reorderActivity(
+        activities: List<TripActivity>,
+        id: String,
+        targetDay: Int,
+        targetIndex: Int
+    ): List<TripActivity>
     fun deleteActivity(activities: List<TripActivity>, id: String): List<TripActivity>
+    fun restoreActivity(
+        activities: List<TripActivity>,
+        activity: TripActivity,
+        targetIndex: Int
+    ): List<TripActivity>
     fun addActivity(
         activities: List<TripActivity>,
         day: Int,
         title: String,
+        startTime: String
+    ): List<TripActivity>
+    fun updateActivity(
+        activities: List<TripActivity>,
+        id: String,
         startTime: String
     ): List<TripActivity>
 }
@@ -33,24 +49,48 @@ class MockTripRepository : TripRepository {
         direction: Int
     ): List<TripActivity> {
         if (direction !in setOf(-1, 1)) return activities
-        val currentIndex = activities.indexOfFirst { it.id == id }
-        if (currentIndex < 0) return activities
-        val current = activities[currentIndex]
-        val sameDayIndices = activities.indices.filter { activities[it].day == current.day }
-        val dayPosition = sameDayIndices.indexOf(currentIndex)
-        val targetDayPosition = dayPosition + direction
-        if (targetDayPosition !in sameDayIndices.indices) return activities
+        val current = activities.firstOrNull { it.id == id } ?: return activities
+        val dayItems = activities.filter { it.day == current.day }
+        val currentIndex = dayItems.indexOfFirst { it.id == id }
+        val targetIndex = currentIndex + direction
+        if (targetIndex !in dayItems.indices) return activities
+        return reorderActivity(activities, id, current.day, targetIndex)
+    }
 
-        val targetIndex = sameDayIndices[targetDayPosition]
-        return activities.toMutableList().apply {
-            val target = this[targetIndex]
-            this[targetIndex] = current
-            this[currentIndex] = target
+    override fun reorderActivity(
+        activities: List<TripActivity>,
+        id: String,
+        targetDay: Int,
+        targetIndex: Int
+    ): List<TripActivity> {
+        if (targetDay < 1) return activities
+        val moving = activities.firstOrNull { it.id == id } ?: return activities
+        val dayCount = (activities.maxOfOrNull { it.day } ?: 1).coerceAtLeast(targetDay)
+        val grouped = (1..dayCount).associateWith { day ->
+            activities.filter { it.day == day && it.id != id }.toMutableList()
         }
+        val target = grouped.getValue(targetDay)
+        target.add(targetIndex.coerceIn(0, target.size), moving.copy(day = targetDay))
+        return (1..dayCount).flatMap { grouped.getValue(it) }
     }
 
     override fun deleteActivity(activities: List<TripActivity>, id: String): List<TripActivity> =
         activities.filterNot { it.id == id }
+
+    override fun restoreActivity(
+        activities: List<TripActivity>,
+        activity: TripActivity,
+        targetIndex: Int
+    ): List<TripActivity> {
+        if (activities.any { it.id == activity.id }) return activities
+        val dayCount = (activities.maxOfOrNull { it.day } ?: 1).coerceAtLeast(activity.day)
+        val grouped = (1..dayCount).associateWith { day ->
+            activities.filter { it.day == day }.toMutableList()
+        }
+        val target = grouped.getValue(activity.day)
+        target.add(targetIndex.coerceIn(0, target.size), activity)
+        return (1..dayCount).flatMap { grouped.getValue(it) }
+    }
 
     override fun addActivity(
         activities: List<TripActivity>,
@@ -83,6 +123,14 @@ class MockTripRepository : TripRepository {
         val lastDayIndex = activities.indexOfLast { it.day == day }
         if (lastDayIndex < 0) return activities + newActivity
         return activities.toMutableList().apply { add(lastDayIndex + 1, newActivity) }
+    }
+
+    override fun updateActivity(
+        activities: List<TripActivity>,
+        id: String,
+        startTime: String
+    ): List<TripActivity> = activities.map { activity ->
+        if (activity.id == id) activity.copy(startTime = startTime) else activity
     }
 }
 

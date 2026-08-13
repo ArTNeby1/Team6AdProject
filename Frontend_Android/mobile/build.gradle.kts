@@ -1,5 +1,4 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -21,14 +20,6 @@ android {
 
     val backendBaseUrl = providers.gradleProperty("BACKEND_BASE_URL")
         .orElse("http://ad-project-dev-593875640.ap-southeast-1.elb.amazonaws.com/")
-    val localProperties = Properties().apply {
-        val localFile = rootProject.file("local.properties")
-        if (localFile.exists()) {
-            localFile.inputStream().use(::load)
-        }
-    }
-    val mapsApiKey = providers.gradleProperty("MAPS_API_KEY")
-        .orElse(localProperties.getProperty("MAPS_API_KEY", "MAPS_API_KEY_NOT_SET"))
 
     defaultConfig {
         applicationId = "com.loomytrip.mobile"
@@ -38,12 +29,6 @@ android {
         versionName = "0.1.0"
 
         buildConfigField("String", "BACKEND_BASE_URL", "\"${backendBaseUrl.get()}\"")
-        buildConfigField(
-            "boolean",
-            "MAPS_API_KEY_CONFIGURED",
-            (mapsApiKey.get() != "MAPS_API_KEY_NOT_SET").toString()
-        )
-        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey.get()
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -87,12 +72,12 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.navigation:navigation-compose:2.9.3")
+    implementation("io.coil-kt:coil-compose:2.7.0")
 
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-    implementation("com.google.maps.android:maps-compose:6.7.2")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

@@ -2,13 +2,16 @@ package com.loomytrip.mobile
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.loomytrip.mobile.data.model.TripActivity
+import com.loomytrip.mobile.data.network.MapConfigDto
 import com.loomytrip.mobile.data.network.TripDto
+import com.loomytrip.mobile.data.network.TripRouteDto
 import com.loomytrip.mobile.ui.screen.HomeScreen
 import com.loomytrip.mobile.ui.screen.MapScreen
 import com.loomytrip.mobile.ui.screen.MapTripOption
@@ -31,6 +34,7 @@ class MobileWebParityTest {
             MaterialTheme {
                 HomeScreen(
                     onStartPlanning = {},
+                    onExploreCity = {},
                     onViewTrip = {},
                     onViewAllTrips = { clicked = true },
                     tripName = "Singapore Weekend",
@@ -63,7 +67,8 @@ class MobileWebParityTest {
                     errorMessage = null,
                     onRefresh = {},
                     onStartPlanning = {},
-                    onTripSelected = {}
+                    onTripSelected = {},
+                    onDeleteTrip = {}
                 )
             }
         }
@@ -109,6 +114,46 @@ class MobileWebParityTest {
         composeRule.onNodeWithText("Second trip").performClick()
 
         assertEquals(2L, selectedTripId)
+    }
+
+    @Test
+    fun mapScreen_displaysBackendRouteAndGoogleMapsAction() {
+        composeRule.setContent {
+            MaterialTheme {
+                MapScreen(
+                    activities = listOf(
+                        TripActivity(
+                            id = "1",
+                            title = "Merlion Park",
+                            category = "Landmark",
+                            day = 1,
+                            startTime = "09:00",
+                            durationMinutes = 60,
+                            address = "One Fullerton",
+                            latitude = 1.2868,
+                            longitude = 103.8545
+                        )
+                    ),
+                    initialDay = 1,
+                    totalDays = 1,
+                    mapConfig = MapConfigDto(),
+                    routeSummary = TripRouteDto(
+                        tripId = 1,
+                        day = 1,
+                        stopCount = 1,
+                        totalDistanceKm = 1.2,
+                        totalDurationMinutes = 14,
+                        googleMapsUrl = "https://www.google.com/maps/dir/?api=1"
+                    ),
+                    onEdit = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("1.2 km").assertIsDisplayed()
+        composeRule.onNodeWithText("14 min").assertIsDisplayed()
+        composeRule.onNodeWithText("Open Google Maps").assertIsEnabled()
+        composeRule.onNodeWithContentDescription("Leaflet trip map").assertIsDisplayed()
     }
 
     @Test

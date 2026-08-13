@@ -8,6 +8,7 @@ import android.graphics.Paint
 import android.net.Uri
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -29,8 +30,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Directions
@@ -38,10 +38,12 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -75,9 +77,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.loomytrip.mobile.BuildConfig
 import com.loomytrip.mobile.data.model.TripActivity
-import com.loomytrip.mobile.ui.component.GoogleTripMap
+import com.loomytrip.mobile.data.network.CrowdHintDto
+import com.loomytrip.mobile.data.network.MapConfigDto
+import com.loomytrip.mobile.data.network.NearbyRecommendationDto
+import com.loomytrip.mobile.data.network.TripRouteDto
+import com.loomytrip.mobile.ui.component.LeafletTripMap
 import com.loomytrip.mobile.ui.component.hasMapCoordinates
 import java.time.LocalDate
 import java.time.ZoneId
@@ -97,11 +102,26 @@ fun RouteScreen(
     totalDays: Int,
     isUpdatingStartDate: Boolean = false,
     startDateError: String? = null,
+    isDeletingTrip: Boolean = false,
+    deleteErrorMessage: String? = null,
+    travelStyle: String? = null,
+    preferTransport: String? = null,
+    isSavingPreferences: Boolean = false,
+    preferencesErrorMessage: String? = null,
+    isGenerating: Boolean = false,
+    generateErrorMessage: String? = null,
+    generateSummary: String? = null,
     onStartDateChange: (LocalDate) -> Unit = {},
     onViewMap: (Int) -> Unit,
-    onEdit: (Int) -> Unit
+    onEdit: (Int) -> Unit,
+    onSavePreferences: (String, String) -> Unit = { _, _ -> },
+    onSmartReorder: () -> Unit = {},
+    onDeleteTrip: () -> Unit = {}
 ) {
     var selectedDay by rememberSaveable { mutableIntStateOf(1) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var showPreferencesDialog by remember { mutableStateOf(false) }
+    var showGenerateDialog by remember { mutableStateOf(false) }
     val dayCount = totalDays.coerceAtLeast(1)
     val dayActivities = activities.filter { it.day == selectedDay }
     val context = LocalContext.current
@@ -136,6 +156,37 @@ fun RouteScreen(
         }
         startDateError?.let { error ->
             Text(error, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+        }
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = tripStatus != "FINISHED") { showPreferencesDialog = true },
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Row(
+                modifier = Modifier.padding(13.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Settings, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text("Preferences for this trip", fontWeight = FontWeight.Bold)
+                    Text(
+                        "${travelStyle ?: "Balanced"} · ${preferTransport ?: "Public transport"}",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f)
+                    )
+                }
+                Text("Edit", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        preferencesErrorMessage?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
         }
         DaySelector(selectedDay = selectedDay, dayCount = dayCount, onDaySelected = { selectedDay = it })
         if (dayActivities.isEmpty()) {
@@ -173,7 +224,146 @@ fun RouteScreen(
                 Text("Edit day")
             }
         }
+        deleteErrorMessage?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+        }
+        Button(
+            onClick = { showGenerateDialog = true },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = activities.isNotEmpty() && tripStatus != "FINISHED" && !isGenerating
+        ) {
+            Icon(Icons.Default.AutoAwesome, contentDescription = null)
+            Spacer(Modifier.width(7.dp))
+            Text(if (isGenerating) "AI is reorganizing…" else "Smart reorder with AI", fontWeight = FontWeight.Bold)
+        }
+        generateSummary?.let {
+            Text(it, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
+        }
+        generateErrorMessage?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+        }
+        TextButton(
+            onClick = { showDeleteDialog = true },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isDeletingTrip
+        ) {
+            Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+            Spacer(Modifier.width(6.dp))
+            Text(
+                if (isDeletingTrip) "Deleting itinerary…" else "Delete itinerary",
+                color = MaterialTheme.colorScheme.error
+            )
+        }
     }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Delete $tripName?") },
+            text = { Text("This removes the complete itinerary from Mobile, Web and the database.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteDialog = false
+                        onDeleteTrip()
+                    }
+                ) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showPreferencesDialog) {
+        TripPreferencesDialog(
+            currentTravelStyle = travelStyle,
+            currentTransport = preferTransport,
+            isSaving = isSavingPreferences,
+            onDismiss = { if (!isSavingPreferences) showPreferencesDialog = false },
+            onSave = { style, transport ->
+                onSavePreferences(style, transport)
+                showPreferencesDialog = false
+            }
+        )
+    }
+
+    if (showGenerateDialog) {
+        AlertDialog(
+            onDismissRequest = { showGenerateDialog = false },
+            title = { Text("Let AI reorganize this trip?") },
+            text = {
+                Text("AI will reorder all saved stops using their locations and available planning information. You can still edit the result afterwards.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showGenerateDialog = false
+                        onSmartReorder()
+                    }
+                ) { Text("Reorganize") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showGenerateDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+}
+
+private val tripStyleOptions = listOf("Balanced", "Relaxed", "Cultural", "Food-focused", "Fast-paced")
+private val tripTransportOptions = listOf("Walking", "Public transport", "Driving", "Mixed")
+
+@Composable
+private fun TripPreferencesDialog(
+    currentTravelStyle: String?,
+    currentTransport: String?,
+    isSaving: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (String, String) -> Unit
+) {
+    var travelStyle by remember(currentTravelStyle) {
+        mutableStateOf(currentTravelStyle?.takeIf { it in tripStyleOptions } ?: "Balanced")
+    }
+    var transport by remember(currentTransport) {
+        mutableStateOf(currentTransport?.takeIf { it in tripTransportOptions } ?: "Public transport")
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Trip preferences") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("These choices apply only to this itinerary.")
+                Text("Travel style", fontWeight = FontWeight.Bold)
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    items(tripStyleOptions) { option ->
+                        FilterChip(
+                            selected = travelStyle == option,
+                            onClick = { travelStyle = option },
+                            label = { Text(option) }
+                        )
+                    }
+                }
+                Text("Preferred transport", fontWeight = FontWeight.Bold)
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    items(tripTransportOptions) { option ->
+                        FilterChip(
+                            selected = transport == option,
+                            onClick = { transport = option },
+                            label = { Text(option) }
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(travelStyle, transport) }, enabled = !isSaving) {
+                Text(if (isSaving) "Saving…" else "Save")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !isSaving) { Text("Cancel") } }
+    )
 }
 
 @Composable
@@ -243,125 +433,7 @@ private fun ItineraryActivityCard(index: Int, activity: TripActivity) {
 }
 
 @Composable
-fun EditTripScreen(
-    activities: List<TripActivity>,
-    initialDay: Int,
-    totalDays: Int,
-    onMove: (String, Int) -> Unit,
-    onDelete: (String) -> Unit,
-    onAdd: (Int, String, String) -> Unit,
-    onSave: () -> Unit,
-    isSaving: Boolean = false,
-    errorMessage: String? = null
-) {
-    var selectedDay by rememberSaveable { mutableIntStateOf(initialDay) }
-    var showAddDialog by remember { mutableStateOf(false) }
-    val dayCount = totalDays.coerceAtLeast(selectedDay)
-    val dayActivities = activities.filter { it.day == selectedDay }
-
-    LaunchedEffect(initialDay) { selectedDay = initialDay }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Text("Edit itinerary", fontSize = 27.sp, fontWeight = FontWeight.Bold)
-        Text(
-            "Add, remove, or change the order for this day.",
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
-            lineHeight = 20.sp
-        )
-        DaySelector(selectedDay = selectedDay, dayCount = dayCount, onDaySelected = { selectedDay = it })
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(9.dp)
-        ) {
-            itemsIndexed(dayActivities, key = { _, item -> item.id }) { index, activity ->
-                EditActivityCard(
-                    activity = activity,
-                    canMoveUp = index > 0,
-                    canMoveDown = index < dayActivities.lastIndex,
-                    onMoveUp = { onMove(activity.id, -1) },
-                    onMoveDown = { onMove(activity.id, 1) },
-                    onDelete = { onDelete(activity.id) }
-                )
-            }
-        }
-        OutlinedButton(
-            onClick = { showAddDialog = true },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Icon(Icons.Default.Add, contentDescription = null)
-            Spacer(Modifier.width(6.dp))
-            Text("Add activity to Day $selectedDay")
-        }
-        errorMessage?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
-        }
-        Button(
-            onClick = onSave,
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !isSaving
-        ) {
-            Text(if (isSaving) "Saving…" else "Save changes", fontWeight = FontWeight.Bold)
-        }
-    }
-
-    if (showAddDialog) {
-        AddActivityDialog(
-            day = selectedDay,
-            onDismiss = { showAddDialog = false },
-            onAdd = { title, time ->
-                onAdd(selectedDay, title, time)
-                showAddDialog = false
-            }
-        )
-    }
-}
-
-@Composable
-private fun EditActivityCard(
-    activity: TripActivity,
-    canMoveUp: Boolean,
-    canMoveDown: Boolean,
-    onMoveUp: () -> Unit,
-    onMoveDown: () -> Unit,
-    onDelete: () -> Unit
-) {
-    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
-        Row(
-            modifier = Modifier.padding(start = 14.dp, top = 10.dp, bottom = 10.dp, end = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(activity.title, fontWeight = FontWeight.Bold)
-                Text(
-                    "${activity.startTime} • ${activity.durationLabel}",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f)
-                )
-            }
-            IconButton(onClick = onMoveUp, enabled = canMoveUp) {
-                Icon(Icons.Default.ArrowUpward, contentDescription = "Move ${activity.title} up")
-            }
-            IconButton(onClick = onMoveDown, enabled = canMoveDown) {
-                Icon(Icons.Default.ArrowDownward, contentDescription = "Move ${activity.title} down")
-            }
-            IconButton(onClick = onDelete) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = "Delete ${activity.title}",
-                    tint = MaterialTheme.colorScheme.error
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun AddActivityDialog(
+internal fun AddActivityDialog(
     day: Int,
     onDismiss: () -> Unit,
     onAdd: (String, String) -> Unit
@@ -419,7 +491,18 @@ fun MapScreen(
     totalDays: Int,
     tripOptions: List<MapTripOption> = emptyList(),
     selectedTripId: Long? = null,
+    mapConfig: MapConfigDto? = null,
+    routeSummary: TripRouteDto? = null,
+    nearbyPlaces: List<NearbyRecommendationDto> = emptyList(),
+    crowdHint: CrowdHintDto? = null,
+    showCrowd: Boolean = false,
+    isMapDataLoading: Boolean = false,
+    mapDataError: String? = null,
     onTripSelected: (Long) -> Unit = {},
+    onDaySelected: (Int) -> Unit = {},
+    onMapClick: (Double, Double) -> Unit = { _, _ -> },
+    onToggleCrowd: () -> Unit = {},
+    onRetryRoute: () -> Unit = {},
     onEdit: (Int) -> Unit
 ) {
     var selectedDay by rememberSaveable { mutableIntStateOf(initialDay) }
@@ -429,11 +512,15 @@ fun MapScreen(
     val mappedStopCount = dayActivities.count(TripActivity::hasMapCoordinates)
     val context = LocalContext.current
 
-    LaunchedEffect(initialDay) { selectedDay = initialDay }
+    LaunchedEffect(initialDay) {
+        selectedDay = initialDay
+        onDaySelected(initialDay)
+    }
     LaunchedEffect(selectedTripId) {
         if (displayedTripId != selectedTripId) {
             displayedTripId = selectedTripId
             selectedDay = 1
+            onDaySelected(1)
         }
     }
 
@@ -441,7 +528,7 @@ fun MapScreen(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         if (tripOptions.isNotEmpty()) {
             TripSelector(
@@ -450,26 +537,111 @@ fun MapScreen(
                 onTripSelected = onTripSelected
             )
         }
-        DaySelector(selectedDay = selectedDay, dayCount = dayCount, onDaySelected = { selectedDay = it })
+        DaySelector(
+            selectedDay = selectedDay,
+            dayCount = dayCount,
+            onDaySelected = {
+                selectedDay = it
+                onDaySelected(it)
+            }
+        )
         Card(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
             shape = RoundedCornerShape(20.dp)
         ) {
-            TripMapComponent(activities = dayActivities)
+            EnhancedTripMapComponent(
+                activities = dayActivities,
+                mapConfig = mapConfig,
+                nearbyPlaces = nearbyPlaces,
+                crowdHint = crowdHint,
+                showCrowd = showCrowd,
+                onMapClick = onMapClick
+            )
         }
-        Text(
-            "Day $selectedDay route • ${dayActivities.size} stops",
-            fontWeight = FontWeight.Bold,
-            fontSize = 16.sp
+        RouteSummaryCard(
+            selectedDay = selectedDay,
+            fallbackStopCount = dayActivities.size,
+            routeSummary = routeSummary,
+            isLoading = isMapDataLoading
         )
-        if (BuildConfig.MAPS_API_KEY_CONFIGURED && mappedStopCount < dayActivities.size) {
+        mapDataError?.let { message ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    message,
+                    modifier = Modifier.weight(1f),
+                    color = MaterialTheme.colorScheme.error,
+                    fontSize = 11.sp,
+                    maxLines = 2
+                )
+                TextButton(onClick = onRetryRoute) { Text("Retry") }
+            }
+        }
+        if (mappedStopCount < dayActivities.size) {
             Text(
                 "${dayActivities.size - mappedStopCount} stop(s) are waiting for coordinates.",
                 fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.error
             )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            FilterChip(
+                selected = showCrowd,
+                onClick = onToggleCrowd,
+                label = { Text("Crowd level") }
+            )
+            if (dayActivities.any(TripActivity::hasMapCoordinates)) {
+                TextButton(
+                    onClick = {
+                        dayActivities.firstOrNull(TripActivity::hasMapCoordinates)?.let {
+                            onMapClick(it.latitude, it.longitude)
+                        }
+                    }
+                ) {
+                    Text("Find nearby")
+                }
+            }
+            if (isMapDataLoading) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            }
+        }
+        if (showCrowd && crowdHint != null) {
+            Text(
+                "${crowdHint.level.lowercase().replaceFirstChar(Char::uppercase)} crowd • ${crowdHint.note}",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        if (nearbyPlaces.isNotEmpty()) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                itemsIndexed(nearbyPlaces) { _, place ->
+                    Card(shape = RoundedCornerShape(12.dp)) {
+                        Column(
+                            modifier = Modifier
+                                .width(170.dp)
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                        ) {
+                            Text(place.name, fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1)
+                            Text(
+                                listOfNotNull(
+                                    place.category,
+                                    place.distanceKm?.let { "${"%.1f".format(it)} km" }
+                                ).joinToString(" • "),
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+            }
         }
         if (dayActivities.isNotEmpty()) {
             Row(
@@ -477,12 +649,15 @@ fun MapScreen(
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Button(
-                    onClick = { openExternalNavigation(context, dayActivities.first()) },
-                    modifier = Modifier.weight(1f)
+                    onClick = {
+                        routeSummary?.googleMapsUrl?.let { openGoogleMapsRoute(context, it) }
+                    },
+                    modifier = Modifier.weight(1f),
+                    enabled = !routeSummary?.googleMapsUrl.isNullOrBlank() && !isMapDataLoading
                 ) {
                     Icon(Icons.Default.Directions, contentDescription = null)
                     Spacer(Modifier.width(6.dp))
-                    Text("Navigate")
+                    Text("Open Google Maps")
                 }
                 OutlinedButton(
                     onClick = { onEdit(selectedDay) },
@@ -495,14 +670,78 @@ fun MapScreen(
             }
         }
         Text(
-            if (BuildConfig.MAPS_API_KEY_CONFIGURED) {
-                "Tap a marker for details. Pinch to zoom the map."
-            } else {
-                "Route preview. Add the team Google Maps key to enable the live map."
-            },
+            "Leaflet uses the same map config as Web. Tap the map for nearby places; use Google Maps for navigation.",
             fontSize = 11.sp,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
         )
+    }
+}
+
+@Composable
+private fun RouteSummaryCard(
+    selectedDay: Int,
+    fallbackStopCount: Int,
+    routeSummary: TripRouteDto?,
+    isLoading: Boolean
+) {
+    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 9.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            RouteMetric("Day", selectedDay.toString(), Modifier.weight(1f))
+            RouteMetric("Stops", (routeSummary?.stopCount ?: fallbackStopCount).toString(), Modifier.weight(1f))
+            RouteMetric(
+                "Distance",
+                if (isLoading) "…" else routeSummary?.totalDistanceKm?.let { "${"%.1f".format(it)} km" } ?: "—",
+                Modifier.weight(1f)
+            )
+            RouteMetric(
+                "Travel",
+                if (isLoading) "…" else routeSummary?.totalDurationMinutes?.let { "$it min" } ?: "—",
+                Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun RouteMetric(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1)
+        Text(
+            label,
+            fontSize = 9.sp,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f)
+        )
+    }
+}
+
+@Composable
+private fun EnhancedTripMapComponent(
+    activities: List<TripActivity>,
+    mapConfig: MapConfigDto?,
+    nearbyPlaces: List<NearbyRecommendationDto>,
+    crowdHint: CrowdHintDto?,
+    showCrowd: Boolean,
+    onMapClick: (Double, Double) -> Unit
+) {
+    when {
+        activities.isEmpty() -> EmptyDay(modifier = Modifier.fillMaxSize())
+        mapConfig != null && activities.any(TripActivity::hasMapCoordinates) -> {
+            LeafletTripMap(
+                activities = activities,
+                mapConfig = mapConfig,
+                nearbyPlaces = nearbyPlaces,
+                crowdHint = crowdHint,
+                showCrowd = showCrowd,
+                onMapClick = onMapClick,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+        else -> InteractiveRouteMap(activities)
     }
 }
 
@@ -562,21 +801,7 @@ private fun TripSelector(
 }
 
 @Composable
-private fun TripMapComponent(activities: List<TripActivity>) {
-    when {
-        activities.isEmpty() -> EmptyDay(modifier = Modifier.fillMaxSize())
-        BuildConfig.MAPS_API_KEY_CONFIGURED && activities.any(TripActivity::hasMapCoordinates) -> {
-            GoogleTripMap(
-                activities = activities,
-                modifier = Modifier.fillMaxSize()
-            )
-        }
-        else -> InteractiveRouteMap(activities)
-    }
-}
-
-@Composable
-private fun DaySelector(selectedDay: Int, dayCount: Int, onDaySelected: (Int) -> Unit) {
+internal fun DaySelector(selectedDay: Int, dayCount: Int, onDaySelected: (Int) -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -781,5 +1006,17 @@ private fun openExternalNavigation(context: Context, activity: TripActivity) {
             )
         )
         context.startActivity(fallback)
+    }
+}
+
+private fun openGoogleMapsRoute(context: Context, url: String) {
+    val routeUri = Uri.parse(url)
+    val googleMapsIntent = Intent(Intent.ACTION_VIEW, routeUri).apply {
+        setPackage("com.google.android.apps.maps")
+    }
+    try {
+        context.startActivity(googleMapsIntent)
+    } catch (_: ActivityNotFoundException) {
+        context.startActivity(Intent(Intent.ACTION_VIEW, routeUri))
     }
 }
