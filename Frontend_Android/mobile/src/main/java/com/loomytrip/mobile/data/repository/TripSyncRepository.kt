@@ -23,6 +23,9 @@ object TripSyncRepository {
     suspend fun updateStartDate(tripId: Long, startDate: LocalDate): TripDto =
         tripApi.updateTrip(tripId, UpdateTripRequest(startDate = startDate.toString()))
 
+    suspend fun updateTripName(tripId: Long, tripName: String): TripDto =
+        tripApi.updateTrip(tripId, UpdateTripRequest(tripName = tripName.trim()))
+
     suspend fun updatePreferences(tripId: Long, travelStyle: String, preferTransport: String): TripDto =
         tripApi.updateTrip(
             tripId,

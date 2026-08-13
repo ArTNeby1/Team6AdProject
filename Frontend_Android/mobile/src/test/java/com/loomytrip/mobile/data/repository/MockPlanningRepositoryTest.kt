@@ -21,4 +21,20 @@ class MockPlanningRepositoryTest {
         assertEquals("Wat Chedi Luang", places.first().name)
         assertTrue(places.all { it.isIncluded })
     }
+
+    @Test
+    fun importedText_becomesAShortSummarizedTripName() {
+        val title = AiPlanningRepository.suggestTripTitle(
+            "I want three days in Singapore with museums, food and quiet evening walks"
+        )
+
+        assertEquals("Singapore 3-Day Trip", title)
+    }
+
+    @Test
+    fun importedText_neverBecomesTheWholeTripName() {
+        val source = "Please arrange several places for my graduation holiday"
+
+        assertEquals("My AI Itinerary", AiPlanningRepository.suggestTripTitle(source))
+    }
 }

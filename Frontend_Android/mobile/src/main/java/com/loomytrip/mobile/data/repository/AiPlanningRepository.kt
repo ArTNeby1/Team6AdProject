@@ -25,7 +25,7 @@ object AiPlanningRepository {
 
     suspend fun startSession(sourceText: String): SessionResult {
         val created = planningApi.createSession(
-            CreatePlanningSessionRequest(title = "Plan for ${sourceText.take(15)}...", initialBrief = sourceText)
+            CreatePlanningSessionRequest(title = suggestTripTitle(sourceText), initialBrief = sourceText)
         )
         // Mirrors ImportPage.jsx: the backend triggers AI extraction synchronously on create,
         // so re-fetch the session detail right after to read the populated draft places.
@@ -50,6 +50,37 @@ object AiPlanningRepository {
     /** Returns the id of the newly created Trip. */
     suspend fun confirm(sessionId: Long): Long = planningApi.confirm(sessionId).id
 
+    internal fun suggestTripTitle(sourceText: String): String {
+        val destination = destinationNames.firstOrNull { (keyword, _) ->
+            sourceText.contains(keyword, ignoreCase = true)
+        }?.second
+        val days = extractDayCount(sourceText)
+
+        return when {
+            destination != null && days != null -> "$destination $days-Day Trip"
+            destination != null -> "$destination Highlights"
+            days != null -> "My $days-Day Itinerary"
+            else -> "My AI Itinerary"
+        }
+    }
+
+    private fun extractDayCount(sourceText: String): Int? {
+        val numericPatterns = listOf(
+            Regex("(?i)\\b(\\d{1,2})\\s*(?:days?|d)\\b"),
+            Regex("(\\d{1,2})\\s*天")
+        )
+        numericPatterns.forEach { pattern ->
+            pattern.find(sourceText)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { days ->
+                if (days in 1..30) return days
+            }
+        }
+
+        val normalized = sourceText.lowercase()
+        return dayWords.firstNotNullOfOrNull { (word, days) ->
+            days.takeIf { Regex("\\b${Regex.escape(word)}\\s+days?\\b").containsMatchIn(normalized) }
+        }
+    }
+
     private fun toExtractedPlaces(places: List<DraftPlaceDto>): List<ExtractedPlace> =
         places.map { place ->
             ExtractedPlace(
@@ -61,4 +92,29 @@ object AiPlanningRepository {
                 isIncluded = true
             )
         }
+
+    private val destinationNames = listOf(
+        "Singapore" to "Singapore",
+        "新加坡" to "Singapore",
+        "Chiang Mai" to "Chiang Mai",
+        "清迈" to "Chiang Mai",
+        "Kyoto" to "Kyoto",
+        "京都" to "Kyoto",
+        "Bali" to "Bali",
+        "巴厘岛" to "Bali",
+        "Tokyo" to "Tokyo",
+        "东京" to "Tokyo",
+        "Bangkok" to "Bangkok",
+        "曼谷" to "Bangkok"
+    )
+
+    private val dayWords = listOf(
+        "one" to 1,
+        "two" to 2,
+        "three" to 3,
+        "four" to 4,
+        "five" to 5,
+        "six" to 6,
+        "seven" to 7
+    )
 }

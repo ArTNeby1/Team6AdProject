@@ -131,6 +131,8 @@ fun LoomyTripApp() {
     var planningError by remember { mutableStateOf<String?>(null) }
     var editSaving by remember { mutableStateOf(false) }
     var editError by remember { mutableStateOf<String?>(null) }
+    var tripNameUpdating by remember { mutableStateOf(false) }
+    var tripNameError by remember { mutableStateOf<String?>(null) }
     var startDateUpdating by remember { mutableStateOf(false) }
     var startDateError by remember { mutableStateOf<String?>(null) }
     var mapConfig by remember { mutableStateOf(MapConfigDto()) }
@@ -158,6 +160,7 @@ fun LoomyTripApp() {
 
     fun selectTrip(tripId: Long?) {
         val trip = trips.firstOrNull { it.id == tripId } ?: trips.firstOrNull()
+        tripNameError = null
         startDateError = null
         preferencesError = null
         itineraryGenerateError = null
@@ -620,6 +623,8 @@ fun LoomyTripApp() {
                     startDate = activeTrip?.startDate,
                     tripStatus = activeTrip?.status,
                     totalDays = activeTrip?.durationDays ?: 1,
+                    isUpdatingTripName = tripNameUpdating,
+                    tripNameError = tripNameError,
                     isUpdatingStartDate = startDateUpdating,
                     startDateError = startDateError,
                     isDeletingTrip = deletingTripId == activeTrip?.id,
@@ -631,6 +636,30 @@ fun LoomyTripApp() {
                     isGenerating = itineraryGenerating,
                     generateErrorMessage = itineraryGenerateError,
                     generateSummary = itineraryGenerateSummary,
+                    onTripNameChange = { newName ->
+                        val tripId = activeTrip?.id
+                        if (tripId == null) {
+                            tripNameError = "Select an itinerary before changing its name."
+                        } else {
+                            scope.launch {
+                                tripNameUpdating = true
+                                tripNameError = null
+                                try {
+                                    val updated = TripSyncRepository.updateTripName(tripId, newName)
+                                    val sortedTrips = TripSyncRepository.sortForDisplay(
+                                        trips.filterNot { it.id == updated.id } + updated
+                                    )
+                                    trips.clear()
+                                    trips.addAll(sortedTrips)
+                                    selectTrip(updated.id)
+                                } catch (error: Exception) {
+                                    tripNameError = error.userMessage("Could not rename this itinerary.")
+                                } finally {
+                                    tripNameUpdating = false
+                                }
+                            }
+                        }
+                    },
                     onStartDateChange = { newDate ->
                         val tripId = activeTrip?.id
                         if (tripId == null) {
@@ -890,6 +919,8 @@ fun LoomyTripApp() {
                         baselineSchedules = emptyList()
                         startDateError = null
                         startDateUpdating = false
+                        tripNameError = null
+                        tripNameUpdating = false
                         mapConfig = MapConfigDto()
                         mapRoute = null
                         nearbyPlaces.clear()

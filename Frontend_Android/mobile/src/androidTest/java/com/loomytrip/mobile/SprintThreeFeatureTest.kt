@@ -3,10 +3,14 @@ package com.loomytrip.mobile
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performTextClearance
+import androidx.compose.ui.test.performTextInput
 import com.loomytrip.mobile.data.model.TripActivity
 import com.loomytrip.mobile.data.network.PlanningSessionSummaryDto
 import com.loomytrip.mobile.data.repository.LocalExploreRepository
@@ -73,6 +77,32 @@ class SprintThreeFeatureTest {
 
         assertEquals("Relaxed", savedStyle)
         assertEquals("Public transport", savedTransport)
+    }
+
+    @Test
+    fun itineraryName_canBeChangedAfterPlanning() {
+        var savedName = ""
+        composeRule.setContent {
+            MaterialTheme {
+                RouteScreen(
+                    activities = emptyList(),
+                    tripName = "Singapore Draft",
+                    startDate = "2026-08-20",
+                    tripStatus = "NOT_STARTED",
+                    totalDays = 1,
+                    onViewMap = {},
+                    onEdit = {},
+                    onTripNameChange = { savedName = it }
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Rename itinerary").performClick()
+        composeRule.onNode(hasSetTextAction()).performTextClearance()
+        composeRule.onNode(hasSetTextAction()).performTextInput("Singapore Graduation Trip")
+        composeRule.onNodeWithText("Save").performClick()
+
+        assertEquals("Singapore Graduation Trip", savedName)
     }
 
     @Test

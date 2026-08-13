@@ -100,6 +100,8 @@ fun RouteScreen(
     startDate: String?,
     tripStatus: String?,
     totalDays: Int,
+    isUpdatingTripName: Boolean = false,
+    tripNameError: String? = null,
     isUpdatingStartDate: Boolean = false,
     startDateError: String? = null,
     isDeletingTrip: Boolean = false,
@@ -111,6 +113,7 @@ fun RouteScreen(
     isGenerating: Boolean = false,
     generateErrorMessage: String? = null,
     generateSummary: String? = null,
+    onTripNameChange: (String) -> Unit = {},
     onStartDateChange: (LocalDate) -> Unit = {},
     onViewMap: (Int) -> Unit,
     onEdit: (Int) -> Unit,
@@ -120,6 +123,7 @@ fun RouteScreen(
 ) {
     var selectedDay by rememberSaveable { mutableIntStateOf(1) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showTripNameDialog by remember { mutableStateOf(false) }
     var showPreferencesDialog by remember { mutableStateOf(false) }
     var showGenerateDialog by remember { mutableStateOf(false) }
     val dayCount = totalDays.coerceAtLeast(1)
@@ -132,7 +136,27 @@ fun RouteScreen(
             .padding(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text("$tripName • $dayCount ${if (dayCount == 1) "day" else "days"}", fontSize = 27.sp, fontWeight = FontWeight.Bold)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "$tripName • $dayCount ${if (dayCount == 1) "day" else "days"}",
+                modifier = Modifier.weight(1f),
+                fontSize = 27.sp,
+                fontWeight = FontWeight.Bold
+            )
+            IconButton(
+                onClick = { showTripNameDialog = true },
+                enabled = !isUpdatingTripName,
+                modifier = Modifier.semantics { contentDescription = "Rename itinerary" }
+            ) {
+                Icon(Icons.Default.Edit, contentDescription = null)
+            }
+        }
+        tripNameError?.let { error ->
+            Text(error, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+        }
         Text(
             "${activities.size} stops in this trip",
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
@@ -277,6 +301,18 @@ fun RouteScreen(
         )
     }
 
+    if (showTripNameDialog) {
+        RenameTripDialog(
+            currentName = tripName,
+            isSaving = isUpdatingTripName,
+            onDismiss = { if (!isUpdatingTripName) showTripNameDialog = false },
+            onSave = { newName ->
+                showTripNameDialog = false
+                onTripNameChange(newName)
+            }
+        )
+    }
+
     if (showPreferencesDialog) {
         TripPreferencesDialog(
             currentTravelStyle = travelStyle,
@@ -310,6 +346,42 @@ fun RouteScreen(
             }
         )
     }
+}
+
+@Composable
+private fun RenameTripDialog(
+    currentName: String,
+    isSaving: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit
+) {
+    var name by remember(currentName) { mutableStateOf(currentName) }
+    val trimmedName = name.trim()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rename itinerary") },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it.take(80) },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Itinerary name") },
+                supportingText = { Text("${name.length}/80") },
+                singleLine = true
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(trimmedName) },
+                enabled = trimmedName.isNotEmpty() && trimmedName != currentName && !isSaving
+            ) {
+                Text(if (isSaving) "Saving…" else "Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isSaving) { Text("Cancel") }
+        }
+    )
 }
 
 private val tripStyleOptions = listOf("Balanced", "Relaxed", "Cultural", "Food-focused", "Fast-paced")
