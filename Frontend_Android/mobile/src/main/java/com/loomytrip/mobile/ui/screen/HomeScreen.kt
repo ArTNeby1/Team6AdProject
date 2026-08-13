@@ -34,6 +34,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -74,7 +75,14 @@ private val destinationPreviews = listOf(
 )
 
 @Composable
-fun HomeScreen(onStartPlanning: () -> Unit) {
+fun HomeScreen(
+    onStartPlanning: () -> Unit,
+    onViewTrip: () -> Unit,
+    onViewAllTrips: () -> Unit,
+    tripName: String?,
+    tripDayCount: Int,
+    tripStopCount: Int
+) {
     var searchQuery by remember { mutableStateOf("") }
 
     LazyColumn(
@@ -130,15 +138,27 @@ fun HomeScreen(onStartPlanning: () -> Unit) {
         item { AiPlannerCard(onStartPlanning) }
 
         item {
-            SectionHeader(title = "My trips", action = "View all")
+            SectionHeader(title = "My trips", action = "View all", onAction = onViewAllTrips)
         }
 
         item {
-            CurrentTripCard(onClick = onStartPlanning)
+            if (tripName != null) {
+                CurrentTripCard(
+                    tripName = tripName,
+                    dayCount = tripDayCount,
+                    stopCount = tripStopCount,
+                    onClick = onViewTrip
+                )
+            } else {
+                Text(
+                    text = "No saved trips yet. Import a guide to start one.",
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+                )
+            }
         }
 
         item {
-            SectionHeader(title = "Explore next", action = "See more")
+            SectionHeader(title = "Explore next")
         }
 
         item {
@@ -231,24 +251,32 @@ private fun AiPlannerCard(onStartPlanning: () -> Unit) {
 }
 
 @Composable
-private fun SectionHeader(title: String, action: String) {
+private fun SectionHeader(
+    title: String,
+    action: String? = null,
+    onAction: (() -> Unit)? = null
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Text(
-            text = action,
-            color = MaterialTheme.colorScheme.primary,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold
-        )
+        if (action != null && onAction != null) {
+            TextButton(onClick = onAction) {
+                Text(
+                    text = action,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun CurrentTripCard(onClick: () -> Unit) {
+private fun CurrentTripCard(tripName: String, dayCount: Int, stopCount: Int, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -284,7 +312,7 @@ private fun CurrentTripCard(onClick: () -> Unit) {
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text("Chiang Mai", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text(tripName, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         Icons.Default.CalendarMonth,
@@ -294,24 +322,9 @@ private fun CurrentTripCard(onClick: () -> Unit) {
                     )
                     Spacer(Modifier.width(5.dp))
                     Text(
-                        "3 days · 4 saved stops",
+                        "$dayCount ${if (dayCount == 1) "day" else "days"} · $stopCount saved stops",
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
                         fontSize = 13.sp
-                    )
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(7.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.secondary)
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        "Draft itinerary",
-                        color = MaterialTheme.colorScheme.secondary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
                     )
                 }
             }

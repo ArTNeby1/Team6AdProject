@@ -36,9 +36,13 @@ import androidx.compose.ui.unit.sp
 import com.loomytrip.mobile.data.model.ExtractedPlace
 
 @Composable
-fun ImportGuideScreen(onExtract: (String) -> Unit) {
+fun ImportGuideScreen(
+    onExtract: (String) -> Unit,
+    isLoading: Boolean = false,
+    errorMessage: String? = null
+) {
     var guide by remember {
-        mutableStateOf("Chiang Mai in 3 days — Wat Chedi Luang, Tha Phae Gate, Nimman Road and Sunday Market.")
+        mutableStateOf("Singapore for 2 days. I want Gardens by the Bay, Chinatown, Marina Bay and local food.")
     }
 
     Column(
@@ -47,9 +51,9 @@ fun ImportGuideScreen(onExtract: (String) -> Unit) {
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text("Import a travel guide", fontSize = 27.sp, fontWeight = FontWeight.Bold)
+        Text("Smart AI Import", fontSize = 27.sp, fontWeight = FontWeight.Bold)
         Text(
-            "Paste a travel post or your own notes. Loomytrip will turn the useful places into a reviewable list.",
+            "Paste travel notes and LoomyTrip will extract places for you to review before creating an itinerary.",
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
             lineHeight = 21.sp
         )
@@ -77,20 +81,23 @@ fun ImportGuideScreen(onExtract: (String) -> Unit) {
             ) {
                 Icon(Icons.Default.AutoAwesome, contentDescription = null)
                 Text(
-                    "For this demo, places are extracted from the text above.",
+                    "The AI reads this text and proposes real places for your itinerary.",
                     fontSize = 12.sp,
                     lineHeight = 17.sp
                 )
             }
         }
+        errorMessage?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+        }
         Button(
             onClick = { onExtract(guide) },
             modifier = Modifier.fillMaxWidth(),
-            enabled = guide.isNotBlank()
+            enabled = guide.isNotBlank() && !isLoading
         ) {
             Icon(Icons.Default.AutoAwesome, contentDescription = null)
             Spacer(Modifier.size(8.dp))
-            Text("Extract places with AI", fontWeight = FontWeight.Bold)
+            Text(if (isLoading) "Analyzing…" else "Start Parsing", fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -100,7 +107,9 @@ fun ReviewExtractedScreen(
     places: List<ExtractedPlace>,
     onIncludedChange: (String, Boolean) -> Unit,
     onConfirm: () -> Unit,
-    onImportAgain: () -> Unit
+    onImportAgain: () -> Unit,
+    isLoading: Boolean = false,
+    errorMessage: String? = null
 ) {
     val includedCount = places.count { it.isIncluded }
 
@@ -126,16 +135,20 @@ fun ReviewExtractedScreen(
                 )
             }
         }
+        errorMessage?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+        }
         Button(
             onClick = onConfirm,
             modifier = Modifier.fillMaxWidth(),
-            enabled = includedCount > 0
+            enabled = includedCount > 0 && !isLoading
         ) {
-            Text("Confirm itinerary", fontWeight = FontWeight.Bold)
+            Text(if (isLoading) "Creating itinerary…" else "Confirm itinerary", fontWeight = FontWeight.Bold)
         }
         OutlinedButton(
             onClick = onImportAgain,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isLoading
         ) {
             Text("Edit source text")
         }

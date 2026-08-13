@@ -90,38 +90,10 @@ const ProfilePage = () => {
         {showSettings ? (
           <div className="info-card" style={{ padding: '32px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-              <h2 style={{ fontSize: '24px' }}>⚙️ Preferences</h2>
-              <button className="btn-secondary" onClick={() => setShowSettings(false)}>Cancel</button>
+              <h2 style={{ fontSize: '24px' }}>⚙️ Info</h2>
+              <button className="btn-secondary" onClick={() => setShowSettings(false)}>Close</button>
             </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '32px' }}>
-              <div>
-                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '12px' }}>Default Travel Style</label>
-                <select
-                  value={travelStyle}
-                  onChange={(e) => setTravelStyle(e.target.value)}
-                  style={{ width: '100%', padding: '14px', borderRadius: '14px', border: '2px solid var(--line-soft)', outline: 'none', fontSize: '16px' }}
-                >
-                  <option value="Cultural">Cultural Depth</option>
-                  <option value="Leisure">Leisure Vacation</option>
-                  <option value="Adventure">Outdoor Adventure</option>
-                  <option value="Foodie">Gourmet Tasting</option>
-                </select>
-              </div>
-              <div>
-                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '12px' }}>Default Transport Mode</label>
-                <select
-                  value={preferTransport}
-                  onChange={(e) => setPreferTransport(e.target.value)}
-                  style={{ width: '100%', padding: '14px', borderRadius: '14px', border: '2px solid var(--line-soft)', outline: 'none', fontSize: '16px' }}
-                >
-                  <option value="Public">Public Transport</option>
-                  <option value="Taxi">Taxi/Charter</option>
-                  <option value="Walking">Walking/Cycling</option>
-                </select>
-              </div>
-            </div>
-            <button className="btn-primary" style={{ width: '100%', padding: '16px' }} onClick={handleSavePreferences}>Save Preferences</button>
+            <p style={{ color: 'var(--muted)' }}>Global account preferences are not supported by the current database schema.</p>
           </div>
         ) : (
           <div className="info-card" style={{padding: '8px'}}>
