@@ -13,6 +13,7 @@ const ItineraryDetailPage = () => {
     addDayToTrip,
     updateTripTitle,
     updateTripDate,
+    addLocationsToTripDay,
     updateTripCover,
     loadingTrips,
   } = useTrip();
@@ -28,6 +29,23 @@ const ItineraryDetailPage = () => {
 
   // AI Summary State from Import flow
   const [aiSummary, setAiSummary] = useState(location.state?.showAiSummary ? location.state : null);
+  const [selectedGems, setSelectedGems] = useState(new Set());
+
+  const toggleGem = (name) => {
+    setSelectedGems(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
+  const handleExploreJourney = async () => {
+    if (selectedGems.size > 0) {
+      await addLocationsToTripDay(trip.id, 1, Array.from(selectedGems));
+    }
+    setAiSummary(null);
+  };
 
   const fileInputRef = useRef(null);
 
@@ -359,17 +377,35 @@ const ItineraryDetailPage = () => {
               <div style={{ textAlign: 'left', marginBottom: '32px' }}>
                 <h4 style={{ marginBottom: '12px' }}>💡 Nearby Gems you might like:</h4>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                  {aiSummary.suggestedAdditions.map((item, idx) => (
-                    <span key={idx} style={{ padding: '6px 12px', background: 'var(--paper)', borderRadius: '8px', fontSize: '13px' }}>
-                      📍 {item.name || item}
-                    </span>
-                  ))}
+                  {aiSummary.suggestedAdditions.map((item, idx) => {
+                    const name = item.name || item;
+                    const isSelected = selectedGems.has(name);
+                    return (
+                      <span
+                        key={idx}
+                        onClick={() => toggleGem(name)}
+                        style={{
+                          padding: '8px 16px',
+                          background: isSelected ? 'var(--jade)' : 'var(--paper)',
+                          color: isSelected ? '#fff' : 'var(--ink)',
+                          borderRadius: '12px',
+                          fontSize: '14px',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
+                          border: isSelected ? '1px solid var(--jade)' : '1px solid var(--line-soft)',
+                          fontWeight: '600'
+                        }}
+                      >
+                        {isSelected ? '✓ ' : '📍 '} {name}
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
             )}
 
-            <button className="btn-primary" style={{ width: '100%', padding: '16px' }} onClick={() => setAiSummary(null)}>
-              Explore My Journey
+            <button className="btn-primary" style={{ width: '100%', padding: '16px' }} onClick={handleExploreJourney}>
+              Explore My Journey {selectedGems.size > 0 && `(+${selectedGems.size})`}
             </button>
           </div>
         </div>
