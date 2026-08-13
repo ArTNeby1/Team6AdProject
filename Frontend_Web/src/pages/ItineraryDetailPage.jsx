@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useTrip } from '../context/TripContext';
+import { mapApi } from '../services/api';
 
 const ItineraryDetailPage = () => {
   const navigate = useNavigate();
@@ -24,6 +25,7 @@ const ItineraryDetailPage = () => {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitleValue, setEditTitleValue] = useState('');
   const [showImageModal, setShowImageModal] = useState(false);
+  const [routeStats, setRouteStats] = useState({ distance: 0, time: 0 });
 
   const dateInputRef = useRef(null);
 
@@ -58,6 +60,22 @@ const ItineraryDetailPage = () => {
       setEditTitleValue(trip.title);
     }
   }, [trip]);
+
+  // Fetch route stats for the selected day
+  useEffect(() => {
+    if (trip?.id) {
+      mapApi.getRoute(trip.id, selectedDay)
+        .then(res => {
+          setRouteStats({
+            distance: res.data.totalDistanceKm || 0,
+            time: res.data.totalDurationMinutes || 0
+          });
+        })
+        .catch(() => {
+          setRouteStats({ distance: 0, time: 0 });
+        });
+    }
+  }, [trip?.id, selectedDay, trip?.locations]);
 
   if (loadingTrips && !trip) return <div>Loading trip...</div>;
   if (!trip) return <div>Trip not found</div>;
@@ -253,12 +271,12 @@ const ItineraryDetailPage = () => {
             </div>
             <div className="route-stats" style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px'}}>
               <div className="stat-box">
-                <div className="stat-label">Total Distance</div>
-                <div className="stat-val">15.4km</div>
+                <div className="stat-label">Est. Distance</div>
+                <div className="stat-val">{Number(routeStats.distance || 0).toFixed(1)}km</div>
               </div>
               <div className="stat-box">
-                <div className="stat-label">Total Locations</div>
-                <div className="stat-val">{trip.locations.length} sites</div>
+                <div className="stat-label">Day {selectedDay} Sites</div>
+                <div className="stat-val">{dayLocations.length} sites</div>
               </div>
             </div>
 
