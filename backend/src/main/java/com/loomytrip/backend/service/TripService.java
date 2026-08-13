@@ -2,12 +2,14 @@ package com.loomytrip.backend.service;
 
 import com.loomytrip.backend.client.AiPlanItineraryResult;
 import com.loomytrip.backend.client.AiPlanningClient;
+import com.loomytrip.backend.client.AiRecommendResult;
 import com.loomytrip.backend.client.RoutingClient;
 import com.loomytrip.backend.dto.request.AddTripScheduleRequest;
 import com.loomytrip.backend.dto.request.BulkUpdateSchedulesRequest;
 import com.loomytrip.backend.dto.request.CreateTripRequest;
 import com.loomytrip.backend.dto.request.UpdateTripRequest;
 import com.loomytrip.backend.dto.response.GenerateItineraryResponse;
+import com.loomytrip.backend.dto.response.ShareTripResponse;
 import com.loomytrip.backend.dto.response.TripRouteResponse;
 import com.loomytrip.backend.dto.response.TripSummaryResponse;
 import com.loomytrip.backend.dto.response.TripTransportResponse;
@@ -38,6 +40,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -163,6 +166,9 @@ public class TripService {
             resizeDays(trip, request.durationDays());
             trip.setDurationDays(request.durationDays());
         }
+        if (request.favorite() != null) {
+            trip.setFavorite(request.favorite());
+        }
         Trip saved = tripRepository.save(trip);
 
         if (request.travelStyle() != null || request.preferTransport() != null) {
@@ -185,9 +191,60 @@ public class TripService {
     }
 
     /**
+     * Turns on public sharing for a trip: generates a random unique token (idempotent — a
+     * second call while already shared just returns the existing token instead of rotating
+     * it, so a previously-shared link doesn't silently break). Read-only: the public side
+     * ({@link #getSharedTrip}) never lets the token holder mutate anything.
+     */
+    @Transactional
+    public ShareTripResponse shareTrip(Long tripId) {
+        Trip trip = loadOwnedTrip(tripId);
+        if (trip.getShareToken() == null) {
+            trip.setShareToken(generateShareToken());
+            tripRepository.save(trip);
+        }
+        return new ShareTripResponse(trip.getId(), true, trip.getShareToken());
+    }
+
+    /** Revokes a trip's public share link — any URL built from the old token 404s afterward. */
+    @Transactional
+    public ShareTripResponse unshareTrip(Long tripId) {
+        Trip trip = loadOwnedTrip(tripId);
+        trip.setShareToken(null);
+        tripRepository.save(trip);
+        return new ShareTripResponse(trip.getId(), false, null);
+    }
+
+    /**
+     * Public, unauthenticated read of a shared trip (see SecurityConfig — GET
+     * /api/v1/public/trips/** is permitAll). Deliberately does NOT go through
+     * {@link #loadOwnedTrip} — anyone with the token is allowed to view, that's the point.
+     */
+    @Transactional(readOnly = true)
+    public TripSummaryResponse getSharedTrip(String shareToken) {
+        Trip trip = tripRepository.findByShareToken(shareToken)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "SHARE_NOT_FOUND", "This share link is invalid or has been revoked"));
+        return toSummary(trip);
+    }
+
+    private String generateShareToken() {
+        return UUID.randomUUID().toString().replace("-", "");
+    }
+
+    /**
      * 🟠 gap closed: adds one or more named stops to a trip day, resolving each name to a
      * real {@code destination} row via {@link DestinationService#findOrCreateByName}
      * (same helper {@code PlanningService.confirmSession} uses for AI-recommended stops).
+     *
+     * <p>🔴 second gap closed: this is the "import into an existing day" path (Frontend_Web
+     * ImportPage.jsx's {@code targetTripId} branch) — unlike {@code confirmSession()}, it
+     * never called the AI {@code /recommend} agent at all, so the new stops always landed
+     * with {@code start_time = null} and the frontend fell back to displaying a flat 09:00
+     * for every one of them, regardless of what the AI would have said about morning/
+     * afternoon/evening. Now it asks the same agent, the same way confirmSession() does, and
+     * only falls back to the old "just create them in place" behavior if the AI service is
+     * unavailable (see AiPlanningClientHttp — network failures degrade to an empty result
+     * rather than throwing, so this never blocks the add on the AI being down).
      */
     @Transactional
     public TripSummaryResponse addSchedules(Long tripId, AddTripScheduleRequest request) {
@@ -202,15 +259,63 @@ public class TripService {
         TripDay tripDay = tripDayRepository.findByTrip_IdAndDaySequence(tripId, request.day())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "TRIP_DAY_NOT_FOUND", "Trip day not found"));
 
-        int nextSequence = tripScheduleRepository.findByTripDay_IdOrderBySequenceAsc(tripDay.getId()).size() + 1;
-        for (String name : request.locationNames()) {
-            Destination destination = destinationService.findOrCreateByName(name, null, null, null);
-            TripSchedule schedule = new TripSchedule();
-            schedule.setTripDay(tripDay);
-            schedule.setDestination(destination);
-            schedule.setSequence(nextSequence++);
-            schedule.setLocked(false);
-            tripScheduleRepository.save(schedule);
+        List<TripSchedule> existing = tripScheduleRepository.findByTripDay_IdOrderBySequenceAsc(tripDay.getId());
+        int nextSequence = existing.size() + 1;
+        // 这一天目前是空的（day2、day3... 第一次加地点时都会走到这，不只是 day1）——
+        // 第一站的时间固定锚定在 09:00，不管 AI 查天气后建议的 time_of_day 是什么。
+        // 之前的写法只是把 09:00 当 cursor 的初始值，AI 一旦查到下雨、建议把这一站挪
+        // 到下午/傍晚，nextStartTime() 会直接采纳，第一站就不是 09:00 了——这不是这里
+        // 要的效果：每天第一站的默认时间是产品定死的规则，不该被天气建议覆盖。
+        boolean isFirstStopOfDay = existing.isEmpty();
+        LocalTime cursor = isFirstStopOfDay || existing.get(existing.size() - 1).getStartTime() == null
+                ? LocalTime.of(9, 0)
+                : existing.get(existing.size() - 1).getStartTime().plusMinutes(DEFAULT_VISIT_SLOT_MINUTES);
+
+        List<Map<String, Object>> aiPlaces = request.locationNames().stream()
+                .map(name -> {
+                    Map<String, Object> place = new LinkedHashMap<>();
+                    place.put("name", name);
+                    place.put("type", "other");
+                    place.put("activities", List.of());
+                    return place;
+                })
+                .toList();
+        // 按 day 偏移求这一天的真实日期——之前恒用 trip.startDate（day1 的日期），
+        // 给 day2 及以后查天气时问的其实是错的一天，天气驱动的时段建议自然也就不准。
+        LocalDate date = trip.getStartDate() != null
+                ? trip.getStartDate().plusDays(request.day() - 1L)
+                : LocalDate.now();
+        AiRecommendResult result = aiPlanningClient.recommend(aiPlaces, date.toString(), buildPreferenceText(currentUser()));
+
+        if (!result.orderedStops().isEmpty()) {
+            for (AiRecommendResult.OrderedStop stop : result.orderedStops()) {
+                Destination destination = destinationService.findOrCreateByName(stop.name(), stop.type(), stop.lat(), stop.lng());
+                if (isFirstStopOfDay) {
+                    isFirstStopOfDay = false; // 只锁第一站，同一天后面加的站照常按 AI 时段排
+                } else {
+                    cursor = nextStartTime(cursor, stop.timeOfDay());
+                }
+                TripSchedule schedule = new TripSchedule();
+                schedule.setTripDay(tripDay);
+                schedule.setDestination(destination);
+                schedule.setSequence(nextSequence++);
+                schedule.setLocked(false);
+                schedule.setStartTime(cursor);
+                tripScheduleRepository.save(schedule);
+                cursor = cursor.plusMinutes(DEFAULT_VISIT_SLOT_MINUTES);
+            }
+        } else {
+            // AI service unavailable/degenerate — still add the stops so the import doesn't
+            // fail outright, just without AI-determined ordering/timing.
+            for (String name : request.locationNames()) {
+                Destination destination = destinationService.findOrCreateByName(name, null, null, null);
+                TripSchedule schedule = new TripSchedule();
+                schedule.setTripDay(tripDay);
+                schedule.setDestination(destination);
+                schedule.setSequence(nextSequence++);
+                schedule.setLocked(false);
+                tripScheduleRepository.save(schedule);
+            }
         }
 
         return toSummary(trip);
@@ -493,6 +598,7 @@ public class TripService {
                     ));
 
             LocalTime clockCursor = LocalTime.of(9, 0);
+            boolean isFirstStopOfDay = true;
             List<GenerateItineraryResponse.PlannedStopResponse> stopResponses = new ArrayList<>();
             int sequence = 1;
             for (AiPlanItineraryResult.PlannedStop stop : plannedDay.stops()) {
@@ -502,7 +608,13 @@ public class TripService {
                 }
                 schedule.setTripDay(tripDay);
                 schedule.setSequence(sequence++);
-                clockCursor = nextStartTime(clockCursor, stop.timeOfDay());
+                // 每天第一站固定 09:00，不给天气建议顶掉——跟 addSchedules() 的规则保持一致，
+                // 见那边的注释。
+                if (isFirstStopOfDay) {
+                    isFirstStopOfDay = false;
+                } else {
+                    clockCursor = nextStartTime(clockCursor, stop.timeOfDay());
+                }
                 schedule.setStartTime(clockCursor);
                 schedule.setNote(truncate(stop.reason()));
                 tripScheduleRepository.save(schedule);
@@ -567,6 +679,23 @@ public class TripService {
             return "";
         }
         return name.replaceAll("[^A-Za-z0-9]", "").toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Builds the `preference_text` string the AI `/recommend` endpoint expects (ai_contract.md:
+     * "用户偏好，比如 travel_style=culture"). Mirrors PlanningService.buildPreferenceText() —
+     * kept as a separate copy here rather than shared to avoid coupling the two services over
+     * something this small; revisit if a third caller shows up.
+     */
+    private String buildPreferenceText(User user) {
+        List<String> parts = new ArrayList<>();
+        if (user.getTravelStyle() != null && !user.getTravelStyle().isBlank()) {
+            parts.add("travel_style=" + user.getTravelStyle());
+        }
+        if (user.getPreferTransport() != null && !user.getPreferTransport().isBlank()) {
+            parts.add("prefer_transport=" + user.getPreferTransport());
+        }
+        return parts.isEmpty() ? null : String.join(", ", parts);
     }
 
     private LocalTime nextStartTime(LocalTime cursor, String timeOfDay) {
