@@ -259,9 +259,15 @@ public class PlanningService {
         // each bucket into a real, increasing start_time per stop (see nextStartTime javadoc).
         int sequence = 1;
         LocalTime clockCursor = LocalTime.of(9, 0);
+        boolean isFirstStopOfDay = true;
         for (AiRecommendResult.OrderedStop stop : orderedStops) {
             Destination destination = destinationService.findOrCreateByName(stop.name(), stop.type(), stop.lat(), stop.lng());
-            clockCursor = nextStartTime(clockCursor, stop.timeOfDay());
+            // 每天第一站固定 09:00，不给天气建议顶掉——见 TripService#addSchedules 的同款注释。
+            if (isFirstStopOfDay) {
+                isFirstStopOfDay = false;
+            } else {
+                clockCursor = nextStartTime(clockCursor, stop.timeOfDay());
+            }
             TripSchedule schedule = new TripSchedule();
             schedule.setTripDay(savedDay);
             schedule.setDestination(destination);

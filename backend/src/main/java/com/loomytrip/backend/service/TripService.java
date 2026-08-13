@@ -261,7 +261,13 @@ public class TripService {
 
         List<TripSchedule> existing = tripScheduleRepository.findByTripDay_IdOrderBySequenceAsc(tripDay.getId());
         int nextSequence = existing.size() + 1;
-        LocalTime cursor = existing.isEmpty() || existing.get(existing.size() - 1).getStartTime() == null
+        // 这一天目前是空的（day2、day3... 第一次加地点时都会走到这，不只是 day1）——
+        // 第一站的时间固定锚定在 09:00，不管 AI 查天气后建议的 time_of_day 是什么。
+        // 之前的写法只是把 09:00 当 cursor 的初始值，AI 一旦查到下雨、建议把这一站挪
+        // 到下午/傍晚，nextStartTime() 会直接采纳，第一站就不是 09:00 了——这不是这里
+        // 要的效果：每天第一站的默认时间是产品定死的规则，不该被天气建议覆盖。
+        boolean isFirstStopOfDay = existing.isEmpty();
+        LocalTime cursor = isFirstStopOfDay || existing.get(existing.size() - 1).getStartTime() == null
                 ? LocalTime.of(9, 0)
                 : existing.get(existing.size() - 1).getStartTime().plusMinutes(DEFAULT_VISIT_SLOT_MINUTES);
 
@@ -274,13 +280,21 @@ public class TripService {
                     return place;
                 })
                 .toList();
-        LocalDate date = trip.getStartDate() != null ? trip.getStartDate() : LocalDate.now();
+        // 按 day 偏移求这一天的真实日期——之前恒用 trip.startDate（day1 的日期），
+        // 给 day2 及以后查天气时问的其实是错的一天，天气驱动的时段建议自然也就不准。
+        LocalDate date = trip.getStartDate() != null
+                ? trip.getStartDate().plusDays(request.day() - 1L)
+                : LocalDate.now();
         AiRecommendResult result = aiPlanningClient.recommend(aiPlaces, date.toString(), buildPreferenceText(currentUser()));
 
         if (!result.orderedStops().isEmpty()) {
             for (AiRecommendResult.OrderedStop stop : result.orderedStops()) {
                 Destination destination = destinationService.findOrCreateByName(stop.name(), stop.type(), stop.lat(), stop.lng());
-                cursor = nextStartTime(cursor, stop.timeOfDay());
+                if (isFirstStopOfDay) {
+                    isFirstStopOfDay = false; // 只锁第一站，同一天后面加的站照常按 AI 时段排
+                } else {
+                    cursor = nextStartTime(cursor, stop.timeOfDay());
+                }
                 TripSchedule schedule = new TripSchedule();
                 schedule.setTripDay(tripDay);
                 schedule.setDestination(destination);
@@ -584,6 +598,7 @@ public class TripService {
                     ));
 
             LocalTime clockCursor = LocalTime.of(9, 0);
+            boolean isFirstStopOfDay = true;
             List<GenerateItineraryResponse.PlannedStopResponse> stopResponses = new ArrayList<>();
             int sequence = 1;
             for (AiPlanItineraryResult.PlannedStop stop : plannedDay.stops()) {
@@ -593,7 +608,13 @@ public class TripService {
                 }
                 schedule.setTripDay(tripDay);
                 schedule.setSequence(sequence++);
-                clockCursor = nextStartTime(clockCursor, stop.timeOfDay());
+                // 每天第一站固定 09:00，不给天气建议顶掉——跟 addSchedules() 的规则保持一致，
+                // 见那边的注释。
+                if (isFirstStopOfDay) {
+                    isFirstStopOfDay = false;
+                } else {
+                    clockCursor = nextStartTime(clockCursor, stop.timeOfDay());
+                }
                 schedule.setStartTime(clockCursor);
                 schedule.setNote(truncate(stop.reason()));
                 tripScheduleRepository.save(schedule);
