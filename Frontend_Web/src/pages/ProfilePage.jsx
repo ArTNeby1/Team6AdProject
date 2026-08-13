@@ -1,16 +1,33 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTrip } from '../context/TripContext';
+import api from '../services/api';
 
 const ProfilePage = () => {
   const { user, logout, updatePreferences } = useAuth();
   const { trips } = useTrip();
   const navigate = useNavigate();
 
+  const [profileData, setProfileData] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [travelStyle, setTravelStyle] = useState(user?.travelStyle || 'Cultural');
   const [preferTransport, setPreferTransport] = useState(user?.preferTransport || 'Public');
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const response = await api.get('/users/me');
+        setProfileData(response.data);
+      } catch (error) {
+        console.error('Failed to fetch profile:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProfile();
+  }, []);
 
   if (!user) return null;
 
@@ -51,19 +68,19 @@ const ProfilePage = () => {
             fontSize: '48px', fontWeight: '900',
             boxShadow: 'var(--shadow)'
           }}>
-            {(user.username || user.email || 'T').charAt(0).toUpperCase()}
+            {(profileData?.username || user.email || 'T').charAt(0).toUpperCase()}
           </div>
           <div>
-            <h1 style={{ fontSize: '32px', marginBottom: '8px' }}>{user.username || user.email}</h1>
+            <h1 style={{ fontSize: '32px', marginBottom: '8px' }}>{profileData?.username || user.email.split('@')[0]}</h1>
             <p style={{color: 'var(--muted)', fontSize: '16px'}}>
                ID: {user.email} | <span style={{ color: 'var(--jade-deep)', fontWeight: '600' }}>Travel Expert</span>
             </p>
             <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
               <span style={{ padding: '4px 12px', background: 'var(--mint)', borderRadius: '8px', fontSize: '13px', color: 'var(--jade-deep)', fontWeight: 'bold' }}>
-                {user.gender === 'Male' ? '♂ Male' : user.gender === 'Female' ? '♀ Female' : 'Other'}
+                {profileData?.gender || 'Other'}
               </span>
               <span style={{ padding: '4px 12px', background: 'var(--mint)', borderRadius: '8px', fontSize: '13px', color: 'var(--jade-deep)', fontWeight: 'bold' }}>
-                {user.age} years old
+                {profileData?.age ? `${profileData.age} years old` : 'Age N/A'}
               </span>
             </div>
           </div>
