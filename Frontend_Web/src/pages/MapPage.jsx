@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useTrip } from '../context/TripContext';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, Tooltip, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { mapApi } from '../services/api';
@@ -24,6 +24,17 @@ const RecenterMap = ({ center, zoom }) => {
   return null;
 };
 
+// Custom Marker Icon with Number
+const createCustomIcon = (number) => {
+  return new L.DivIcon({
+    html: `<div class="custom-map-marker">${number}</div>`,
+    className: 'custom-div-icon',
+    iconSize: [32, 44],
+    iconAnchor: [16, 44],
+    popupAnchor: [0, -46], // 🟢 Position the popup above the marker tip
+  });
+};
+
 const MapPage = () => {
   const { trips, activeTripId, setActiveTripId, getActiveTrip } = useTrip();
   const trip = getActiveTrip();
@@ -34,10 +45,12 @@ const MapPage = () => {
     center: [1.3521, 103.8198], // Default to Singapore
     zoom: 12
   });
+  const [manualCenter, setManualCenter] = useState(null);
   const [routeData, setRouteData] = useState({
     totalLocations: 0,
     estimatedDistanceKm: 0,
     travelTimeMinutes: 0,
+    googleMapsUrl: null,
     locations: []
   });
   const [loading, setLoading] = useState(false);
@@ -74,7 +87,13 @@ const MapPage = () => {
   // Reset selected day when trip changes
   useEffect(() => {
     setSelectedDay(1);
+    setManualCenter(null);
   }, [activeTripId]);
+
+  // Reset manual focus when day changes
+  useEffect(() => {
+    setManualCenter(null);
+  }, [selectedDay]);
 
   // Stats come from GET /trips/{id}/route; stop list/coords come from GET /trips (TripContext).
   useEffect(() => {
@@ -95,6 +114,7 @@ const MapPage = () => {
           totalLocations: data.stopCount ?? dayLocations.length,
           estimatedDistanceKm: Number(data.totalDistanceKm) || 0,
           travelTimeMinutes: Number(data.totalDurationMinutes) || 0,
+          googleMapsUrl: data.googleMapsUrl,
           locations: dayLocations,
         });
       })
@@ -129,6 +149,14 @@ const MapPage = () => {
   }, [polylinePositions, mapConfig.center]);
 
   const daysArray = Array.from({ length: trip?.dayCount || 1 }, (_, i) => i + 1);
+
+  const handleSyncNavigation = () => {
+    if (routeData.googleMapsUrl) {
+      window.open(routeData.googleMapsUrl, '_blank');
+    } else {
+      alert('Navigation URL not available for this route.');
+    }
+  };
 
   return (
     <div className="map-page">
@@ -180,7 +208,7 @@ const MapPage = () => {
           >
             <TileLayer url={mapConfig.tileUrl} />
 
-            <RecenterMap center={mapCenter} zoom={mapConfig.zoom} />
+            <RecenterMap center={manualCenter || mapCenter} zoom={manualCenter ? 15 : mapConfig.zoom} />
 
             {polylinePositions.length > 1 && (
               <Polyline
@@ -193,7 +221,11 @@ const MapPage = () => {
 
             {routeData.locations.map((loc, idx) => (
               loc.latitude && loc.longitude && (
-                <Marker key={loc.id || idx} position={[loc.latitude, loc.longitude]}>
+                <Marker
+                  key={loc.id || idx}
+                  position={[loc.latitude, loc.longitude]}
+                  icon={createCustomIcon(idx + 1)}
+                >
                   <Popup>
                     <div style={{ fontWeight: 'bold' }}>{loc.name}</div>
                     <div>{loc.time} | {loc.activityType}</div>
@@ -246,15 +278,23 @@ const MapPage = () => {
           </div>
 
           <div className="place-list-web">
-            {routeData.locations.map((item, idx) => (
-              <div key={item.id || idx} className="place-item-web">
-                <div className="num">{idx + 1}</div>
-                <div className="info">
-                  <h4>{item.name}</h4>
-                  <p>{item.time} | {item.activityType}</p>
+            {routeData.locations.map((item, idx) => {
+              const isFocused = manualCenter && manualCenter[0] === item.latitude && manualCenter[1] === item.longitude;
+              return (
+                <div
+                  key={item.id || idx}
+                  className={`place-item-web ${isFocused ? 'active' : ''}`}
+                  onClick={() => item.latitude && item.longitude && setManualCenter([item.latitude, item.longitude])}
+                  style={{ cursor: item.latitude ? 'pointer' : 'default' }}
+                >
+                  <div className="num">{idx + 1}</div>
+                  <div className="info">
+                    <h4>{item.name}</h4>
+                    <p>{item.time} | {item.activityType}</p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             {routeData.locations.length === 0 && !loading && (
                <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}>
                  No activities scheduled for today.
@@ -263,8 +303,13 @@ const MapPage = () => {
           </div>
 
           <div className="sidebar-footer">
-            <button className="btn-primary" style={{ width: '100%', borderRadius: '16px', padding: '16px' }}>
-              Sync to Phone Navigation
+            <button
+              className="btn-primary"
+              style={{ width: '100%', borderRadius: '16px', padding: '16px' }}
+              onClick={handleSyncNavigation}
+              disabled={!routeData.googleMapsUrl || loading}
+            >
+              Open in Google Maps
             </button>
           </div>
         </div>

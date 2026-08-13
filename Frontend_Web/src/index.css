@@ -850,6 +850,57 @@ main {
   box-shadow: var(--shadow);
 }
 
+/* Custom Map Marker with Number */
+.custom-map-marker {
+  width: 32px;
+  height: 32px;
+  background: var(--jade);
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 16px;
+  border: 2px solid white;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  position: relative;
+}
+
+/* The pointer tip at the bottom */
+.custom-map-marker::after {
+  content: "";
+  position: absolute;
+  bottom: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-top: 12px solid var(--jade);
+}
+
+.custom-div-icon div {
+  /* Reset previous rotation logic */
+  transform: none !important;
+  margin: 0 !important;
+}
+
+/* Permanent Tooltip Style */
+.custom-map-tooltip {
+  background: white !important;
+  border: 1px solid var(--jade) !important;
+  border-radius: 8px !important;
+  padding: 4px 10px !important;
+  font-weight: 700 !important;
+  font-family: var(--ui) !important;
+  color: var(--jade-deep) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+.custom-map-tooltip::before {
+  border-top-color: var(--jade) !important;
+}
+
 .map-day-selector {
   background: var(--paper);
   border-right: 1px solid var(--line-soft);
@@ -914,6 +965,8 @@ main {
   border-left: 1px solid var(--line-soft);
   display: flex;
   flex-direction: column;
+  height: 100%;
+  overflow: hidden;
 }
 
 .sidebar-header {
@@ -1017,7 +1070,8 @@ main {
 .place-list-web {
   flex: 1;
   overflow-y: auto;
-  padding-right: 4px;
+  padding-right: 8px;
+  min-height: 0; /* Critical for flex scrolling */
 }
 
 .place-list-web::-webkit-scrollbar {
