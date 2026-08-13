@@ -21,9 +21,17 @@ const ImportPage = () => {
 
   const targetTripId = searchParams.get('tripId');
   const targetDay = searchParams.get('day');
+  const initialText = searchParams.get('text') || "";
 
   const [sessionId, setSessionId] = useState(null);
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initialText);
+
+  // Sync text from URL parameter if it changes (e.g. navigating from Home with new query)
+  React.useEffect(() => {
+    if (initialText) {
+      setText(initialText);
+    }
+  }, [initialText]);
   const [results, setResults] = useState([]);
   const [isParsing, setIsParsing] = useState(false);
   const [isFinished, setIsFinished] = useState(false);

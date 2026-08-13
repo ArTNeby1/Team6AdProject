@@ -9,6 +9,16 @@ const HomePage = () => {
   const { getActiveTrip } = useTrip();
   const [query, setQuery] = useState('');
 
+  const handleQueryChange = (e) => {
+    const element = e.target;
+    setQuery(element.value);
+
+    // Auto-expand logic
+    element.style.height = '24px'; // Reset to min height to recalculate
+    const newHeight = Math.min(element.scrollHeight, 200);
+    element.style.height = `${newHeight}px`;
+  };
+
   const activeTrip = getActiveTrip();
 
   const allPlaces = ["Marina Bay Sands, Singapore", "Sentosa Island", "Chinatown", "Little India", "Orchard Road", "Universal Studios Singapore", "Chiang Mai Old City", "Wat Chedi Luang", "Doi Suthep", "Nimman Road"];
@@ -21,19 +31,25 @@ const HomePage = () => {
           <h1>Hello, where are you going?</h1>
           <p>Paste your travel log link here, and LoomyTrip AI will automatically generate a smart itinerary for you.</p>
           <div className="hero-search-box">
-            <div className="search-input">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <div className="search-input-wrapper">
+              <svg
+                width="20" height="20" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <circle cx="11" cy="11" r="8"></circle>
                 <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
               </svg>
-              <input
-                type="text"
+              <textarea
+                rows="1"
                 placeholder="Search for destinations, travel logs, or attractions..."
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={handleQueryChange}
               />
             </div>
-            <button className="btn-primary" onClick={() => navigate(user ? '/import' : '/login')}>Smart Planning</button>
+            <button className="btn-primary" onClick={() => navigate(user ? `/import?text=${encodeURIComponent(query)}` : '/login')}>
+              Smart Planning
+            </button>
 
             {searchResults.length > 0 && (
               <div className="search-dropdown" style={{

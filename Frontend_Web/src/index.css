@@ -171,27 +171,54 @@ main {
 .hero-search-box {
   display: flex;
   gap: 16px;
-  max-width: 700px;
+  max-width: 850px; /* Increased to accommodate button on the right */
   margin: 0 auto;
-  background: #fff;
-  padding: 8px;
-  border-radius: 99px;
-  box-shadow: var(--shadow);
+  align-items: center; /* Center button with single-line input */
+  transition: all 0.3s ease;
 }
 
-.search-input {
+.search-input-wrapper {
   flex: 1;
   display: flex;
-  align-items: center;
-  padding-left: 20px;
-  gap: 12px;
+  background: #fff;
+  padding: 12px 24px;
+  border-radius: 32px;
+  box-shadow: var(--shadow);
+  align-items: flex-start;
+  gap: 16px;
+  min-height: 56px;
 }
 
-.search-input input {
+.search-input-wrapper svg {
+  flex-shrink: 0;
+  width: 20px; /* 🟢 FIX: Set explicit width */
+  height: 20px; /* 🟢 FIX: Set explicit height */
+  margin-top: 4px;
+  color: var(--jade);
+}
+
+.search-input-wrapper textarea {
   border: none;
   width: 100%;
-  font-size: 16px;
+  font-family: var(--ui);
+  font-size: 17px;
   outline: none;
+  resize: none;
+  background: transparent;
+  line-height: 1.5;
+  padding: 2px 0;
+  min-height: 24px;
+  max-height: 200px;
+  overflow-y: hidden;
+  color: var(--ink);
+}
+
+.hero-search-box .btn-primary {
+  padding: 14px 32px;
+  height: 56px; /* Match initial height of input wrapper */
+  border-radius: 18px;
+  flex-shrink: 0;
+  box-shadow: var(--shadow-sm);
 }
 
 /* ---------- Footer ---------- */
