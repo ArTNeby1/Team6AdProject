@@ -44,6 +44,11 @@ public class MapPlacesClientHttp implements MapPlacesClient {
         }
 
         try {
+            // countrycodes=sg 把结果锁定在新加坡——不加这个的话 Nominatim 是全球搜索，
+            // 像 "Chinatown" 这种哪个国家都有同名地标的查询，会按全球热度返回最高分的
+            // 那个（实测返回的是纽约唐人街 40.71,-73.99），而不是本地这个。整个 app
+            // 明确只做新加坡行程规划（见 PlanningService 的 OUT_OF_SCOPE 校验），
+            // 地理编码结果也该锁在同一个范围内，不然存进去的坐标可能悄悄跑去别的国家。
             List<Map<String, Object>> results = restClient.get()
                     .uri(uriBuilder -> uriBuilder
                             .path("/search")
@@ -51,6 +56,7 @@ public class MapPlacesClientHttp implements MapPlacesClient {
                             .queryParam("format", "json")
                             .queryParam("limit", "3")
                             .queryParam("addressdetails", "0")
+                            .queryParam("countrycodes", "sg")
                             .build())
                     .retrieve()
                     .body(List.class);
