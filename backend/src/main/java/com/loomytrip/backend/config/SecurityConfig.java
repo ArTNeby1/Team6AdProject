@@ -51,6 +51,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers("/api/v1/admin/auth/**").permitAll()
                         .requestMatchers("/api/v1/health").permitAll()
+                        // Shared-trip read links (TripController#shareTrip) — anyone with the
+                        // token can view, no login involved. See PublicTripController.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/public/**").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                         // OpenAPI 定义本身不是业务数据，放开访问；DAST 的 ZAP api-scan
                         // 靠读 /v3/api-docs 才能知道有哪些接口可以测，见 dast-scan.yml

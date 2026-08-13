@@ -32,6 +32,7 @@ public class EntityMapper {
                 deriveTripStatus(trip),
                 preference == null ? null : preference.getTravelStyle(),
                 preference == null ? null : preference.getPreferTransport(),
+                trip.isFavorite(),
                 schedules.stream().map(this::toTripSchedule).toList()
         );
     }
