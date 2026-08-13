@@ -9,6 +9,7 @@ import com.loomytrip.backend.dto.request.BulkUpdateSchedulesRequest;
 import com.loomytrip.backend.dto.request.CreateTripRequest;
 import com.loomytrip.backend.dto.request.UpdateTripRequest;
 import com.loomytrip.backend.dto.response.GenerateItineraryResponse;
+import com.loomytrip.backend.dto.response.ShareTripResponse;
 import com.loomytrip.backend.dto.response.TripRouteResponse;
 import com.loomytrip.backend.dto.response.TripSummaryResponse;
 import com.loomytrip.backend.dto.response.TripTransportResponse;
@@ -39,6 +40,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -186,6 +188,47 @@ public class TripService {
         }
 
         return toSummary(saved);
+    }
+
+    /**
+     * Turns on public sharing for a trip: generates a random unique token (idempotent — a
+     * second call while already shared just returns the existing token instead of rotating
+     * it, so a previously-shared link doesn't silently break). Read-only: the public side
+     * ({@link #getSharedTrip}) never lets the token holder mutate anything.
+     */
+    @Transactional
+    public ShareTripResponse shareTrip(Long tripId) {
+        Trip trip = loadOwnedTrip(tripId);
+        if (trip.getShareToken() == null) {
+            trip.setShareToken(generateShareToken());
+            tripRepository.save(trip);
+        }
+        return new ShareTripResponse(trip.getId(), true, trip.getShareToken());
+    }
+
+    /** Revokes a trip's public share link — any URL built from the old token 404s afterward. */
+    @Transactional
+    public ShareTripResponse unshareTrip(Long tripId) {
+        Trip trip = loadOwnedTrip(tripId);
+        trip.setShareToken(null);
+        tripRepository.save(trip);
+        return new ShareTripResponse(trip.getId(), false, null);
+    }
+
+    /**
+     * Public, unauthenticated read of a shared trip (see SecurityConfig — GET
+     * /api/v1/public/trips/** is permitAll). Deliberately does NOT go through
+     * {@link #loadOwnedTrip} — anyone with the token is allowed to view, that's the point.
+     */
+    @Transactional(readOnly = true)
+    public TripSummaryResponse getSharedTrip(String shareToken) {
+        Trip trip = tripRepository.findByShareToken(shareToken)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "SHARE_NOT_FOUND", "This share link is invalid or has been revoked"));
+        return toSummary(trip);
+    }
+
+    private String generateShareToken() {
+        return UUID.randomUUID().toString().replace("-", "");
     }
 
     /**
