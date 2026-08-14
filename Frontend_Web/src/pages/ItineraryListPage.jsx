@@ -40,9 +40,15 @@ const ItineraryListPage = () => {
     }
   };
 
-  const activeTrips = trips.filter(t => t.status === 'ACTIVE');
-  const upcomingTrips = trips.filter(t => t.status === 'NOT_STARTED');
-  const finishedTrips = trips.filter(t => t.status === 'FINISHED');
+  const sortByDate = (a, b) => {
+    const dateA = new Date(a.date);
+    const dateB = new Date(b.date);
+    return dateA - dateB;
+  };
+
+  const activeTrips = trips.filter(t => t.status === 'ACTIVE').sort(sortByDate);
+  const upcomingTrips = trips.filter(t => t.status === 'NOT_STARTED').sort(sortByDate);
+  const finishedTrips = trips.filter(t => t.status === 'FINISHED').sort((a, b) => sortByDate(b, a)); // Reverse for finished
 
   return (
     <div className="itinerary-list-page">

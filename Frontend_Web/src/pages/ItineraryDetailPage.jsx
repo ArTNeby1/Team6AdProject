@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useTrip } from '../context/TripContext';
+import { mapApi } from '../services/api';
 
 const ItineraryDetailPage = () => {
   const navigate = useNavigate();
@@ -14,6 +15,8 @@ const ItineraryDetailPage = () => {
     addDayToTrip,
     addLocationsToTripDay,
     updateTripTitle,
+    updateTripDate,
+    addLocationsToTripDay,
     updateTripCover,
     loadingTrips,
   } = useTrip();
@@ -24,6 +27,9 @@ const ItineraryDetailPage = () => {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitleValue, setEditTitleValue] = useState('');
   const [showImageModal, setShowImageModal] = useState(false);
+  const [routeStats, setRouteStats] = useState({ distance: 0, time: 0, transports: [] });
+
+  const dateInputRef = useRef(null);
 
   // F-18: nearby/similar place suggestions from the AI /recommend agent, handed off from
   // ImportPage's confirm step via navigation state. Backend doesn't persist these, so a
@@ -47,6 +53,24 @@ const ItineraryDetailPage = () => {
 
   // AI Summary State from Import flow
   const [aiSummary, setAiSummary] = useState(location.state?.showAiSummary ? location.state : null);
+  const [selectedGems, setSelectedGems] = useState(new Set());
+  const [showCopyAlert, setShowCopyAlert] = useState(false);
+
+  const toggleGem = (name) => {
+    setSelectedGems(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
+  const handleExploreJourney = async () => {
+    if (selectedGems.size > 0) {
+      await addLocationsToTripDay(trip.id, 1, Array.from(selectedGems));
+    }
+    setAiSummary(null);
+  };
 
   const fileInputRef = useRef(null);
 
@@ -60,6 +84,23 @@ const ItineraryDetailPage = () => {
     }
   }, [trip]);
 
+  // Fetch route stats for the selected day
+  useEffect(() => {
+    if (trip?.id) {
+      mapApi.getRoute(trip.id, selectedDay)
+        .then(res => {
+          setRouteStats({
+            distance: res.data.totalDistanceKm || 0,
+            time: res.data.totalDurationMinutes || 0,
+            transports: res.data.transports || []
+          });
+        })
+        .catch(() => {
+          setRouteStats({ distance: 0, time: 0, transports: [] });
+        });
+    }
+  }, [trip?.id, selectedDay, trip?.locations]);
+
   if (loadingTrips && !trip) return <div>Loading trip...</div>;
   if (!trip) return <div>Trip not found</div>;
 
@@ -72,6 +113,18 @@ const ItineraryDetailPage = () => {
       updateTripTitle(trip.id, editTitleValue.trim());
       setIsEditingTitle(false);
     }
+  };
+
+  const handleShare = () => {
+    // Current URL as the share link
+    const shareUrl = window.location.href;
+
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      setShowCopyAlert(true);
+      setTimeout(() => setShowCopyAlert(false), 3000); // Auto-hide after 3s
+    }).catch(err => {
+      console.error('Failed to copy link:', err);
+    });
   };
 
   const handleFileChange = (e) => {
@@ -95,16 +148,34 @@ const ItineraryDetailPage = () => {
 
   const dayLocations = trip.locations.filter(loc => loc.day === selectedDay);
 
+  const handleDateClick = () => {
+    if (dateInputRef.current && typeof dateInputRef.current.showPicker === 'function') {
+      dateInputRef.current.showPicker();
+    }
+  };
+
   return (
     <div className="route-page">
-      <header className="page-header" style={{marginBottom: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end'}}>
-        <div style={{ flex: 1 }}>
-          <button className="btn-secondary" style={{padding: '6px 16px', marginBottom: '12px', fontSize: '14px'}} onClick={() => navigate('/route')}>
+      {/* COPY NOTIFICATION TOAST */}
+      {showCopyAlert && (
+        <div style={{
+          position: 'fixed', top: '100px', left: '50%', transform: 'translateX(-50%)',
+          background: 'var(--ink)', color: '#fff', padding: '12px 24px',
+          borderRadius: '12px', zIndex: 9999, fontWeight: '700',
+          boxShadow: '0 8px 30px rgba(0,0,0,0.2)', animation: 'slideDown 0.3s ease-out'
+        }}>
+          ✅ Trip URL copied to clipboard!
+        </div>
+      )}
+
+      <header className="page-header" style={{marginBottom: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <button className="btn-secondary" style={{alignSelf: 'flex-start', padding: '6px 16px', marginBottom: '12px', fontSize: '14px'}} onClick={() => navigate('/route')}>
             ← Back to List
           </button>
           <div className="kicker" style={{color: 'var(--muted)', fontSize: '14px', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '2px'}}>My Trip Itinerary</div>
 
-          <div className="title-area" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div className="title-area" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
             {isEditingTitle ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <input
@@ -145,18 +216,49 @@ const ItineraryDetailPage = () => {
           </div>
         </div>
 
-        <div className="header-actions" style={{display: 'flex', gap: '12px'}}>
+        <div className="header-actions" style={{display: 'flex', gap: '12px', alignItems: 'center', height: 'fit-content', marginTop: 'auto'}}>
+          {/* START DATE MODIFIER MOVED HERE */}
+          <div className="trip-date-modifier" style={{ cursor: 'default' }}>
+            <span className="label">Start Time:</span>
+            <span className="date-val">{trip.date}</span>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <span
+                className="cal-icon"
+                style={{ cursor: 'pointer', fontSize: '18px' }}
+              >
+                📅
+              </span>
+              {trip.status !== 'FINISHED' && (
+                <input
+                  type="date"
+                  min={new Date().toISOString().split('T')[0]}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      updateTripDate(trip.id, e.target.value);
+                    }
+                  }}
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    opacity: 0,
+                    cursor: 'pointer',
+                    zIndex: 20
+                  }}
+                  title="Click to change start date"
+                />
+              )}
+            </div>
+          </div>
+
           {trip.status !== 'FINISHED' ? (
             <>
-              <button className="btn-secondary" onClick={() => navigate('/edit')}>Edit Itinerary</button>
-              <button className="btn-secondary" onClick={() => navigate('/map')}>View on Map</button>
-              <button className="btn-secondary" onClick={() => navigate('/route')}>Save</button>
-              <button className="btn-primary">Share</button>
+              <button className="btn-shadow-style" onClick={() => navigate('/edit')}>Edit Itinerary</button>
+              <button className="btn-shadow-style" onClick={() => navigate('/map')}>View on Map</button>
+              <button className="btn-shadow-style" onClick={() => navigate('/route')}>Save</button>
             </>
           ) : (
             <>
-              <button className="btn-secondary" onClick={() => navigate('/map')}>View on Map</button>
-              <button className="btn-primary">Share</button>
+              <button className="btn-shadow-style" onClick={() => navigate('/map')}>View on Map</button>
             </>
           )}
         </div>
@@ -197,6 +299,20 @@ const ItineraryDetailPage = () => {
           </div>
 
           <div className="info-card">
+            <button
+              className="btn-primary"
+              style={{
+                position: 'absolute',
+                top: '24px',
+                right: '24px',
+                padding: '8px 20px',
+                fontSize: '14px',
+                borderRadius: '12px'
+              }}
+              onClick={handleShare}
+            >
+              Share
+            </button>
             <h3>Trip Overview</h3>
             <div className="aibadge" style={{background: '#FCEFD6', border: '1px solid #F3DDAF', padding: '12px', borderRadius: '12px', margin: '16px 0', fontSize: '14px'}}>
               <span className="s">🪄</span>
@@ -204,12 +320,12 @@ const ItineraryDetailPage = () => {
             </div>
             <div className="route-stats" style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px'}}>
               <div className="stat-box">
-                <div className="stat-label">Total Distance</div>
-                <div className="stat-val">15.4km</div>
+                <div className="stat-label">Est. Distance</div>
+                <div className="stat-val">{Number(routeStats.distance || 0).toFixed(1)}km</div>
               </div>
               <div className="stat-box">
-                <div className="stat-label">Total Locations</div>
-                <div className="stat-val">{trip.locations.length} sites</div>
+                <div className="stat-label">Day {selectedDay} Sites</div>
+                <div className="stat-val">{dayLocations.length} sites</div>
               </div>
             </div>
 
@@ -236,7 +352,7 @@ const ItineraryDetailPage = () => {
                   onClick={() => setSelectedDay(i + 1)}
                   style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                 >
-                  <span>Day {i + 1}: {i === 0 ? 'Planning' : 'To be planned'}</span>
+                  <span>Day {i + 1}: {trip.locations.some(loc => loc.day === i + 1) ? 'Planning' : 'To be planned'}</span>
                   {i === (trip.dayCount || 1) - 1 && trip.status !== 'FINISHED' && (
                     <span
                       onClick={(e) => { e.stopPropagation(); handleAddDay(); }}
@@ -316,7 +432,7 @@ const ItineraryDetailPage = () => {
                           <div className="tl-time">{item.time || '10:00'}</div>
                           <div className="tl-info">
                             <h3>{item.name}</h3>
-                            <p>Suggested Duration {item.duration || '1.5h'} · {idx === 0 ? 'Starting Point' : 'Check-in Point'}</p>
+                            <p>Duration {item.duration || '1.5'}h · Activity</p>
                           </div>
                           <div className="tl-actions">
                             <button onClick={() => navigate(`/attraction/${encodeURIComponent(item.name)}`)}>View Details</button>
@@ -329,7 +445,29 @@ const ItineraryDetailPage = () => {
                       <div className="tl-transport">
                         <div className="tl-left"><div className="tl-line-dotted"></div></div>
                         <div className="tl-trans-info">
-                          <span>{item.transport || '🚕 15 min Transport'}</span>
+                          {(() => {
+                            const transport = routeStats.transports.find(
+                              t => t.prevScheduleId.toString() === item.id.toString() &&
+                                   t.nextScheduleId.toString() === dayLocations[idx + 1].id.toString()
+                            );
+                            if (transport) {
+                              const iconMap = {
+                                'walking': '🚶',
+                                'driving': '🚕',
+                                'taxi': '🚕',
+                                'bus': '🚌',
+                                'transit': '🚌',
+                                'bicycle': '🚲'
+                              };
+                              const icon = iconMap[transport.transportType.toLowerCase()] || '🚕';
+                              return (
+                                <span>
+                                  {icon} {transport.durationMinutes} min {transport.transportType}
+                                </span>
+                              );
+                            }
+                            return <span>🚕 15 min Transport</span>;
+                          })()}
                         </div>
                       </div>
                     )}
@@ -361,17 +499,35 @@ const ItineraryDetailPage = () => {
               <div style={{ textAlign: 'left', marginBottom: '32px' }}>
                 <h4 style={{ marginBottom: '12px' }}>💡 Nearby Gems you might like:</h4>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                  {aiSummary.suggestedAdditions.map((item, idx) => (
-                    <span key={idx} style={{ padding: '6px 12px', background: 'var(--paper)', borderRadius: '8px', fontSize: '13px' }}>
-                      📍 {item.name || item}
-                    </span>
-                  ))}
+                  {aiSummary.suggestedAdditions.map((item, idx) => {
+                    const name = item.name || item;
+                    const isSelected = selectedGems.has(name);
+                    return (
+                      <span
+                        key={idx}
+                        onClick={() => toggleGem(name)}
+                        style={{
+                          padding: '8px 16px',
+                          background: isSelected ? 'var(--jade)' : 'var(--paper)',
+                          color: isSelected ? '#fff' : 'var(--ink)',
+                          borderRadius: '12px',
+                          fontSize: '14px',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
+                          border: isSelected ? '1px solid var(--jade)' : '1px solid var(--line-soft)',
+                          fontWeight: '600'
+                        }}
+                      >
+                        {isSelected ? '✓ ' : '📍 '} {name}
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
             )}
 
-            <button className="btn-primary" style={{ width: '100%', padding: '16px' }} onClick={() => setAiSummary(null)}>
-              Explore My Journey
+            <button className="btn-primary" style={{ width: '100%', padding: '16px' }} onClick={handleExploreJourney}>
+              Explore My Journey {selectedGems.size > 0 && `(+${selectedGems.size})`}
             </button>
           </div>
         </div>

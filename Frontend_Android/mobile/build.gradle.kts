@@ -4,11 +4,22 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("org.owasp.dependencycheck")
+}
+
+// SCA：跟 backend 的 dependency-check-maven 同一个数据源/规则，NVD_API_KEY 走同一个
+// GitHub secret。JSON 报告方便和 backend 那边的 CI 步骤保持一致（都上传成 artifact）。
+dependencyCheck {
+    formats = listOf("JSON", "HTML")
+    nvd.apiKey = System.getenv("NVD_API_KEY") ?: ""
 }
 
 android {
     namespace = "com.loomytrip.mobile"
     compileSdk = 35
+
+    val backendBaseUrl = providers.gradleProperty("BACKEND_BASE_URL")
+        .orElse("http://ad-project-dev-593875640.ap-southeast-1.elb.amazonaws.com/")
 
     defaultConfig {
         applicationId = "com.loomytrip.mobile"
@@ -16,6 +27,8 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+
+        buildConfigField("String", "BACKEND_BASE_URL", "\"${backendBaseUrl.get()}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -37,6 +50,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -58,6 +72,12 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.navigation:navigation-compose:2.9.3")
+    implementation("io.coil-kt:coil-compose:2.7.0")
+
+    implementation("com.squareup.retrofit2:retrofit:2.11.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.11.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

@@ -41,7 +41,9 @@ export const TripProvider = ({ children }) => {
           id: s.id.toString(),
           name: s.destination.name,
           day: s.tripDay?.daySequence || 1,
-          time: s.startTime || '09:00',
+          // Backend serializes LocalTime as "HH:mm:ss" — trim to "HH:mm" for display/editing
+          // (EditPage.jsx's time input expects that shape too).
+          time: s.startTime ? s.startTime.slice(0, 5) : '09:00',
           activityType: s.activityType || 'Visit',
           duration: s.plannedDurationMinutes ? (s.plannedDurationMinutes / 60).toFixed(1) : '1.5',
           transport: '🚕 TBD',
@@ -112,6 +114,18 @@ export const TripProvider = ({ children }) => {
     }
   };
 
+  const updateTripDate = async (tripId, newDate) => {
+    try {
+      await api.put(`/trips/${tripId}`, { startDate: newDate });
+      // We trigger a full refresh to let the backend/context re-derive the status
+      // (Active vs Upcoming) based on the new date.
+      await fetchTrips();
+    } catch (error) {
+      console.error('Failed to update date:', error);
+      alert('Failed to update start date');
+    }
+  };
+
   const updateTripCover = async (tripId, imageUrl) => {
     try {
       await api.put(`/trips/${tripId}`, { coverImage: imageUrl });
@@ -139,10 +153,76 @@ export const TripProvider = ({ children }) => {
     try {
       setLoading(true);
       await api.put(`/trips/${tripId}`, { durationDays: newDayCount });
-      // Bulk update logic would go here if backend supports it
+
+      // EditPage.jsx's "Delete" only drops the item from local draft state — the schedule
+      // still exists in the DB until we explicitly delete it here. bulkUpdateSchedules only
+      // reorders/moves schedules whose ids are IN the request, it was never told to remove
+      // ones that are missing, so deleted locations kept reappearing after Save.
+      const originalTrip = trips.find(t => t.id === tripId);
+      const newIds = new Set(newLocations.map(loc => loc.id?.toString()));
+      const removedIds = (originalTrip?.locations || [])
+        .map(loc => loc.id?.toString())
+        .filter(id => id && !newIds.has(id) && !id.startsWith('manual-'));
+      for (const id of removedIds) {
+        await api.delete(`/trips/${tripId}/schedules/${id}`);
+      }
+
+      // "Add attraction manually" (EditPage.jsx handleManualAdd) only ever created a local
+      // draft item with a temp "manual-<timestamp>" id — it was never actually POSTed to the
+      // backend, so it silently vanished on the next fetch even though Save looked successful.
+      // Create each one now via the existing add-schedules endpoint (grouped by day, in the
+      // order they appear locally — handleManualAdd always appends, so this matches), then
+      // splice the real created schedule back in place of its temp entry so the reorder/time
+      // pass below can pick it up like any other schedule.
+      const manualItems = newLocations.filter(loc => loc.id?.toString().startsWith('manual-'));
+      let resolvedLocations = newLocations;
+      if (manualItems.length > 0) {
+        const manualByDay = {};
+        manualItems.forEach((loc) => (manualByDay[loc.day] ||= []).push(loc));
+
+        const createdByTempId = {};
+        for (const [day, locs] of Object.entries(manualByDay)) {
+          const response = await api.post(`/trips/${tripId}/schedules`, {
+            day: parseInt(day, 10),
+            locationNames: locs.map((loc) => loc.name),
+          });
+          // addSchedules appends in locationNames order, so the last N schedules for this
+          // day (N = locs.length) are the ones we just created, in the same order.
+          const daySchedules = (response.data.schedules || [])
+            .filter((s) => s.tripDay?.daySequence === parseInt(day, 10));
+          const created = daySchedules.slice(-locs.length);
+          locs.forEach((loc, idx) => {
+            if (created[idx]) createdByTempId[loc.id] = created[idx].id.toString();
+          });
+        }
+
+        resolvedLocations = newLocations.map((loc) =>
+          createdByTempId[loc.id] ? { ...loc, id: createdByTempId[loc.id] } : loc
+        );
+      }
+
+      // Reassign sequence per day, in array order, so drag-and-drop reordering from
+      // EditPage.jsx actually survives a refresh instead of only updating durationDays.
+      // startTime: EditPage.jsx's time input only ever updated local draft state — nothing
+      // sent it to the backend, so an edited time always reverted on the next fetch even
+      // though Save otherwise "succeeded" (the reorder/durationDays part did go through).
+      const scheduleByDay = {};
+      resolvedLocations
+        .filter(loc => !loc.id?.toString().startsWith('manual-'))
+        .forEach((loc) => {
+          (scheduleByDay[loc.day] ||= []).push(loc);
+        });
+      const schedules = Object.entries(scheduleByDay).flatMap(([day, locs]) =>
+        locs.map((loc, idx) => ({ id: parseInt(loc.id, 10), day: parseInt(day, 10), sequence: idx + 1, startTime: loc.time || null }))
+      );
+      if (schedules.length > 0) {
+        await api.put(`/trips/${tripId}/schedules/bulk`, { schedules });
+      }
+
       await fetchTrips();
     } catch (error) {
       console.error('Failed to save edits:', error);
+      throw error;
     } finally {
       setLoading(false);
     }
@@ -190,11 +270,16 @@ export const TripProvider = ({ children }) => {
       saveTripEdits,
       createNewTrip,
       updateTripTitle,
+      updateTripDate,
       addLocationsToTripDay,
       updateTripCover,
       fetchAttractionData,
       loading,
+      loadingTrips: loading,
       fetchTrips,
+      refreshTrips: fetchTrips,
+      error,
+      tripsError: error,
       removeLocationFromActive,
       deleteTrip
     }}>

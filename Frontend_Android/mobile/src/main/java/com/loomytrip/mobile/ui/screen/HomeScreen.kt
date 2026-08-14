@@ -34,6 +34,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,33 +49,59 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 
-private data class DestinationPreview(
+data class ExploreCity(
     val city: String,
     val detail: String,
+    val description: String,
+    val latitude: Double,
+    val longitude: Double,
+    val imageUrl: String,
     val colors: List<Color>
 )
 
-private val destinationPreviews = listOf(
-    DestinationPreview(
+private val exploreCities = listOf(
+    ExploreCity(
         city = "Chiang Mai",
         detail = "Temples & markets",
+        description = "Explore the old city, Lanna temples and northern Thai food markets.",
+        latitude = 18.7883,
+        longitude = 98.9853,
+        imageUrl = "https://images.unsplash.com/photo-1528181304800-259b08848526?w=900&h=600&fit=crop",
         colors = listOf(Color(0xFF48785E), Color(0xFFB8C7A3))
     ),
-    DestinationPreview(
+    ExploreCity(
         city = "Kyoto",
         detail = "Culture & gardens",
+        description = "Discover historic districts, quiet gardens and traditional Japanese culture.",
+        latitude = 35.0116,
+        longitude = 135.7681,
+        imageUrl = "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=900&h=600&fit=crop",
         colors = listOf(Color(0xFF9A574A), Color(0xFFE5B58D))
     ),
-    DestinationPreview(
+    ExploreCity(
         city = "Bali",
         detail = "Coast & wellness",
+        description = "Combine beaches, temples, rice terraces and relaxed island experiences.",
+        latitude = -8.4095,
+        longitude = 115.1889,
+        imageUrl = "https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=900&h=600&fit=crop",
         colors = listOf(Color(0xFF34777C), Color(0xFF92C6B8))
     )
 )
 
 @Composable
-fun HomeScreen(onStartPlanning: () -> Unit) {
+fun HomeScreen(
+    onStartPlanning: () -> Unit,
+    onExploreCity: (ExploreCity) -> Unit,
+    onViewTrip: () -> Unit,
+    onViewAllTrips: () -> Unit,
+    tripName: String?,
+    tripDayCount: Int,
+    tripStopCount: Int
+) {
     var searchQuery by remember { mutableStateOf("") }
 
     LazyColumn(
@@ -130,19 +157,31 @@ fun HomeScreen(onStartPlanning: () -> Unit) {
         item { AiPlannerCard(onStartPlanning) }
 
         item {
-            SectionHeader(title = "My trips", action = "View all")
+            SectionHeader(title = "My trips", action = "View all", onAction = onViewAllTrips)
         }
 
         item {
-            CurrentTripCard(onClick = onStartPlanning)
+            if (tripName != null) {
+                CurrentTripCard(
+                    tripName = tripName,
+                    dayCount = tripDayCount,
+                    stopCount = tripStopCount,
+                    onClick = onViewTrip
+                )
+            } else {
+                Text(
+                    text = "No saved trips yet. Import a guide to start one.",
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+                )
+            }
         }
 
         item {
-            SectionHeader(title = "Explore next", action = "See more")
+            SectionHeader(title = "Explore next")
         }
 
         item {
-            val filtered = destinationPreviews.filter {
+            val filtered = exploreCities.filter {
                 searchQuery.isBlank() || it.city.contains(searchQuery, ignoreCase = true)
             }
             if (filtered.isEmpty()) {
@@ -155,7 +194,7 @@ fun HomeScreen(onStartPlanning: () -> Unit) {
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(filtered) { destination ->
-                        DestinationCard(destination, onClick = onStartPlanning)
+                        DestinationCard(destination, onClick = { onExploreCity(destination) })
                     }
                 }
             }
@@ -231,24 +270,32 @@ private fun AiPlannerCard(onStartPlanning: () -> Unit) {
 }
 
 @Composable
-private fun SectionHeader(title: String, action: String) {
+private fun SectionHeader(
+    title: String,
+    action: String? = null,
+    onAction: (() -> Unit)? = null
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Text(
-            text = action,
-            color = MaterialTheme.colorScheme.primary,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold
-        )
+        if (action != null && onAction != null) {
+            TextButton(onClick = onAction) {
+                Text(
+                    text = action,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun CurrentTripCard(onClick: () -> Unit) {
+private fun CurrentTripCard(tripName: String, dayCount: Int, stopCount: Int, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -284,7 +331,7 @@ private fun CurrentTripCard(onClick: () -> Unit) {
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text("Chiang Mai", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text(tripName, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         Icons.Default.CalendarMonth,
@@ -294,24 +341,9 @@ private fun CurrentTripCard(onClick: () -> Unit) {
                     )
                     Spacer(Modifier.width(5.dp))
                     Text(
-                        "3 days · 4 saved stops",
+                        "$dayCount ${if (dayCount == 1) "day" else "days"} · $stopCount saved stops",
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
                         fontSize = 13.sp
-                    )
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(7.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.secondary)
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        "Draft itinerary",
-                        color = MaterialTheme.colorScheme.secondary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
                     )
                 }
             }
@@ -325,7 +357,7 @@ private fun CurrentTripCard(onClick: () -> Unit) {
 }
 
 @Composable
-private fun DestinationCard(destination: DestinationPreview, onClick: () -> Unit) {
+private fun DestinationCard(destination: ExploreCity, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .width(168.dp)
@@ -340,11 +372,20 @@ private fun DestinationCard(destination: DestinationPreview, onClick: () -> Unit
                 .background(Brush.linearGradient(destination.colors)),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = Icons.Default.LocationOn,
-                contentDescription = null,
-                tint = Color.White.copy(alpha = 0.9f),
-                modifier = Modifier.size(32.dp)
+            AsyncImage(
+                model = destination.imageUrl,
+                contentDescription = destination.city,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.22f))
+                        )
+                    )
             )
         }
         Column(Modifier.padding(13.dp)) {

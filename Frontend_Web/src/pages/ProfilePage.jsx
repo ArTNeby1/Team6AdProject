@@ -1,16 +1,33 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTrip } from '../context/TripContext';
+import api from '../services/api';
 
 const ProfilePage = () => {
   const { user, logout, updatePreferences } = useAuth();
   const { trips } = useTrip();
   const navigate = useNavigate();
 
+  const [profileData, setProfileData] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [travelStyle, setTravelStyle] = useState(user?.travelStyle || 'Cultural');
   const [preferTransport, setPreferTransport] = useState(user?.preferTransport || 'Public');
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const response = await api.get('/users/me');
+        setProfileData(response.data);
+      } catch (error) {
+        console.error('Failed to fetch profile:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProfile();
+  }, []);
 
   if (!user) return null;
 
@@ -51,19 +68,19 @@ const ProfilePage = () => {
             fontSize: '48px', fontWeight: '900',
             boxShadow: 'var(--shadow)'
           }}>
-            {(user.username || user.email || 'T').charAt(0).toUpperCase()}
+            {(profileData?.username || user.email || 'T').charAt(0).toUpperCase()}
           </div>
           <div>
-            <h1 style={{ fontSize: '32px', marginBottom: '8px' }}>{user.username || user.email}</h1>
+            <h1 style={{ fontSize: '32px', marginBottom: '8px' }}>{profileData?.username || user.email.split('@')[0]}</h1>
             <p style={{color: 'var(--muted)', fontSize: '16px'}}>
                ID: {user.email} | <span style={{ color: 'var(--jade-deep)', fontWeight: '600' }}>Travel Expert</span>
             </p>
             <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
               <span style={{ padding: '4px 12px', background: 'var(--mint)', borderRadius: '8px', fontSize: '13px', color: 'var(--jade-deep)', fontWeight: 'bold' }}>
-                {user.gender === 'Male' ? '♂ Male' : user.gender === 'Female' ? '♀ Female' : 'Other'}
+                {profileData?.gender || 'Other'}
               </span>
               <span style={{ padding: '4px 12px', background: 'var(--mint)', borderRadius: '8px', fontSize: '13px', color: 'var(--jade-deep)', fontWeight: 'bold' }}>
-                {user.age} years old
+                {profileData?.age ? `${profileData.age} years old` : 'Age N/A'}
               </span>
             </div>
           </div>
@@ -90,38 +107,10 @@ const ProfilePage = () => {
         {showSettings ? (
           <div className="info-card" style={{ padding: '32px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-              <h2 style={{ fontSize: '24px' }}>⚙️ Preferences</h2>
-              <button className="btn-secondary" onClick={() => setShowSettings(false)}>Cancel</button>
+              <h2 style={{ fontSize: '24px' }}>⚙️ Info</h2>
+              <button className="btn-secondary" onClick={() => setShowSettings(false)}>Close</button>
             </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '32px' }}>
-              <div>
-                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '12px' }}>Default Travel Style</label>
-                <select
-                  value={travelStyle}
-                  onChange={(e) => setTravelStyle(e.target.value)}
-                  style={{ width: '100%', padding: '14px', borderRadius: '14px', border: '2px solid var(--line-soft)', outline: 'none', fontSize: '16px' }}
-                >
-                  <option value="Cultural">Cultural Depth</option>
-                  <option value="Leisure">Leisure Vacation</option>
-                  <option value="Adventure">Outdoor Adventure</option>
-                  <option value="Foodie">Gourmet Tasting</option>
-                </select>
-              </div>
-              <div>
-                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '12px' }}>Default Transport Mode</label>
-                <select
-                  value={preferTransport}
-                  onChange={(e) => setPreferTransport(e.target.value)}
-                  style={{ width: '100%', padding: '14px', borderRadius: '14px', border: '2px solid var(--line-soft)', outline: 'none', fontSize: '16px' }}
-                >
-                  <option value="Public">Public Transport</option>
-                  <option value="Taxi">Taxi/Charter</option>
-                  <option value="Walking">Walking/Cycling</option>
-                </select>
-              </div>
-            </div>
-            <button className="btn-primary" style={{ width: '100%', padding: '16px' }} onClick={handleSavePreferences}>Save Preferences</button>
+            <p style={{ color: 'var(--muted)' }}>Global account preferences are not supported by the current database schema.</p>
           </div>
         ) : (
           <div className="info-card" style={{padding: '8px'}}>

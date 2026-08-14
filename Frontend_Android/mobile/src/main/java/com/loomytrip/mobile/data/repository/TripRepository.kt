@@ -5,11 +5,27 @@ import com.loomytrip.mobile.data.model.TripActivity
 interface TripRepository {
     fun initialItinerary(): List<TripActivity>
     fun moveActivity(activities: List<TripActivity>, id: String, direction: Int): List<TripActivity>
+    fun reorderActivity(
+        activities: List<TripActivity>,
+        id: String,
+        targetDay: Int,
+        targetIndex: Int
+    ): List<TripActivity>
     fun deleteActivity(activities: List<TripActivity>, id: String): List<TripActivity>
+    fun restoreActivity(
+        activities: List<TripActivity>,
+        activity: TripActivity,
+        targetIndex: Int
+    ): List<TripActivity>
     fun addActivity(
         activities: List<TripActivity>,
         day: Int,
         title: String,
+        startTime: String
+    ): List<TripActivity>
+    fun updateActivity(
+        activities: List<TripActivity>,
+        id: String,
         startTime: String
     ): List<TripActivity>
 }
@@ -33,24 +49,48 @@ class MockTripRepository : TripRepository {
         direction: Int
     ): List<TripActivity> {
         if (direction !in setOf(-1, 1)) return activities
-        val currentIndex = activities.indexOfFirst { it.id == id }
-        if (currentIndex < 0) return activities
-        val current = activities[currentIndex]
-        val sameDayIndices = activities.indices.filter { activities[it].day == current.day }
-        val dayPosition = sameDayIndices.indexOf(currentIndex)
-        val targetDayPosition = dayPosition + direction
-        if (targetDayPosition !in sameDayIndices.indices) return activities
+        val current = activities.firstOrNull { it.id == id } ?: return activities
+        val dayItems = activities.filter { it.day == current.day }
+        val currentIndex = dayItems.indexOfFirst { it.id == id }
+        val targetIndex = currentIndex + direction
+        if (targetIndex !in dayItems.indices) return activities
+        return reorderActivity(activities, id, current.day, targetIndex)
+    }
 
-        val targetIndex = sameDayIndices[targetDayPosition]
-        return activities.toMutableList().apply {
-            val target = this[targetIndex]
-            this[targetIndex] = current
-            this[currentIndex] = target
+    override fun reorderActivity(
+        activities: List<TripActivity>,
+        id: String,
+        targetDay: Int,
+        targetIndex: Int
+    ): List<TripActivity> {
+        if (targetDay < 1) return activities
+        val moving = activities.firstOrNull { it.id == id } ?: return activities
+        val dayCount = (activities.maxOfOrNull { it.day } ?: 1).coerceAtLeast(targetDay)
+        val grouped = (1..dayCount).associateWith { day ->
+            activities.filter { it.day == day && it.id != id }.toMutableList()
         }
+        val target = grouped.getValue(targetDay)
+        target.add(targetIndex.coerceIn(0, target.size), moving.copy(day = targetDay))
+        return (1..dayCount).flatMap { grouped.getValue(it) }
     }
 
     override fun deleteActivity(activities: List<TripActivity>, id: String): List<TripActivity> =
         activities.filterNot { it.id == id }
+
+    override fun restoreActivity(
+        activities: List<TripActivity>,
+        activity: TripActivity,
+        targetIndex: Int
+    ): List<TripActivity> {
+        if (activities.any { it.id == activity.id }) return activities
+        val dayCount = (activities.maxOfOrNull { it.day } ?: 1).coerceAtLeast(activity.day)
+        val grouped = (1..dayCount).associateWith { day ->
+            activities.filter { it.day == day }.toMutableList()
+        }
+        val target = grouped.getValue(activity.day)
+        target.add(targetIndex.coerceIn(0, target.size), activity)
+        return (1..dayCount).flatMap { grouped.getValue(it) }
+    }
 
     override fun addActivity(
         activities: List<TripActivity>,
@@ -59,13 +99,23 @@ class MockTripRepository : TripRepository {
         startTime: String
     ): List<TripActivity> {
         if (title.isBlank()) return activities
+        val requestedStart = startTime.toMinutesOrNull() ?: DEFAULT_DAY_START_MINUTES
+        val latestEnd = activities
+            .asSequence()
+            .filter { it.day == day }
+            .mapNotNull { activity ->
+                activity.startTime.toMinutesOrNull()?.plus(activity.durationMinutes)
+            }
+            .maxOrNull()
+        val automaticStart = latestEnd?.plus(NEW_STOP_BUFFER_MINUTES) ?: DEFAULT_DAY_START_MINUTES
+        val scheduledStart = maxOf(requestedStart, automaticStart).coerceAtMost(LATEST_START_MINUTES)
         val newActivity = TripActivity(
             id = "custom-${System.nanoTime()}",
             title = title.trim(),
             category = "Custom stop",
             day = day,
-            startTime = startTime.ifBlank { "12:00" },
-            durationMinutes = 60,
+            startTime = scheduledStart.toClockTime(),
+            durationMinutes = NEW_ACTIVITY_DURATION_MINUTES,
             address = "Address to be confirmed",
             latitude = 18.7883,
             longitude = 98.9853
@@ -74,4 +124,28 @@ class MockTripRepository : TripRepository {
         if (lastDayIndex < 0) return activities + newActivity
         return activities.toMutableList().apply { add(lastDayIndex + 1, newActivity) }
     }
+
+    override fun updateActivity(
+        activities: List<TripActivity>,
+        id: String,
+        startTime: String
+    ): List<TripActivity> = activities.map { activity ->
+        if (activity.id == id) activity.copy(startTime = startTime) else activity
+    }
 }
+
+private const val DEFAULT_DAY_START_MINUTES = 9 * 60
+private const val NEW_ACTIVITY_DURATION_MINUTES = 60
+private const val NEW_STOP_BUFFER_MINUTES = 15
+private const val LATEST_START_MINUTES = 23 * 60 + 45
+
+private fun String.toMinutesOrNull(): Int? {
+    val parts = split(":")
+    if (parts.size != 2) return null
+    val hour = parts[0].toIntOrNull() ?: return null
+    val minute = parts[1].toIntOrNull() ?: return null
+    if (hour !in 0..23 || minute !in 0..59) return null
+    return hour * 60 + minute
+}
+
+private fun Int.toClockTime(): String = "%02d:%02d".format(this / 60, this % 60)

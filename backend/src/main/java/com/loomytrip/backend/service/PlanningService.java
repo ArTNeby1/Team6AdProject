@@ -32,6 +32,7 @@ import com.loomytrip.backend.repository.TripRepository;
 import com.loomytrip.backend.repository.TripScheduleRepository;
 import com.loomytrip.backend.repository.UserRepository;
 import com.loomytrip.backend.util.SecurityUtils;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
@@ -115,6 +116,12 @@ public class PlanningService {
             chatMessageRepository.save(briefMessage);
 
             Map<String, Object> result = aiPlanningClient.extractTravelInfo(request.initialBrief(), null);
+            if (outOfScopeDestination(result) != null) {
+                // 大概率是 Bedrock 这次抽取把地标名当成了 destination（见
+                // outOfScopeDestination 的注释），不是真的出了新加坡——重试一次，
+                // persistExtraction() 下面还是会做最终校验，真出了新加坡照样会被拒绝。
+                result = aiPlanningClient.extractTravelInfo(request.initialBrief(), null);
+            }
             persistExtraction(saved, result);
         }
 
@@ -152,6 +159,12 @@ public class PlanningService {
                 .toList();
 
         Map<String, Object> result = aiPlanningClient.refineFromChat(messages, buildPreferenceText(currentUser()));
+        validateExtractionResult(result);
+        if (outOfScopeDestination(result) != null) {
+            // 同 createSession() 的理由：先重试一次，避免误判。
+            result = aiPlanningClient.refineFromChat(messages, buildPreferenceText(currentUser()));
+            validateExtractionResult(result);
+        }
 
         draftActivityRepository.deleteBySession_Id(sessionId);
         draftPlaceRepository.deleteBySession_Id(sessionId);
@@ -161,16 +174,57 @@ public class PlanningService {
     }
 
     /**
-     * Placeholder: validate draft places via map provider.
+     * Validates each draft place via the map provider, writing back coordinates / address
+     * and {@link ValidationStatus}. Places that already have coordinates are marked VALID
+     * without a network call.
      */
-    public Object validateDraftPlaces(Long sessionId) {
-        loadOwnedSession(sessionId);
-        mapPlacesClient.validatePlace(null, null);
-        throw new ApiException(
-                HttpStatus.NOT_IMPLEMENTED,
-                "NOT_IMPLEMENTED",
-                "Draft place validation will update validation_status in a later iteration"
-        );
+    @Transactional
+    public PlanningSessionDetailResponse validateDraftPlaces(Long sessionId) {
+        PlanningSession session = loadOwnedSession(sessionId);
+        List<DraftPlace> places = draftPlaceRepository.findBySession_Id(sessionId);
+
+        for (DraftPlace place : places) {
+            if (place.getLatitude() != null && place.getLongitude() != null) {
+                place.setValidationStatus(ValidationStatus.VALID);
+                if (place.getDestination() == null) {
+                    place.setDestination(destinationService.findOrCreateByName(
+                            place.getName(), place.getCategory(), place.getLatitude(), place.getLongitude()
+                    ));
+                }
+                draftPlaceRepository.save(place);
+                continue;
+            }
+
+            var match = mapPlacesClient.validatePlace(place.getName(), place.getAddress());
+            if (match.isEmpty()) {
+                place.setValidationStatus(ValidationStatus.INVALID);
+                draftPlaceRepository.save(place);
+                continue;
+            }
+
+            MapPlacesClient.PlaceMatch placeMatch = match.get();
+            place.setAddress(placeMatch.address());
+            place.setLatitude(placeMatch.latitude());
+            place.setLongitude(placeMatch.longitude());
+            place.setValidationStatus(ValidationStatus.VALID);
+            place.setDestination(destinationService.findOrCreateByName(
+                    place.getName(),
+                    place.getCategory(),
+                    placeMatch.latitude(),
+                    placeMatch.longitude()
+            ));
+            draftPlaceRepository.save(place);
+
+            // Nominatim asks for max ~1 request/second for the public instance.
+            try {
+                Thread.sleep(1100L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+
+        return loadSessionDetail(session.getId());
     }
 
     /**
@@ -190,14 +244,12 @@ public class PlanningService {
                 .map(place -> toAiPlace(place, activitiesByPlaceId.getOrDefault(place.getId(), List.of())))
                 .toList();
 
-        // 🔴 gap closed: this used to pass (places, null, null) — the AI agent never got a
-        // date or the user's travel_style/prefer_transport, so it could only ever fall back
-        // to its no-date/no-preference behavior (distance-only ordering, weather_summary
-        // always null — see ai_contract.md section 7/9). trip.getStartDate() below reuses
-        // the same LocalDate.now() so the Trip we save and the date we send the AI agree.
+        ensureDraftPlacesValidated(draftPlaces);
+
         User user = currentUser();
         LocalDate startDate = LocalDate.now();
         AiRecommendResult result = aiPlanningClient.recommend(places, startDate.toString(), buildPreferenceText(user));
+        List<AiRecommendResult.OrderedStop> orderedStops = resolveOrderedStops(result, places);
 
         Trip trip = new Trip();
         trip.setUser(user);
@@ -218,9 +270,15 @@ public class PlanningService {
         // each bucket into a real, increasing start_time per stop (see nextStartTime javadoc).
         int sequence = 1;
         LocalTime clockCursor = LocalTime.of(9, 0);
-        for (AiRecommendResult.OrderedStop stop : result.orderedStops()) {
+        boolean isFirstStopOfDay = true;
+        for (AiRecommendResult.OrderedStop stop : orderedStops) {
             Destination destination = destinationService.findOrCreateByName(stop.name(), stop.type(), stop.lat(), stop.lng());
-            clockCursor = nextStartTime(clockCursor, stop.timeOfDay());
+            // 每天第一站固定 09:00，不给天气建议顶掉——见 TripService#addSchedules 的同款注释。
+            if (isFirstStopOfDay) {
+                isFirstStopOfDay = false;
+            } else {
+                clockCursor = nextStartTime(clockCursor, stop.timeOfDay());
+            }
             TripSchedule schedule = new TripSchedule();
             schedule.setTripDay(savedDay);
             schedule.setDestination(destination);
@@ -293,20 +351,49 @@ public class PlanningService {
     // ---------------------------------------------------------------------
 
     /**
+     * Returns the offending {@code destination} string if the extraction landed outside
+     * Singapore, or {@code null} if it's in scope (blank/missing destination counts as
+     * in-scope — the AI just didn't say). Split out of {@link #persistExtraction} so
+     * {@link #createSession} can check it without committing to throwing.
+     *
+     * <p>Product rule: "any landmark that exists in Singapore counts as Singapore" — this
+     * app only ever plans Singapore trips, so a global-namesake landmark should resolve to
+     * its Singapore instance, never get flagged as foreign. Bedrock's {@code destination}
+     * field is noisy on short, landmark-only notes (e.g. "Gardens by the Bay this
+     * morning...") — it sometimes echoes back the landmark name instead of inferring
+     * "Singapore". A plain substring check on that string would wrongly reject those, so
+     * when it doesn't literally say "Singapore" we geocode the string itself, scoped to
+     * Singapore (same {@code countrycodes=sg} restriction as every other place lookup —
+     * see MapPlacesClientHttp). A hit means the name genuinely exists here (Gardens by the
+     * Bay does); a miss means it's actually foreign (Tokyo Tower doesn't).
+     */
+    private String outOfScopeDestination(Map<String, Object> result) {
+        Object destinationValue = result.get("destination");
+        if (!(destinationValue instanceof String destination) || destination.isBlank()) {
+            return null;
+        }
+        if (destination.toLowerCase(java.util.Locale.ROOT).contains(DEFAULT_DESTINATION.toLowerCase(java.util.Locale.ROOT))) {
+            return null;
+        }
+        if (mapPlacesClient.existsNotablyInSingapore(destination)) {
+            return null;
+        }
+        return destination;
+    }
+
+    /**
      * Persists an extraction result (`/extract-travel-info` or `/refine` — same JSON
      * shape) as DraftPlace/DraftActivity rows. Rejects out-of-scope destinations
      * (ML/docs/ai_contract.md section 6, item 6).
      */
     @SuppressWarnings("unchecked")
     private void persistExtraction(PlanningSession session, Map<String, Object> result) {
-        Object destinationValue = result.get("destination");
-        if (destinationValue instanceof String destination
-                && !destination.isBlank()
-                && !destination.toLowerCase().contains(DEFAULT_DESTINATION.toLowerCase())) {
+        String outOfScopeDestination = outOfScopeDestination(result);
+        if (outOfScopeDestination != null) {
             throw new ApiException(
                     HttpStatus.UNPROCESSABLE_ENTITY,
                     "OUT_OF_SCOPE",
-                    "This app only plans trips within Singapore (got: " + destination + ")"
+                    "This app only plans trips within Singapore (got: " + outOfScopeDestination + ")"
             );
         }
 
@@ -374,6 +461,85 @@ public class PlanningService {
         map.put("lng", place.getLongitude());
         map.put("activities", activities.stream().map(DraftActivity::getTitle).toList());
         return map;
+    }
+
+    private void validateExtractionResult(Map<String, Object> result) {
+        if (result == null) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "AI_SERVICE_UNAVAILABLE", "AI service returned no response");
+        }
+        Object status = result.get("status");
+        if (status != null && !"OK".equalsIgnoreCase(String.valueOf(status))) {
+            throw new ApiException(
+                    HttpStatus.BAD_GATEWAY,
+                    "AI_EXTRACTION_FAILED",
+                    "AI extraction failed (" + status + "); existing draft places were kept unchanged"
+            );
+        }
+        Object placesValue = result.get("places");
+        if (!(placesValue instanceof List<?> rawPlaces) || rawPlaces.isEmpty()) {
+            throw new ApiException(
+                    HttpStatus.BAD_GATEWAY,
+                    "AI_NO_PLACES",
+                    "AI returned no places; existing draft places were kept unchanged"
+            );
+        }
+    }
+
+    private void ensureDraftPlacesValidated(List<DraftPlace> draftPlaces) {
+        List<String> invalid = new ArrayList<>();
+        for (DraftPlace place : draftPlaces) {
+            if (place.getValidationStatus() != ValidationStatus.VALID
+                    || !DestinationService.hasUsableCoordinates(place.getLatitude(), place.getLongitude())) {
+                invalid.add(place.getName());
+            }
+        }
+        if (!invalid.isEmpty()) {
+            throw new ApiException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "PLACES_NOT_VALIDATED",
+                    "Validate places before confirm: " + String.join(", ", invalid)
+            );
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<AiRecommendResult.OrderedStop> resolveOrderedStops(
+            AiRecommendResult result,
+            List<Map<String, Object>> draftPlaces
+    ) {
+        if (result != null
+                && "OK".equalsIgnoreCase(result.status())
+                && !result.orderedStops().isEmpty()) {
+            return result.orderedStops();
+        }
+
+        List<AiRecommendResult.OrderedStop> fallback = new ArrayList<>();
+        int order = 1;
+        for (Map<String, Object> place : draftPlaces) {
+            Object lat = place.get("lat");
+            Object lng = place.get("lng");
+            fallback.add(new AiRecommendResult.OrderedStop(
+                    String.valueOf(place.get("name")),
+                    String.valueOf(place.getOrDefault("type", "other")),
+                    lat instanceof BigDecimal bigLat ? bigLat : null,
+                    lng instanceof BigDecimal bigLng ? bigLng : null,
+                    place.get("activities") instanceof List<?> activities
+                            ? (List<String>) activities
+                            : List.of(),
+                    order++,
+                    null,
+                    null,
+                    "Fallback order (AI recommendation unavailable)"
+            ));
+        }
+        if (fallback.isEmpty()) {
+            throw new ApiException(
+                    HttpStatus.BAD_GATEWAY,
+                    "RECOMMENDATION_FAILED",
+                    "Could not build an itinerary from confirmed places"
+            );
+        }
+        return fallback;
     }
 
     /**

@@ -23,6 +23,7 @@ pytest-cache-files-*/
 
 # Java / Maven (also ignored under backend/)
 **/target/
+backend/.idea-lib/
 
 # Local env / secrets
 .env

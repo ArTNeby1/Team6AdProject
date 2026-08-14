@@ -33,7 +33,12 @@ from orchestrator import PipelineResult  # noqa: E402
 
 
 def check(name, condition, detail=""):
+    # 这个脚本原本是独立跑的自测脚本，PASS/FAIL 只是打印。现在 CI 会用
+    # `pytest test_app.py app/` 把它一起跑掉（见 .github/workflows/ci-python-ml-agent.yml），
+    # 光打印的话测试挂了 pytest 也判通过——补一个 assert，CI 才能真的拦下回归。
+    # 跟 test_robustness.expect_raises 保持同一种写法。
     print(f"[{'PASS' if condition else 'FAIL'}] {name}" + (f" -> {detail}" if detail else ""))
+    assert condition, f"{name}" + (f" -> {detail}" if detail else "")
 
 
 def _extraction_response_for(text: str) -> dict:
