@@ -24,6 +24,13 @@ from pydantic import BaseModel, Field
 # 不是"每条文字最多几个字"，那是另一回事。
 ActivityText = Annotated[str, Field(max_length=255)]
 
+# 行程天数的合法范围，跟 itinerary_planner.MAX_DAYS 对齐。
+# 单独提成常量而不是直接写在 Field(ge=1, le=30) 里：extraction.py 里"把超出范围的
+# 天数归零成 null"那一步要用同一个范围，两处各写一遍死数字的话，以后改上限只改了
+# 一处就会出现"schema 拒绝但归零逻辑不认"的错位。
+MIN_DURATION_DAYS = 1
+MAX_DURATION_DAYS = 30
+
 
 class Coords(BaseModel):
     lat: float
@@ -59,6 +66,21 @@ class TripExtraction(BaseModel):
         description="Calendar dates explicitly stated in the text, format YYYY-MM-DD. "
         "If the text only says Day 1 / Day 2 with no real dates, return an empty array. "
         "Never invent a year.",
+    )
+    # 为什么单独加这个字段，而不是让下游从 dates 推算：dates 是"文中明确写出的日历
+    # 日期"，["2026-08-09", "2026-08-11"] 到底是"9号到11号玩3天"还是"9号和11号各去
+    # 一次"，从数组本身分辨不出来。而 /plan-itinerary 的 num_days 必须是个确定的数，
+    # 猜错了整个行程的天数就是错的。所以让模型直接抽"文本说玩几天"这件事本身，
+    # 抽不到就是 None —— 跟 coords/dates 一样，宁可为空也不编。
+    # 上限 30 对齐 itinerary_planner.MAX_DAYS，免得抽出个 200 天传下去才被拒。
+    duration_days: Optional[int] = Field(
+        default=None,
+        ge=MIN_DURATION_DAYS,
+        le=MAX_DURATION_DAYS,
+        description="Total number of days the whole trip lasts, if the text states it "
+        "(e.g. 'a 3-day trip', or the text is organised as Day 1 / Day 2 / Day 3). "
+        "Never guess or infer this from the number of places: return null when the "
+        "text does not say how long the trip is.",
     )
     places: list[Place] = Field(min_length=1, description="Every place mentioned in the text")
 
