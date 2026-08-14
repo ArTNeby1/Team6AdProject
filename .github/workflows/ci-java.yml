@@ -9,6 +9,7 @@ on:
     branches: [ main ]
     paths:
       - 'backend/**'
+  workflow_dispatch: {}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -27,6 +28,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      security-events: write # 上传 SARIF 到 Security 标签页要用
     defaults:
       run:
         working-directory: ./backend
@@ -68,8 +70,10 @@ jobs:
       # ============================================================
       # SCA：依赖漏洞扫描
       # ============================================================
+      # 不再传 -Dformat=JSON——那个 CLI 属性会整个覆盖掉 pom.xml 里 <formats> 配的
+      # 多格式列表（JSON+SARIF），改成只信 pom.xml 的配置，两种格式都出。
       - name: SCA 依赖漏洞扫描
-        run: mvn dependency-check:check -Dformat=JSON
+        run: mvn dependency-check:check
         continue-on-error: true
         env:
          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
@@ -81,13 +85,21 @@ jobs:
           name: java-sca-report
           path: backend/target/dependency-check-report.json
 
+      - name: 上传 SCA SARIF 到 Security 标签页
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: backend/target/dependency-check-report.sarif
+          category: dependency-check-java
+
       # ============================================================
       # SAST：静态代码扫描
       # ============================================================
       - name: SAST 静态代码扫描
         run: |
           mvn spotbugs:check -Dspotbugs.failOnError=false
-          mvn spotbugs:spotbugs -Dspotbugs.outputFormat=xml
+          mvn spotbugs:spotbugs -Dspotbugs.outputFormat=xml -Dspotbugs.sarifOutput=true
         continue-on-error: true
 
       - name: 上传 SAST 报告
@@ -96,6 +108,14 @@ jobs:
         with:
           name: java-sast-report
           path: backend/target/spotbugs*.xml
+
+      - name: 上传 SAST SARIF 到 Security 标签页
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: backend/target/spotbugsSarif.json
+          category: spotbugs
 
       # ============================================================
       # 单元测试

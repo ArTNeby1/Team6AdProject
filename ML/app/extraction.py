@@ -15,9 +15,73 @@ from pydantic import ValidationError
 SCHEMA_DIR = Path(__file__).resolve().parent.parent / "schema"
 sys.path.insert(0, str(SCHEMA_DIR))  # trip_models.py 不在标准包路径下，手动加进搜索路径
 
-from trip_models import TripExtraction  # noqa: E402
+from trip_models import (  # noqa: E402
+    MAX_DURATION_DAYS,
+    MIN_DURATION_DAYS,
+    TripExtraction,
+)
 
 MAX_ATTEMPTS = 3
+
+
+def _null_unusable_duration(data: dict) -> dict:
+    """
+    把"抽出来了但没法用"的 duration_days 就地改成 None，在 schema 校验之前。
+
+    为什么要有这一步（实测出来的坑，不是假想）：用户输入 "I am doing a 200-day trip"
+    时，模型忠实地抽出 `duration_days: 200`——模型没做错，文本确实这么写的。但 200
+    超出 schema 的 1~30，于是 model_validate 抛 ValidationError，extract_with_retry
+    重试 3 次（每次都是一次真实的 Bedrock 调用），模型每次都照实再答 200，最后整条
+    请求 502。**代价是整个抽取结果全丢**——destination、places、activities 一起没了，
+    只因为其中一个可选字段的数字太大。用户看到的是"AI 挂了"，而不是"天数不合适"。
+
+    重试在这里本来就注定失败：重试能救的是"模型输出格式错了"（少字段、type 写错
+    枚举值），再问一次有机会改对；而这里模型输出完全正确，是**文本本身**说了个我们
+    不支持的天数，问一百次答案还是 200。
+
+    所以改成：天数没法用 -> 当作"没抽到"（None），其余字段照常返回。下游行为自动
+    就是对的 —— `needs_duration_input` 恒等于 `duration_days is None`，于是前端弹窗
+    问用户玩几天，用户答一个 1~30 的数就继续走。这跟 coords/dates 那套"宁可为空也
+    不编"完全一致：与其瞎猜（截断成 30 天？用户可没这么说），不如老老实实问用户。
+
+    只处理这一个字段，不碰其它任何字段：别的字段出问题该重试还是要重试，这里不能
+    变成"把所有校验错误都吞掉"的万能补丁。
+    """
+    if not isinstance(data, dict) or data.get("duration_days") is None:
+        return data
+
+    raw = data["duration_days"]
+    # bool 要单独挡掉：Python 里 isinstance(True, int) 是 True，不挡的话
+    # duration_days: true 会被当成 1 天悄悄放行。
+    if isinstance(raw, bool):
+        usable = None
+    else:
+        try:
+            # 先转 float 再比对整数：模型偶尔输出 "3"（字符串）或 3.0（浮点），
+            # 这两种都是能用的 3；3.5 这种非整数天数则算没法用。
+            as_float = float(raw)
+            as_int = int(as_float)
+            usable = as_int if as_int == as_float else None
+        except (TypeError, ValueError):
+            # "a week" 这种没法转成数字的文字，同样归到"没抽到"
+            usable = None
+
+    if usable is not None and not (MIN_DURATION_DAYS <= usable <= MAX_DURATION_DAYS):
+        usable = None
+
+    if usable is None:
+        # 打日志而不是静默改掉：这条是"用户明明说了天数、我们却要去问他"的唯一线索，
+        # 联调时看不到日志会以为是前端弹窗逻辑出了 bug。
+        # 注意只在真的降级时才打——"3"（字符串）会被规范成 3，属于正常放行，
+        # 那种情况打一条 "unusable" 会把联调的人往错误方向带。
+        print(
+            f"[duration] unusable duration_days={raw!r} "
+            f"(outside {MIN_DURATION_DAYS}~{MAX_DURATION_DAYS} or not a whole number) "
+            f"-> treated as not stated, will ask the user"
+        )
+
+    data["duration_days"] = usable
+    return data
 
 
 class ExtractionFailedError(Exception):
@@ -32,8 +96,13 @@ def parse_and_validate(raw_text: str) -> TripExtraction:
     2. 内容关：就算是合法 JSON，字段也不一定齐全/类型不一定对，
        不然 model_validate 会抛 ValidationError
     这两种异常都不在这里处理，直接抛出去，交给调用方(extract_with_retry)决定要不要重试。
+
+    两关之间夹一步 _null_unusable_duration()：天数超范围是**重试救不回来**的一类
+    错误（文本就写着 200 天，再问几次还是 200），单独降级成"没抽到天数"，
+    免得一个可选字段把整份抽取结果拖去 502。理由详见那个函数的说明。
     """
     data = json.loads(raw_text)
+    data = _null_unusable_duration(data)
     return TripExtraction.model_validate(data)
 
 

@@ -10,7 +10,8 @@ plugins {
 // SCA：跟 backend 的 dependency-check-maven 同一个数据源/规则，NVD_API_KEY 走同一个
 // GitHub secret。JSON 报告方便和 backend 那边的 CI 步骤保持一致（都上传成 artifact）。
 dependencyCheck {
-    formats = listOf("JSON", "HTML")
+    // SARIF 给 GitHub Code Scanning 用（Security 标签页持续追踪 open/resolved）
+    formats = listOf("JSON", "HTML", "SARIF")
     nvd.apiKey = System.getenv("NVD_API_KEY") ?: ""
 }
 

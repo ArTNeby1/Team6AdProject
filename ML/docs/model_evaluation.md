@@ -194,14 +194,15 @@ python app/test_crowd_predictor.py      # 完整自测
 | 测试文件 | 覆盖 | 断言数 |
 |---|---|---|
 | `test_content_recommender.py` | F-18 数据集检索 | 12 |
-| `test_robustness.py` | 抽取阶段解析/校验/重试 | 5 |
+| `test_robustness.py` | 抽取阶段解析/校验/重试（含 `duration_days` 取值范围） | 9 |
 | `test_recommend_agent.py`（新增） | F-18 grounding/校验逻辑（防编造） | 15 |
 | `test_itinerary_planner.py`（新增 2-opt 部分） | F-09 按天拆分 + F-32 路线优化 | 46 |
 | `test_crowd_predictor.py`（新增） | F-33 季节性代理信号 | 26 |
-| **合计** | | **104** |
+| `test_duration_flow.py`（2026-08-14 新增） | 游玩天数：抽到直接排 / 抽不到让前端弹窗问 | 16 |
+| **合计** | | **124** |
 
 CI 现状（`ci-python-ml-agent.yml:99`）只跑 `test_app.py`（只测 `/health`），
-这 104 项目前都是本地手动跑的，还没接进 CI——这是遗留问题，不是这次新引入的。
+这 124 项目前都是本地手动跑的，还没接进 CI——这是遗留问题，不是这次新引入的。
 
 ---
 

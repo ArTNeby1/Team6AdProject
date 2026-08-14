@@ -62,7 +62,8 @@ const ImportPage = () => {
       setIsFinished(true);
     } catch (error) {
       console.error("Failed to start session:", error);
-      alert("AI Analysis failed. Please try again.");
+      const message = error.response?.data?.message || "AI Analysis failed. Please try again.";
+      alert(message);
     } finally {
       setIsParsing(false);
     }
@@ -118,12 +119,18 @@ const ImportPage = () => {
       }
 
       await api.post(`/planning-sessions/${sessionId}/validate-places`);
+      // POST /planning-sessions/{id}/confirm — backend creates a brand new Trip.
+      // The AI /recommend call it makes server-side (F-18) also returns suggestedAdditions
+      // (nearby/similar places not already in the trip) — it's ephemeral, not persisted by
+      // the backend, so it's handed to ItineraryDetailPage via navigation state only.
       const response = await api.post(`/planning-sessions/${sessionId}/confirm`);
 
       const { id: newTripId, weatherSummary, suggestedAdditions } = response.data;
 
       await fetchTrips();
 
+      // Pass the AI summary data to the next page to show a welcome message
+      // and drive the "Recommended Nearby Places" sidebar (F-18).
       navigate(`/itinerary/${newTripId}`, {
         state: {
           showAiSummary: true,

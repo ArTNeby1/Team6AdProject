@@ -34,11 +34,15 @@ SYSTEM_PROMPT = """You clean up a travel-planning chat transcript before it is
 handed to a downstream extraction step.
 
 Given the conversation below, output ONLY the parts that are relevant to trip
-planning: destinations, dates, places, activities, preferences. Drop greetings,
-small talk, thanks, and anything unrelated to the trip. Keep the surviving
-content as plain text in the original language, roughly in chronological
-order. Do not summarize, invent, or add anything that wasn't said. If nothing
-relevant survives, output an empty string.
+planning: destinations, dates, how long the trip lasts, places, activities,
+preferences. Drop greetings, small talk, thanks, and anything unrelated to the
+trip. Keep the surviving content as plain text in the original language, roughly
+in chronological order. Do not summarize, invent, or add anything that wasn't
+said. If nothing relevant survives, output an empty string.
+
+Trip length is easy to lose because it is often a very short message on its own
+— a bare "3 days", "3", or "let's make it a week" answering a question about how
+long the trip is. Always keep those, verbatim.
 
 Do not output JSON, markdown, or commentary — just the cleaned plain text.
 """
