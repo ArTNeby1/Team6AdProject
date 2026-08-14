@@ -5,6 +5,7 @@ import com.loomytrip.mobile.data.network.AddSchedulesRequest
 import com.loomytrip.mobile.data.network.BulkScheduleItem
 import com.loomytrip.mobile.data.network.BulkUpdateSchedulesRequest
 import com.loomytrip.mobile.data.network.ScheduleDto
+import com.loomytrip.mobile.data.network.ApiConfig
 import com.loomytrip.mobile.data.network.TripDto
 import com.loomytrip.mobile.data.network.UpdateTripRequest
 import com.loomytrip.mobile.data.network.GenerateItineraryResponseDto
@@ -35,6 +36,13 @@ object TripSyncRepository {
     suspend fun generateItinerary(tripId: Long): Pair<GenerateItineraryResponseDto, TripDto> {
         val result = tripApi.generateItinerary(tripId)
         return result to tripApi.getTrip(tripId)
+    }
+
+    suspend fun createShareLink(tripId: Long): String {
+        val result = tripApi.shareTrip(tripId)
+        val token = result.shareToken?.takeIf(String::isNotBlank)
+            ?: error("The backend did not return a share token.")
+        return ApiConfig.publicTripUrl(token)
     }
 
     fun sortForDisplay(trips: List<TripDto>): List<TripDto> = trips.sortedWith { left, right ->
