@@ -52,6 +52,10 @@ public class PlanningService {
     private static final String DEFAULT_DESTINATION = "Singapore";
     private static final int NOTE_MAX_LENGTH = 255;
     private static final int DEFAULT_VISIT_SLOT_MINUTES = 90;
+    /** Mirrors ML's itinerary_planner.MAX_DAYS / trip_models.MAX_DURATION_DAYS — see
+     * ML/docs/handoff_duration_2026-08-14.md. Kept in sync manually since it's a small,
+     * cross-service constant, not worth a shared config for. */
+    private static final int MAX_DURATION_DAYS = 30;
 
     private final PlanningSessionRepository planningSessionRepository;
     private final ChatMessageRepository chatMessageRepository;
@@ -266,8 +270,16 @@ public class PlanningService {
                     "How many days is this trip? Ask the user and retry with durationDays set."
             );
         }
-        if (numDays < 1) {
-            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "INVALID_DURATION", "durationDays must be at least 1");
+        if (numDays < 1 || numDays > MAX_DURATION_DAYS) {
+            // 上限跟 ML itinerary_planner.MAX_DAYS 对齐（见 ML/schema/trip_models.py）——
+            // 这里提前挡住，不然会在调 /plan-itinerary 时才被拒（AiPlanningClientHttp
+            // 把那个 4xx 降级成空 days，最后报出来的是容易让人误会的
+            // AI_SERVICE_UNAVAILABLE，不如现在就说清楚是天数不对。
+            throw new ApiException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "INVALID_DURATION",
+                    "durationDays must be between 1 and " + MAX_DURATION_DAYS
+            );
         }
 
         Map<Long, List<DraftActivity>> activitiesByPlaceId = groupActivitiesByPlace(sessionId);
