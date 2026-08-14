@@ -16,7 +16,6 @@ const ItineraryDetailPage = () => {
     addLocationsToTripDay,
     updateTripTitle,
     updateTripDate,
-    addLocationsToTripDay,
     updateTripCover,
     loadingTrips,
   } = useTrip();
