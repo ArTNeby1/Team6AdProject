@@ -73,6 +73,12 @@ class PipelineResult:
     extraction: Optional[TripExtraction] = None
     recommendation: Optional[RecommendationResult] = None
     error: Optional[str] = None
+    # 恒定跟 error 同时出现/同时缺席，拆成单独字段是为了让 main.py 能区分
+    # "用户输入没有可用信息"（NO_USEFUL_CONTENT，该让前端提示重新输入）
+    # 和"抽取本身出故障"（EXTRACTION_FAILED，真正的 502），不用去解析 error
+    # 那句人话文本才能分支。同样的做法已经在 needs_duration_input 上用过一次——
+    # "这时候该怎么办"钉死在 AI 侧，不让下游各自猜。
+    error_code: Optional[str] = None
 
 
 def run_extraction(
@@ -98,12 +104,34 @@ def run_extraction(
         cleaned_text = (raw_content or "").strip()
 
     if not cleaned_text:
-        return PipelineResult(cleaned_text="", error="no extractable content (empty after noise filtering)")
+        # 多轮聊天场景下最常见的"废话"：chat_filter 把寒暄/无关内容滤成了空字符串。
+        # 用 error_code 而不是让下游解析 error 文本——见 PipelineResult.error_code 说明。
+        return PipelineResult(
+            cleaned_text="",
+            error="no extractable content (empty after noise filtering)",
+            error_code="NO_USEFUL_CONTENT",
+        )
 
     try:
         extraction = extract_with_retry(cleaned_text, source_name, _extract_fn)
     except ExtractionFailedError as e:
-        return PipelineResult(cleaned_text=cleaned_text, error=str(e))
+        # 模型连续 MAX_ATTEMPTS 次都没能给出合规 JSON——这是抽取本身出故障
+        # （比如格式一直错、枚举值一直不对），不是"用户没说有用的东西"，
+        # 该保持 502，让后端当成真正的服务异常去查。
+        return PipelineResult(cleaned_text=cleaned_text, error=str(e), error_code="EXTRACTION_FAILED")
+
+    if not extraction.places:
+        # 单次粗略路线场景（/extract-travel-info 不经过 chat_filter）下最常见的"废话"：
+        # 文本非空、格式也合规，但模型老老实实抽出了 places=[]——trip_models.places
+        # 2026-08-14 起允许空列表就是为了让这种情况一次成功返回，而不是逼模型编地点
+        # 或者白白重试 3 次。这里跟上面"过滤后为空"走同一个 error_code，前端不用
+        # 关心具体是哪个入口触发的，统一提示"请输入有效的旅行信息"就行。
+        return PipelineResult(
+            cleaned_text=cleaned_text,
+            extraction=extraction,
+            error="no destination or place found in the text",
+            error_code="NO_USEFUL_CONTENT",
+        )
 
     return PipelineResult(cleaned_text=cleaned_text, extraction=extraction)
 
