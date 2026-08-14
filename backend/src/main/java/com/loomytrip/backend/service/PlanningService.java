@@ -1,8 +1,10 @@
 package com.loomytrip.backend.service;
 
+import com.loomytrip.backend.client.AiPlanItineraryResult;
 import com.loomytrip.backend.client.AiPlanningClient;
 import com.loomytrip.backend.client.AiRecommendResult;
 import com.loomytrip.backend.client.MapPlacesClient;
+import com.loomytrip.backend.dto.request.ConfirmSessionRequest;
 import com.loomytrip.backend.dto.request.CreateChatMessageRequest;
 import com.loomytrip.backend.dto.request.CreatePlanningSessionRequest;
 import com.loomytrip.backend.dto.request.UpdateDraftPlaceRequest;
@@ -228,15 +230,44 @@ public class PlanningService {
     }
 
     /**
-     * F-18: sends the user's confirmed draft places to the AI `/recommend` agent, then
-     * persists the ordered result as a (single-day, v1 scope) Trip.
+     * F-18: sends the user's confirmed draft places to the AI, then persists the result as
+     * a Trip.
+     *
+     * <p>Day count precedence: {@code request.durationDays()} (the frontend asked the user
+     * directly) beats {@code session.getDurationDays()} (the AI picked it up from the
+     * user's text during extraction — see {@link #parseDurationDays}) beats neither being
+     * present, which is a {@code DAYS_REQUIRED} error telling the frontend to prompt the
+     * user and retry with {@code request.durationDays()} set. There's deliberately no
+     * silent default (e.g. always 1) — guessing a day count the user never agreed to would
+     * mean confirming a trip shorter or longer than what they actually asked for.
+     *
+     * <p>1 day still goes through {@code /recommend} (weather-aware ordering, plus
+     * suggested_additions the frontend shows in the post-confirm summary — see
+     * ai_contract.md 2.4). More than 1 day switches to {@code /plan-itinerary}, which
+     * route-first/split-second groups stops by day so nearby places land together instead
+     * of each day crossing the whole island; that endpoint doesn't return
+     * suggested_additions (a `/recommend`-only field), so multi-day confirmations just don't
+     * have any — the frontend already treats that list as optional.
      */
     @Transactional
-    public ConfirmSessionResponse confirmSession(Long sessionId) {
+    public ConfirmSessionResponse confirmSession(Long sessionId, ConfirmSessionRequest request) {
         PlanningSession session = loadOwnedSession(sessionId);
         List<DraftPlace> draftPlaces = draftPlaceRepository.findBySession_Id(sessionId);
         if (draftPlaces.isEmpty()) {
             throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "NO_PLACES", "Session has no confirmed places to plan");
+        }
+
+        Integer requestedDays = request == null ? null : request.durationDays();
+        Integer numDays = requestedDays != null ? requestedDays : session.getDurationDays();
+        if (numDays == null) {
+            throw new ApiException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "DAYS_REQUIRED",
+                    "How many days is this trip? Ask the user and retry with durationDays set."
+            );
+        }
+        if (numDays < 1) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "INVALID_DURATION", "durationDays must be at least 1");
         }
 
         Map<Long, List<DraftActivity>> activitiesByPlaceId = groupActivitiesByPlace(sessionId);
@@ -248,32 +279,89 @@ public class PlanningService {
 
         User user = currentUser();
         LocalDate startDate = LocalDate.now();
-        AiRecommendResult result = aiPlanningClient.recommend(places, startDate.toString(), buildPreferenceText(user));
-        List<AiRecommendResult.OrderedStop> orderedStops = resolveOrderedStops(result, places);
 
         Trip trip = new Trip();
         trip.setUser(user);
         trip.setTripName(session.getTitle() != null ? session.getTitle() : "Trip");
         trip.setStartDate(startDate);
-        trip.setDurationDays(1);
+        trip.setDurationDays(numDays);
         Trip savedTrip = tripRepository.save(trip);
 
-        TripDay day = new TripDay();
-        day.setTrip(savedTrip);
-        day.setDaySequence(1);
-        TripDay savedDay = tripDayRepository.save(day);
+        String weatherSummary;
+        List<SuggestedAdditionResponse> suggestions;
 
-        // 🔴 gap closed: `stop.timeOfDay()` (morning/afternoon/evening from AI's weather-aware
-        // ordering) was computed but never written anywhere — TripSchedule.start_time was
-        // always left null, so the frontend's `s.startTime || '09:00'` fallback showed 09:00
-        // for every single stop regardless of what the AI actually decided. clockCursor turns
-        // each bucket into a real, increasing start_time per stop (see nextStartTime javadoc).
+        if (numDays == 1) {
+            AiRecommendResult result = aiPlanningClient.recommend(places, startDate.toString(), buildPreferenceText(user));
+            List<AiRecommendResult.OrderedStop> orderedStops = resolveOrderedStops(result, places);
+
+            TripDay day = new TripDay();
+            day.setTrip(savedTrip);
+            day.setDaySequence(1);
+            TripDay savedDay = tripDayRepository.save(day);
+            writeDaySchedules(savedDay, orderedStops.stream().map(this::toStopView).toList());
+
+            weatherSummary = result.weatherSummary();
+            suggestions = result.suggestedAdditions().stream()
+                    .map(s -> new SuggestedAdditionResponse(
+                            s.name(), s.type(), s.lat(), s.lng(), s.distanceKm(), s.reason(), s.activities()
+                    ))
+                    .toList();
+        } else {
+            AiPlanItineraryResult result = aiPlanningClient.planItinerary(places, startDate.toString(), numDays);
+            if (result.days().isEmpty()) {
+                throw new ApiException(HttpStatus.BAD_GATEWAY, "AI_SERVICE_UNAVAILABLE", "Itinerary planning service is unavailable");
+            }
+            for (AiPlanItineraryResult.PlannedDay plannedDay : result.days()) {
+                TripDay day = new TripDay();
+                day.setTrip(savedTrip);
+                day.setDaySequence(plannedDay.day());
+                TripDay savedDay = tripDayRepository.save(day);
+                writeDaySchedules(savedDay, plannedDay.stops().stream().map(this::toStopView).toList());
+            }
+            weatherSummary = result.days().get(0).weatherSummary();
+            suggestions = List.of();
+        }
+
+        session.setConfirmedTrip(savedTrip);
+        session.setStatus(PlanningSessionStatus.CONFIRMED);
+        session.setDurationDays(numDays);
+        planningSessionRepository.save(session);
+
+        return new ConfirmSessionResponse(
+                savedTrip.getId(),
+                savedTrip.getTripName(),
+                savedTrip.getStartDate(),
+                savedTrip.getDurationDays(),
+                savedTrip.getUpdatedAt(),
+                weatherSummary,
+                suggestions
+        );
+    }
+
+    /** Common shape `writeDaySchedules` needs from either AI response type (single-day
+     * `/recommend`'s OrderedStop or multi-day `/plan-itinerary`'s PlannedStop) — same fields,
+     * different Java records, so this lets one write-loop serve both branches of
+     * confirmSession. */
+    private record StopView(String name, String type, BigDecimal lat, BigDecimal lng, String timeOfDay, String reason) {
+    }
+
+    private StopView toStopView(AiRecommendResult.OrderedStop stop) {
+        return new StopView(stop.name(), stop.type(), stop.lat(), stop.lng(), stop.timeOfDay(), stop.reason());
+    }
+
+    private StopView toStopView(AiPlanItineraryResult.PlannedStop stop) {
+        return new StopView(stop.name(), stop.type(), stop.lat(), stop.lng(), stop.timeOfDay(), stop.reason());
+    }
+
+    /** Persists one day's stops as TripSchedule rows. First stop of the day is pinned to
+     * 09:00 regardless of the AI's time-of-day suggestion — same rule as
+     * TripService#addSchedules, see the comment there for why. */
+    private void writeDaySchedules(TripDay savedDay, List<StopView> stops) {
         int sequence = 1;
         LocalTime clockCursor = LocalTime.of(9, 0);
         boolean isFirstStopOfDay = true;
-        for (AiRecommendResult.OrderedStop stop : orderedStops) {
+        for (StopView stop : stops) {
             Destination destination = destinationService.findOrCreateByName(stop.name(), stop.type(), stop.lat(), stop.lng());
-            // 每天第一站固定 09:00，不给天气建议顶掉——见 TripService#addSchedules 的同款注释。
             if (isFirstStopOfDay) {
                 isFirstStopOfDay = false;
             } else {
@@ -289,26 +377,6 @@ public class PlanningService {
             tripScheduleRepository.save(schedule);
             clockCursor = clockCursor.plusMinutes(DEFAULT_VISIT_SLOT_MINUTES);
         }
-
-        session.setConfirmedTrip(savedTrip);
-        session.setStatus(PlanningSessionStatus.CONFIRMED);
-        planningSessionRepository.save(session);
-
-        List<SuggestedAdditionResponse> suggestions = result.suggestedAdditions().stream()
-                .map(s -> new SuggestedAdditionResponse(
-                        s.name(), s.type(), s.lat(), s.lng(), s.distanceKm(), s.reason(), s.activities()
-                ))
-                .toList();
-
-        return new ConfirmSessionResponse(
-                savedTrip.getId(),
-                savedTrip.getTripName(),
-                savedTrip.getStartDate(),
-                savedTrip.getDurationDays(),
-                savedTrip.getUpdatedAt(),
-                result.weatherSummary(),
-                suggestions
-        );
     }
 
     @Transactional
@@ -382,6 +450,23 @@ public class PlanningService {
     }
 
     /**
+     * Reads an optional {@code duration_days} int out of an extraction result — ML doesn't
+     * populate this yet (as of this writing the extraction schema/prompt hasn't been
+     * updated for it), this is written ahead of that so the rest of the day-count flow
+     * ({@link PlanningSession#getDurationDays()}, {@code ConfirmSessionRequest#durationDays})
+     * already works the moment it does; until then every session's days stay null and
+     * confirmSession() falls through to requiring the frontend to ask. Missing/non-numeric/
+     * non-positive just means "AI didn't say", not an error.
+     */
+    private static Integer parseDurationDays(Map<String, Object> result) {
+        Object value = result.get("duration_days");
+        if (value instanceof Number number && number.intValue() > 0) {
+            return number.intValue();
+        }
+        return null;
+    }
+
+    /**
      * Persists an extraction result (`/extract-travel-info` or `/refine` — same JSON
      * shape) as DraftPlace/DraftActivity rows. Rejects out-of-scope destinations
      * (ML/docs/ai_contract.md section 6, item 6).
@@ -395,6 +480,14 @@ public class PlanningService {
                     "OUT_OF_SCOPE",
                     "This app only plans trips within Singapore (got: " + outOfScopeDestination + ")"
             );
+        }
+
+        // 只在这次抽取真的给出了天数时才覆盖——refine 追加一句话时 AI 不一定每次都
+        // 重新报一遍天数，缺席不代表用户改主意了，不要把已经知道的值清掉。
+        Integer parsedDurationDays = parseDurationDays(result);
+        if (parsedDurationDays != null) {
+            session.setDurationDays(parsedDurationDays);
+            planningSessionRepository.save(session);
         }
 
         Object placesValue = result.get("places");

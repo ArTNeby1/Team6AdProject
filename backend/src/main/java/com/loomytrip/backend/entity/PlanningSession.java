@@ -39,6 +39,14 @@ public class PlanningSession {
     @Column(nullable = false, length = 32)
     private PlanningSessionStatus status = PlanningSessionStatus.ACTIVE;
 
+    /** How many days the AI thinks the user wants, parsed from free text (e.g. "a 3-day
+     * trip") — see PlanningService#persistExtraction's read of the extraction result's
+     * {@code duration_days} key. Null means the user never said; the frontend is expected
+     * to ask and pass it explicitly as {@code ConfirmSessionRequest#durationDays} instead
+     * (see PlanningService#confirmSession). */
+    @Column(name = "duration_days")
+    private Integer durationDays;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "confirmed_trip_id")
     private Trip confirmedTrip;

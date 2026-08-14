@@ -8,6 +8,11 @@ import java.util.List;
  * Confirmation-screen payload (ML/docs/ai_contract.md section 2.3): the draft places the
  * AI extracted, plus their place_id / real lat-lng, so the frontend can edit/delete before
  * confirming.
+ *
+ * <p>{@code durationDays} is null when the AI couldn't tell how many days the user wants
+ * (they never said) — the frontend should prompt for it and pass the answer explicitly to
+ * {@code POST .../confirm} as {@code ConfirmSessionRequest#durationDays} instead of relying
+ * on this field. Non-null means the AI already picked it up from the text; no prompt needed.
  */
 public record PlanningSessionDetailResponse(
         Long id,
@@ -15,6 +20,7 @@ public record PlanningSessionDetailResponse(
         String initialBrief,
         PlanningSessionStatus status,
         Long confirmedTripId,
+        Integer durationDays,
         List<DraftPlaceResponse> draftPlaces,
         Instant updatedAt
 ) {

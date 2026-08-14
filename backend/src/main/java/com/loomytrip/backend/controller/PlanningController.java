@@ -1,5 +1,6 @@
 package com.loomytrip.backend.controller;
 
+import com.loomytrip.backend.dto.request.ConfirmSessionRequest;
 import com.loomytrip.backend.dto.request.CreateChatMessageRequest;
 import com.loomytrip.backend.dto.request.CreatePlanningSessionRequest;
 import com.loomytrip.backend.dto.request.UpdateDraftPlaceRequest;
@@ -66,8 +67,11 @@ public class PlanningController {
     }
 
     @PostMapping("/{sessionId}/confirm")
-    public ConfirmSessionResponse confirm(@PathVariable Long sessionId) {
-        return planningService.confirmSession(sessionId);
+    public ConfirmSessionResponse confirm(
+            @PathVariable Long sessionId,
+            @RequestBody(required = false) ConfirmSessionRequest request
+    ) {
+        return planningService.confirmSession(sessionId, request);
     }
 
     @PutMapping("/draft-places/{placeId}")
