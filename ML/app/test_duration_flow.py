@@ -12,6 +12,7 @@
 不需要 AWS / Ollama：文件顶部把三个 provider 都锁成 mock 了（必须在 import main
 之前设，那几个模块是在 import 时读环境变量决定用哪个 provider 的）。
 """
+import json
 import os
 import sys
 from pathlib import Path
@@ -26,6 +27,7 @@ os.environ.setdefault("RECOMMEND_PROVIDER", "mock")
 
 import main  # noqa: E402
 import mock_client  # noqa: E402
+from extraction import parse_and_validate  # noqa: E402
 from fastapi import HTTPException  # noqa: E402
 from orchestrator import PipelineResult  # noqa: E402
 
@@ -120,11 +122,13 @@ def test_plan_itinerary_rejects_out_of_range_num_days():
 
 
 def test_mock_duration_parser():
-    # mock 的正则本身（只影响 mock 模式，真实链路是模型抽的）
+    # mock 的正则本身（只影响 mock 模式，真实链路是模型抽的）。
+    # 测试输入一律用英文：这些字符串会打印到 Windows 控制台，中文在默认代码页下
+    # 显示成乱码（跑出来是 '����ȥ�¼�����5��'），看不出测的到底是哪条用例。
     cases = [
         ("a 3-day trip in Singapore", 3),
         ("I'll stay 5 days", 5),
-        ("我想去新加坡玩5天", 5),
+        ("a 5 day holiday in Singapore", 5),
         ("Day 1: Gardens. Day 2: Sentosa. Day 3: Jewel.", 3),
         ("I want to see Gardens by the Bay", None),
         ("a 999-day trip", None),
@@ -132,6 +136,96 @@ def test_mock_duration_parser():
     for text, expected in cases:
         got = mock_client.mock_duration_days(text)
         check(f"mock_duration_days({text!r})", got == expected, f"got {got!r}, expected {expected!r}")
+
+
+def _validated_duration(raw_duration) -> object:
+    """走真实的 parse_and_validate（含天数降级那一步），返回校验后的 duration_days。"""
+    payload = json.dumps(
+        {
+            "destination": "Singapore",
+            "dates": [],
+            "duration_days": raw_duration,
+            "places": [{"name": "Gardens by the Bay", "type": "attraction", "activities": []}],
+        }
+    )
+    return parse_and_validate(payload).duration_days
+
+
+def test_unusable_duration_degrades_instead_of_502():
+    # 2026-08-14 新增。实测过的真实场景：输入 "I am doing a 200-day trip" 时，
+    # Bedrock 忠实地抽出 200（模型没错，文本就这么写的），但 200 超出 schema 的
+    # 1~30 -> 校验失败 -> 重试 3 次（3 次真实模型调用，每次都照样答 200）->
+    # 整条请求 502，**连 destination/places 一起丢掉**。
+    # 期望行为：天数没法用就当"没抽到"，其余字段照常返回，前端弹窗问用户。
+    cases = [
+        (200, None, "way over the 30-day cap"),
+        (31, None, "one over the cap"),
+        (0, None, "under the 1-day floor"),
+        (-3, None, "negative"),
+        (3.5, None, "not a whole number of days"),
+        (True, None, "bool must not sneak through as 1 day"),
+        ("a week", None, "not a number at all"),
+        (3, 3, "in range, untouched"),
+        ("3", 3, "numeric string still usable"),
+        (3.0, 3, "integral float still usable"),
+        (30, 30, "exactly at the cap, still usable"),
+        (1, 1, "exactly at the floor, still usable"),
+        (None, None, "already absent"),
+    ]
+    for raw, expected, why in cases:
+        try:
+            got = _validated_duration(raw)
+        except Exception as e:  # noqa: BLE001 - 抽取整体不该因为天数而失败
+            check(f"duration_days={raw!r} -> {expected!r} ({why})", False, f"raised {type(e).__name__}: {e}")
+            continue
+        check(f"duration_days={raw!r} -> {expected!r} ({why})", got == expected, f"got {got!r}")
+
+
+def test_unusable_duration_keeps_the_rest_of_the_extraction():
+    # 上面那条的另一半：降级之后 places/destination 必须**原样还在**，
+    # 而且 needs_duration_input 要变成 true（= 前端该弹窗了）。
+    payload = json.dumps(
+        {
+            "destination": "Singapore",
+            "dates": [],
+            "duration_days": 200,
+            "places": [
+                {"name": "Gardens by the Bay", "type": "attraction", "activities": ["Cloud Forest"]},
+                {"name": "Sentosa", "type": "attraction", "activities": []},
+            ],
+        }
+    )
+    extraction = parse_and_validate(payload)
+    body = main._extraction_response(PipelineResult(cleaned_text="", extraction=extraction))
+    check(
+        "out-of-range duration -> places survive, needs_duration_input=true",
+        len(body["places"]) == 2
+        and body["destination"] == "Singapore"
+        and body["duration_days"] is None
+        and body["needs_duration_input"] is True,
+        f"places={len(body['places'])}, duration_days={body['duration_days']!r}, "
+        f"needs_duration_input={body['needs_duration_input']!r}",
+    )
+
+
+def test_other_schema_violations_still_retry():
+    # 反向保证：天数那条降级**只**管 duration_days，不能变成"吞掉所有校验错误"的
+    # 万能补丁。type 写了枚举外的值，照样要抛 ValidationError 让上层重试。
+    from pydantic import ValidationError
+
+    payload = json.dumps(
+        {
+            "destination": "Singapore",
+            "duration_days": 200,  # 同时越界，确认它不会顺手把下面这条错误也吞掉
+            "places": [{"name": "National Museum", "type": "museum", "activities": []}],
+        }
+    )
+    try:
+        parse_and_validate(payload)
+    except ValidationError:
+        check("invalid place type still raises (retry path intact)", True)
+    else:
+        check("invalid place type still raises (retry path intact)", False, "validation was swallowed")
 
 
 if __name__ == "__main__":
@@ -142,3 +236,6 @@ if __name__ == "__main__":
     test_plan_itinerary_honours_num_days()
     test_plan_itinerary_rejects_out_of_range_num_days()
     test_mock_duration_parser()
+    test_unusable_duration_degrades_instead_of_502()
+    test_unusable_duration_keeps_the_rest_of_the_extraction()
+    test_other_schema_violations_still_retry()

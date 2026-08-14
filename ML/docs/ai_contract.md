@@ -560,11 +560,32 @@ duration_days = null, needs_duration_input = true →  前端弹窗问"玩几天
 - **不要在 `needs_duration_input == true` 时偷偷按 1 天排** —— 用户会拿到一个
   他没要求的 1 天行程，而且没有任何地方会报错，只能靠肉眼发现
 
+下面这张表的每一行，2026-08-14 都拿**真实 Bedrock（Nova Lite）** 实跑验证过，
+不是照着 prompt 推测的行为：
+
 | 用户输入 | `duration_days` | `needs_duration_input` | 该怎么做 |
 |---|---|---|---|
 | "A 3-day Singapore trip..." | `3` | `false` | 直接 `num_days=3` |
+| "We are spending **five** days..."（英文数字） | `5` | `false` | 直接 `num_days=5` |
+| "**A week** in Singapore" | `7` | `false` | 直接 `num_days=7` |
 | 正文是 Day 1 / Day 2 / Day 3 结构 | `3` | `false` | 直接 `num_days=3` |
+| "from 2026-08-09 **to** 2026-08-11"（连续区间） | `3` | `false` | 直接 `num_days=3` |
 | "I want to visit Gardens by the Bay" | `null` | `true` | **前端弹窗问用户**，答案当 `num_days` |
+| "I want to visit **5 places**: ..." | `null` | `true` | 地点数**没有**被误当成天数 |
+| "a **200-day** trip"（超出 1~30） | `null` | `true` | 见下方「天数超范围」 |
+
+⚠️ 注意倒数第二行和第三行的区别：模型确实分得清"5 个地点"和"玩 5 天"，
+但"9号**到**11号"这种连续区间它会算成 3 天 —— 这跟"不要从 `dates` 数组反推"
+不冲突，那条禁的是**你们**拿到结构化 JSON 之后自己反推（那时区间信息已经丢了），
+而模型是在原文里直接读到"to"这个词的。
+
+**天数超范围（1~30）时会怎样**（2026-08-14 改）：降级成 `null` +
+`needs_duration_input: true`，**其余字段照常返回**，跟"没说天数"走同一条路
+（前端弹窗问用户）。
+以前是抛 schema 校验错误 -> 重试 3 次 -> 整条请求 **502**，连 `destination`
+和 `places` 一起丢掉 —— 而重试在这里注定救不回来：模型没抽错，是原文就写着 200，
+再问几次答案还是 200。用户看到的是"AI 挂了"，而不是"这个天数不支持"。
+日志里会打一行 `[duration] unusable duration_days=...`，联调时按这个关键字搜。
 
 **用户在弹窗里答完之后**，把天数交给后端有两种走法，选一种就行（AI 侧两种都支持）：
 

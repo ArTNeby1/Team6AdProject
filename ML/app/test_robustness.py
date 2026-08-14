@@ -16,6 +16,7 @@ import main  # noqa: E402
 import mock_client  # noqa: E402
 from fastapi import HTTPException  # noqa: E402
 from pydantic import ValidationError  # noqa: E402
+from trip_models import TripExtraction  # noqa: E402
 
 
 def expect_raises(name, exc_type, fn):
@@ -86,21 +87,44 @@ def test_duration_days_accepts_valid_value():
     )
 
 
-def test_duration_days_rejects_out_of_range():
-    # 上限对齐 itinerary_planner.MAX_DAYS=30。模型偶尔会把"住 3 晚"之类的话
-    # 理解成很大的数，这种要在抽取这一关就拦下来，而不是传到 /plan-itinerary
-    # 才被 Pydantic 拒绝——那时候错误信息指向的是后端传参，排查方向就错了。
-    for bad_value in (0, 31):
+def test_duration_days_out_of_range_degrades_to_none():
+    # 上限对齐 itinerary_planner.MAX_DAYS=30。越界的天数依然在**抽取这一关**处理掉，
+    # 不会传到 /plan-itinerary 才被拒（那时候错误信息指向后端传参，排查方向就错了）。
+    #
+    # 2026-08-14 改了处理方式：以前是抛 ValidationError（这个测试原来断言的就是它），
+    # 现在是降级成 None。原因是实测发现抛错的代价太大 —— 输入 "I am doing a 200-day
+    # trip" 时模型忠实地抽出 200，抛错会触发 3 次重试（3 次真实 Bedrock 调用，每次都
+    # 照样答 200，因为文本就这么写的），最后整条请求 502，**连 destination/places 一起
+    # 丢掉**，用户看到的是"AI 挂了"。降级成 None 之后 needs_duration_input 自动变 true，
+    # 前端弹窗问用户玩几天，其余抽取结果照常返回。详见 extraction._null_unusable_duration。
+    for bad_value in (0, 31, 200):
         data = {
             "destination": "Singapore",
             "duration_days": bad_value,
             "places": [{"name": "Gardens by the Bay", "type": "attraction"}],
         }
-        expect_raises(
-            f"duration_days={bad_value} out of 1..30",
-            ValidationError,
-            lambda d=data: main.parse_and_validate(json.dumps(d)),
-        )
+        trip = main.parse_and_validate(json.dumps(data))
+        if trip.duration_days is None and len(trip.places) == 1:
+            print(f"[PASS] duration_days={bad_value} out of 1..30 -> None, places kept")
+        else:
+            print(
+                f"[FAIL] duration_days={bad_value} out of 1..30 -> expected None + places kept, "
+                f"got {trip.duration_days!r} / {len(trip.places)} places"
+            )
+
+    # schema 本身的上下限没有被放宽：绕过 parse_and_validate 直接校验仍然会被拒。
+    # 这条是防止以后有人把 ge/le 删掉，误以为"反正 extraction.py 会兜底"。
+    expect_raises(
+        "TripExtraction itself still rejects duration_days=31",
+        ValidationError,
+        lambda: TripExtraction.model_validate(
+            {
+                "destination": "Singapore",
+                "duration_days": 31,
+                "places": [{"name": "Gardens by the Bay", "type": "attraction"}],
+            }
+        ),
+    )
 
 
 def test_retry_gives_up_after_max_attempts():
@@ -148,6 +172,6 @@ if __name__ == "__main__":
     test_bad_coords()
     test_duration_days_defaults_to_none()
     test_duration_days_accepts_valid_value()
-    test_duration_days_rejects_out_of_range()
+    test_duration_days_out_of_range_degrades_to_none()
     test_retry_gives_up_after_max_attempts()
     test_retry_recovers_when_model_eventually_succeeds()

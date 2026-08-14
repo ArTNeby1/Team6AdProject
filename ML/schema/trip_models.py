@@ -24,6 +24,13 @@ from pydantic import BaseModel, Field
 # 不是"每条文字最多几个字"，那是另一回事。
 ActivityText = Annotated[str, Field(max_length=255)]
 
+# 行程天数的合法范围，跟 itinerary_planner.MAX_DAYS 对齐。
+# 单独提成常量而不是直接写在 Field(ge=1, le=30) 里：extraction.py 里"把超出范围的
+# 天数归零成 null"那一步要用同一个范围，两处各写一遍死数字的话，以后改上限只改了
+# 一处就会出现"schema 拒绝但归零逻辑不认"的错位。
+MIN_DURATION_DAYS = 1
+MAX_DURATION_DAYS = 30
+
 
 class Coords(BaseModel):
     lat: float
@@ -68,8 +75,8 @@ class TripExtraction(BaseModel):
     # 上限 30 对齐 itinerary_planner.MAX_DAYS，免得抽出个 200 天传下去才被拒。
     duration_days: Optional[int] = Field(
         default=None,
-        ge=1,
-        le=30,
+        ge=MIN_DURATION_DAYS,
+        le=MAX_DURATION_DAYS,
         description="Total number of days the whole trip lasts, if the text states it "
         "(e.g. 'a 3-day trip', or the text is organised as Day 1 / Day 2 / Day 3). "
         "Never guess or infer this from the number of places: return null when the "

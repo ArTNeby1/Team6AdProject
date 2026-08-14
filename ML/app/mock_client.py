@@ -137,10 +137,12 @@ if __name__ == "__main__":
     trip = TripExtraction.model_validate(json.loads(raw))
     print(f"[PASS] mock_extract output matches schema, parsed {len(trip.places)} places")
 
-    # 再证明 duration_days 那条分支两边都通
+    # 再证明 duration_days 那条分支两边都通。
+    # 示例文本一律用英文：这些字符串直接打印到 Windows 控制台，中文在默认代码页下
+    # 是乱码，看不出测的是哪条用例（`天` 的正则分支本身仍然保留在上面的实现里）。
     for sample, expected in [
         ("a 3-day trip in Singapore", 3),
-        ("我想去新加坡玩5天", 5),
+        ("a 5 day holiday in Singapore", 5),
         ("Day 1: Gardens by the Bay. Day 2: Sentosa. Day 3: Jewel.", 3),
         ("I want to see Gardens by the Bay", None),
         ("a 999-day trip", None),  # 越界当没抽到，不编

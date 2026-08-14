@@ -16,8 +16,20 @@
 | 2 | 🔴 `/plan-itinerary` 的 **`num_days` 变必填**（原来漏传默认 1） | **后端** |
 | 3 | `chat_filter` 降噪 prompt 保留"3 days"这种超短消息 | 只有走 `/refine` 传弹窗答案时才相关 |
 | 4 | mock 模式的 `duration_days` 改成看输入文本 | 前端 + 后端联调 |
+| 5 | 天数**超出 1~30 时降级成 `null`**，不再让整条抽取 502 | **后端**（少一类 502） |
 
 `duration_days` 字段本身是 2026-08-13 加的，这次没动。
+
+第 5 条的背景（实跑发现的，不是假想）：输入 "I am doing a 200-day trip" 时，
+Bedrock 忠实地抽出 `duration_days: 200`——模型没抽错，原文就这么写的。但 200 超出
+schema 的 1~30，于是校验失败 → 重试 3 次（3 次真实模型调用，每次照样答 200）→
+整条请求 **502**，`destination` 和 `places` 一起丢掉。重试在这里注定救不回来。
+改成降级之后：`duration_days=null` + `needs_duration_input=true`，其余字段照常返回，
+走跟"没说天数"完全相同的那条路（前端弹窗）。后端不用为此写任何新分支。
+
+**这条也顺便回答了"要不要做格式检测"**：格式检测在 AI 侧已经做完了，
+后端拿到的 `duration_days` 要么是 `null`，要么是保证落在 `1~30` 的整数，
+不会出现字符串、小数、负数、超大值。后端可以直接拿去用，不用再校验一遍。
 
 ---
 
@@ -102,10 +114,26 @@ detail: "NUM_DAYS_REQUIRED: num_days is required and has no default. ..."
 
 前缀码 `NUM_DAYS_REQUIRED:` 是稳定的，可以直接按前缀分支，不用解析整句话。
 
-**你现在的代码不受影响**：`AiPlanningClientHttp.planItinerary()` 一直是
-`body.put("num_days", numDays)` 显式传值的。这条只挡"以后有人忘了接"的情况。
+**你现在的代码不受影响**：`origin/main` 上的
+`AiPlanningClientHttp.planItinerary()`（`:114`，`body.put("num_days", numDays)` 在 `:121`）
+一直是显式传值的。这条只挡"以后有人忘了接"的情况。
 
-### 2. `confirmSession()` 里写死的 `setDurationDays(1)` 要改
+> ⚠️ 但注意 **`ML` 分支上的 `backend/` 目录是旧的**，压根没有 `planItinerary` 这个方法
+> （`git grep planItinerary ML -- backend` 零命中，`origin/main` 上是 3 个文件命中）。
+> 在 ML 分支上看后端代码会得出错误结论，要看后端就切到 `main`。
+
+### 2. 🔴 最要紧的一条：`persistExtraction()` 现在把天数**整个丢掉了**
+
+`PlanningService.persistExtraction()`（`origin/main`，`:301` 起）只读了两个 key：
+`destination` 和 `places`。AI 返回的 `duration_days` / `needs_duration_input`
+到了后端就被**直接丢弃**，既没落库，也没往前端传。
+
+所以**在这一条改好之前，前端根本拿不到 `needs_duration_input`，弹窗无从弹起**。
+这是整条链路目前唯一真正断掉的地方——比下面那条 `setDurationDays(1)` 更靠前。
+（`AiPlanningClient.extractTravelInfo()` 的返回类型本来就是 `Map<String, Object>`，
+两个新字段**已经在这个 Map 里了**，不用改 DTO，只是没人去读。）
+
+### 3. `confirmSession()` 里写死的 `setDurationDays(1)` 要改
 
 `PlanningService.java` 里这一行（`origin/main` 上还在）：
 
@@ -125,11 +153,13 @@ trip.setDurationDays(extracted != null ? extracted : userAnsweredDays);
 ```
 
 `userAnsweredDays` 从哪来取决于前端怎么传（见上面第三节第 3 点），这块要你们俩对一下。
-建议顺便把建 `TripDay` 的地方也从"固定建 1 个"改成按天数建 N 个，否则
-`generateItinerary()` 里 `findByTrip_IdAndDaySequence()` 会找不到第 2、3 天而抛
-`TRIP_DAY_NOT_FOUND`。
+建议顺便把建 `TripDay` 的地方也从"固定建 1 个"改成按天数建 N 个 —— 这条已确认
+不是假想：`confirmSession()` 只 `setDaySequence(1)` 建了第 1 天，而
+`TripService.generateItinerary()`（`origin/main` `:590`）拿 AI 返回的每一天去
+`findByTrip_IdAndDaySequence(tripId, plannedDay.day())`，查不到就抛
+`TRIP_DAY_NOT_FOUND`。所以就算前两条都改好了，第 2、3 天照样 404。
 
-### 3. ⚠️ 不要自己从 `dates` 反推天数
+### 4. ⚠️ 不要自己从 `dates` 反推天数
 
 `["2026-08-09", "2026-08-11"]` 到底是"9号到11号玩3天"还是"9号和11号各去一次"，
 从数组本身分辨不出来，猜错了整个行程的天数就是错的。天数只有两个合法来源：
@@ -163,11 +193,20 @@ mock 模式下 JSON 结构跟真实模式**一模一样**，字段一个不少�
 ## 六、AI 侧的自测
 
 ```
-python ML/app/test_duration_flow.py     # 16 项，这次新增，不需要 AWS/Ollama
-python ML/app/test_robustness.py        # 9 项
+python ML/app/test_duration_flow.py     # 31 项，不需要 AWS/Ollama
+python ML/app/test_robustness.py        # 11 项
 python ML/app/test_itinerary_planner.py # 46 项
 ```
 
-2026-08-14 本机跑过，全绿。覆盖的点：两条分支各自的 `needs_duration_input` 取值、
-`needs_duration_input` 恒定存在、漏传 `num_days` 返回 400、给了 `num_days` 就真的
-按那个天数排（`len(days) == num_days`）、天数越界被 schema 拦下。
+2026-08-14 本机跑过，**88 项全绿**。测试输入一律用英文（中文字符串打到 Windows
+控制台是乱码，看不出跑的是哪条用例）。覆盖的点：两条分支各自的
+`needs_duration_input` 取值、`needs_duration_input` 恒定存在、漏传 `num_days`
+返回 400、给了 `num_days` 就真的按那个天数排（`len(days) == num_days`）、
+天数越界/小数/负数/布尔/非数字文字全部降级成 `null` 且 `places` 不受影响、
+以及反向保证——**天数那条降级只管 `duration_days`**，别的字段（比如 `type` 写了
+枚举外的值）照样抛错走重试，没变成"吞掉所有校验错误"的万能补丁。
+
+除自测外，2026-08-14 还用**真实 Bedrock** 跑过一遍（不是 mock）：第五节表格里
+每一行、`/refine` 里用户只回一句 `3 days` 或光一个 `3`、以及起 uvicorn 之后
+用 curl 走完整的 `/extract-travel-info` → `/plan-itinerary` HTTP 链路
+（4 个地点 `num_days=3` → 真的分成 3 天，漏传 `num_days` → 真的 400）。
