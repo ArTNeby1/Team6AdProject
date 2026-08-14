@@ -69,6 +69,12 @@ data class TripDto(
     val schedules: List<ScheduleDto> = emptyList()
 )
 
+data class ShareTripResponseDto(
+    val tripId: Long,
+    val shared: Boolean,
+    val shareToken: String? = null
+)
+
 data class UpdateTripRequest(
     val tripName: String? = null,
     val startDate: String? = null,

@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -113,12 +114,15 @@ fun RouteScreen(
     isGenerating: Boolean = false,
     generateErrorMessage: String? = null,
     generateSummary: String? = null,
+    isSharing: Boolean = false,
+    shareErrorMessage: String? = null,
     onTripNameChange: (String) -> Unit = {},
     onStartDateChange: (LocalDate) -> Unit = {},
     onViewMap: (Int) -> Unit,
     onEdit: (Int) -> Unit,
     onSavePreferences: (String, String) -> Unit = { _, _ -> },
     onSmartReorder: () -> Unit = {},
+    onShare: () -> Unit = {},
     onDeleteTrip: () -> Unit = {}
 ) {
     var selectedDay by rememberSaveable { mutableIntStateOf(1) }
@@ -247,6 +251,18 @@ fun RouteScreen(
                 Spacer(Modifier.width(6.dp))
                 Text("Edit day")
             }
+        }
+        OutlinedButton(
+            onClick = onShare,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isSharing
+        ) {
+            Icon(Icons.Default.Share, contentDescription = null)
+            Spacer(Modifier.width(7.dp))
+            Text(if (isSharing) "Preparing share link..." else "Share itinerary")
+        }
+        shareErrorMessage?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
         }
         deleteErrorMessage?.let {
             Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
@@ -385,7 +401,7 @@ private fun RenameTripDialog(
 }
 
 private val tripStyleOptions = listOf("Balanced", "Relaxed", "Cultural", "Food-focused", "Fast-paced")
-private val tripTransportOptions = listOf("Walking", "Public transport", "Driving", "Mixed")
+private val tripTransportOptions = listOf("Public transport", "Driving", "Cycling", "Walking")
 
 @Composable
 private fun TripPreferencesDialog(
@@ -665,7 +681,7 @@ fun MapScreen(
             FilterChip(
                 selected = showCrowd,
                 onClick = onToggleCrowd,
-                label = { Text("Crowd level") }
+                label = { Text(if (showCrowd) "Hide crowd heatmap" else "Crowd heatmap") }
             )
             if (dayActivities.any(TripActivity::hasMapCoordinates)) {
                 TextButton(
@@ -681,15 +697,6 @@ fun MapScreen(
             if (isMapDataLoading) {
                 CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
             }
-        }
-        if (showCrowd && crowdHint != null) {
-            Text(
-                "${crowdHint.level.lowercase().replaceFirstChar(Char::uppercase)} crowd • ${crowdHint.note}",
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
         }
         if (nearbyPlaces.isNotEmpty()) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
