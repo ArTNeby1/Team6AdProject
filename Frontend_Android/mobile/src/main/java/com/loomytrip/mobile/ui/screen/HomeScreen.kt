@@ -49,27 +49,45 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 
-private data class DestinationPreview(
+data class ExploreCity(
     val city: String,
     val detail: String,
+    val description: String,
+    val latitude: Double,
+    val longitude: Double,
+    val imageUrl: String,
     val colors: List<Color>
 )
 
-private val destinationPreviews = listOf(
-    DestinationPreview(
+private val exploreCities = listOf(
+    ExploreCity(
         city = "Chiang Mai",
         detail = "Temples & markets",
+        description = "Explore the old city, Lanna temples and northern Thai food markets.",
+        latitude = 18.7883,
+        longitude = 98.9853,
+        imageUrl = "https://images.unsplash.com/photo-1528181304800-259b08848526?w=900&h=600&fit=crop",
         colors = listOf(Color(0xFF48785E), Color(0xFFB8C7A3))
     ),
-    DestinationPreview(
+    ExploreCity(
         city = "Kyoto",
         detail = "Culture & gardens",
+        description = "Discover historic districts, quiet gardens and traditional Japanese culture.",
+        latitude = 35.0116,
+        longitude = 135.7681,
+        imageUrl = "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=900&h=600&fit=crop",
         colors = listOf(Color(0xFF9A574A), Color(0xFFE5B58D))
     ),
-    DestinationPreview(
+    ExploreCity(
         city = "Bali",
         detail = "Coast & wellness",
+        description = "Combine beaches, temples, rice terraces and relaxed island experiences.",
+        latitude = -8.4095,
+        longitude = 115.1889,
+        imageUrl = "https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=900&h=600&fit=crop",
         colors = listOf(Color(0xFF34777C), Color(0xFF92C6B8))
     )
 )
@@ -77,6 +95,7 @@ private val destinationPreviews = listOf(
 @Composable
 fun HomeScreen(
     onStartPlanning: () -> Unit,
+    onExploreCity: (ExploreCity) -> Unit,
     onViewTrip: () -> Unit,
     onViewAllTrips: () -> Unit,
     tripName: String?,
@@ -162,7 +181,7 @@ fun HomeScreen(
         }
 
         item {
-            val filtered = destinationPreviews.filter {
+            val filtered = exploreCities.filter {
                 searchQuery.isBlank() || it.city.contains(searchQuery, ignoreCase = true)
             }
             if (filtered.isEmpty()) {
@@ -175,7 +194,7 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(filtered) { destination ->
-                        DestinationCard(destination, onClick = onStartPlanning)
+                        DestinationCard(destination, onClick = { onExploreCity(destination) })
                     }
                 }
             }
@@ -338,7 +357,7 @@ private fun CurrentTripCard(tripName: String, dayCount: Int, stopCount: Int, onC
 }
 
 @Composable
-private fun DestinationCard(destination: DestinationPreview, onClick: () -> Unit) {
+private fun DestinationCard(destination: ExploreCity, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .width(168.dp)
@@ -353,11 +372,20 @@ private fun DestinationCard(destination: DestinationPreview, onClick: () -> Unit
                 .background(Brush.linearGradient(destination.colors)),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = Icons.Default.LocationOn,
-                contentDescription = null,
-                tint = Color.White.copy(alpha = 0.9f),
-                modifier = Modifier.size(32.dp)
+            AsyncImage(
+                model = destination.imageUrl,
+                contentDescription = destination.city,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.22f))
+                        )
+                    )
             )
         }
         Column(Modifier.padding(13.dp)) {

@@ -7,6 +7,7 @@ import com.loomytrip.mobile.data.network.BulkUpdateSchedulesRequest
 import com.loomytrip.mobile.data.network.ScheduleDto
 import com.loomytrip.mobile.data.network.TripDto
 import com.loomytrip.mobile.data.network.UpdateTripRequest
+import com.loomytrip.mobile.data.network.GenerateItineraryResponseDto
 import com.loomytrip.mobile.data.network.tripApi
 import java.time.LocalDate
 
@@ -17,8 +18,24 @@ object TripSyncRepository {
 
     suspend fun fetchTrip(tripId: Long): TripDto = tripApi.getTrip(tripId)
 
+    suspend fun deleteTrip(tripId: Long) = tripApi.deleteTrip(tripId)
+
     suspend fun updateStartDate(tripId: Long, startDate: LocalDate): TripDto =
-        tripApi.updateTrip(tripId, UpdateTripRequest(startDate.toString()))
+        tripApi.updateTrip(tripId, UpdateTripRequest(startDate = startDate.toString()))
+
+    suspend fun updateTripName(tripId: Long, tripName: String): TripDto =
+        tripApi.updateTrip(tripId, UpdateTripRequest(tripName = tripName.trim()))
+
+    suspend fun updatePreferences(tripId: Long, travelStyle: String, preferTransport: String): TripDto =
+        tripApi.updateTrip(
+            tripId,
+            UpdateTripRequest(travelStyle = travelStyle, preferTransport = preferTransport)
+        )
+
+    suspend fun generateItinerary(tripId: Long): Pair<GenerateItineraryResponseDto, TripDto> {
+        val result = tripApi.generateItinerary(tripId)
+        return result to tripApi.getTrip(tripId)
+    }
 
     fun sortForDisplay(trips: List<TripDto>): List<TripDto> = trips.sortedWith { left, right ->
         val statusComparison = statusOrder(left.status).compareTo(statusOrder(right.status))
@@ -72,8 +89,10 @@ object TripSyncRepository {
     suspend fun syncEdits(
         tripId: Long,
         activities: List<TripActivity>,
-        baseline: List<ScheduleDto>
+        baseline: List<ScheduleDto>,
+        durationDays: Int
     ): TripDto {
+        tripApi.updateTrip(tripId, UpdateTripRequest(durationDays = durationDays.coerceAtLeast(1)))
         val keptIds = activities.mapNotNull { it.id.toLongOrNull() }.toSet()
         baseline.map { it.id }.filterNot { it in keptIds }.forEach { removedId ->
             tripApi.deleteSchedule(tripId, removedId)

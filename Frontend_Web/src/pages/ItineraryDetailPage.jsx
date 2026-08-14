@@ -25,13 +25,14 @@ const ItineraryDetailPage = () => {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitleValue, setEditTitleValue] = useState('');
   const [showImageModal, setShowImageModal] = useState(false);
-  const [routeStats, setRouteStats] = useState({ distance: 0, time: 0 });
+  const [routeStats, setRouteStats] = useState({ distance: 0, time: 0, transports: [] });
 
   const dateInputRef = useRef(null);
 
   // AI Summary State from Import flow
   const [aiSummary, setAiSummary] = useState(location.state?.showAiSummary ? location.state : null);
   const [selectedGems, setSelectedGems] = useState(new Set());
+  const [showCopyAlert, setShowCopyAlert] = useState(false);
 
   const toggleGem = (name) => {
     setSelectedGems(prev => {
@@ -68,11 +69,12 @@ const ItineraryDetailPage = () => {
         .then(res => {
           setRouteStats({
             distance: res.data.totalDistanceKm || 0,
-            time: res.data.totalDurationMinutes || 0
+            time: res.data.totalDurationMinutes || 0,
+            transports: res.data.transports || []
           });
         })
         .catch(() => {
-          setRouteStats({ distance: 0, time: 0 });
+          setRouteStats({ distance: 0, time: 0, transports: [] });
         });
     }
   }, [trip?.id, selectedDay, trip?.locations]);
@@ -89,6 +91,18 @@ const ItineraryDetailPage = () => {
       updateTripTitle(trip.id, editTitleValue.trim());
       setIsEditingTitle(false);
     }
+  };
+
+  const handleShare = () => {
+    // Current URL as the share link
+    const shareUrl = window.location.href;
+
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      setShowCopyAlert(true);
+      setTimeout(() => setShowCopyAlert(false), 3000); // Auto-hide after 3s
+    }).catch(err => {
+      console.error('Failed to copy link:', err);
+    });
   };
 
   const handleFileChange = (e) => {
@@ -120,6 +134,18 @@ const ItineraryDetailPage = () => {
 
   return (
     <div className="route-page">
+      {/* COPY NOTIFICATION TOAST */}
+      {showCopyAlert && (
+        <div style={{
+          position: 'fixed', top: '100px', left: '50%', transform: 'translateX(-50%)',
+          background: 'var(--ink)', color: '#fff', padding: '12px 24px',
+          borderRadius: '12px', zIndex: 9999, fontWeight: '700',
+          boxShadow: '0 8px 30px rgba(0,0,0,0.2)', animation: 'slideDown 0.3s ease-out'
+        }}>
+          ✅ Trip URL copied to clipboard!
+        </div>
+      )}
+
       <header className="page-header" style={{marginBottom: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
           <button className="btn-secondary" style={{alignSelf: 'flex-start', padding: '6px 16px', marginBottom: '12px', fontSize: '14px'}} onClick={() => navigate('/route')}>
@@ -261,6 +287,7 @@ const ItineraryDetailPage = () => {
                 fontSize: '14px',
                 borderRadius: '12px'
               }}
+              onClick={handleShare}
             >
               Share
             </button>
@@ -363,7 +390,29 @@ const ItineraryDetailPage = () => {
                       <div className="tl-transport">
                         <div className="tl-left"><div className="tl-line-dotted"></div></div>
                         <div className="tl-trans-info">
-                          <span>{item.transport || '🚕 15 min Transport'}</span>
+                          {(() => {
+                            const transport = routeStats.transports.find(
+                              t => t.prevScheduleId.toString() === item.id.toString() &&
+                                   t.nextScheduleId.toString() === dayLocations[idx + 1].id.toString()
+                            );
+                            if (transport) {
+                              const iconMap = {
+                                'walking': '🚶',
+                                'driving': '🚕',
+                                'taxi': '🚕',
+                                'bus': '🚌',
+                                'transit': '🚌',
+                                'bicycle': '🚲'
+                              };
+                              const icon = iconMap[transport.transportType.toLowerCase()] || '🚕';
+                              return (
+                                <span>
+                                  {icon} {transport.durationMinutes} min {transport.transportType}
+                                </span>
+                              );
+                            }
+                            return <span>🚕 15 min Transport</span>;
+                          })()}
                         </div>
                       </div>
                     )}

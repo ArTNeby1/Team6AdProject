@@ -2,18 +2,10 @@
 
 Open this folder in Android Studio and run the `mobile` configuration.
 
-## Google Maps
+## Maps
 
-The app keeps its local route preview when no Maps key is configured. To use the real map:
+The in-app map follows the Web implementation: Leaflet renders the tile URL and default view returned by `GET /api/v1/map/config`. Trip markers come from the selected trip and day.
 
-1. Enable **Maps SDK for Android** in the team's Google Cloud project.
-2. Add this line to `Frontend_Android/local.properties`:
+`GET /api/v1/trips/{tripId}/route?day={day}` supplies distance, travel time, and the multi-stop Google Maps URL. `Open Google Maps` opens that whole-day route in the Google Maps app or browser.
 
-   ```properties
-   MAPS_API_KEY=your_android_maps_key
-   ```
-
-3. Restrict the key to the Android package `com.loomytrip.mobile` and the signing certificate used by the team.
-4. Rebuild the app.
-
-Do not commit `local.properties` or the API key.
+No Google Maps SDK key is required for either flow.
