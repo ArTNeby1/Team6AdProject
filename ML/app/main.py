@@ -38,7 +38,10 @@ mock 模式下：
 - 秒回，不用等模型推理
 - /recommend 返回的地点、坐标、距离都还是**真的**（来自 107 条真实数据集，
   纯 TF-IDF 计算不需要模型），只有推荐理由 reason 换成了 [MOCK] 开头的模板句
-- /extract-travel-info 返回的是固定的两条假数据，不看输入内容
+- /extract-travel-info 返回的**地点**是固定的两条假数据，不看输入内容；
+  但 duration_days 会真的看输入文本（"3 days"/"3天"/"Day 1..Day 3" -> 对应天数，
+  没写 -> null / needs_duration_input=true），这样"没说天数就弹窗问用户"那条
+  分支在 mock 下也测得到，见 mock_client.mock_duration_days
 
 等 HTTP 那层调通了，把这三个环境变量去掉就切回真实模型。
 """
@@ -148,10 +151,23 @@ def _extraction_response(result) -> dict:
     """
     if result.error:
         raise HTTPException(status_code=502, detail=result.error)
+    duration_days = result.extraction.duration_days
     return {
         "status": "OK",
         "destination": result.extraction.destination,
         "dates": result.extraction.dates,
+        # 这一行是 /plan-itinerary 的 num_days 的**唯一来源**：只有抽取这一步看得到
+        # 原始文本，后端拿到的是结构化 JSON，这里不给它就永远造不出"玩几天"。
+        # 文本没说时是 null（见 ai_contract.md 第 5.5 节）。
+        "duration_days": duration_days,
+        # 恒等于 `duration_days is None`，但仍然单独给一个字段，理由是把"这时候
+        # 该怎么办"这条规则**定死在 AI 侧**，而不是让三端各自解释一个 null：
+        #   true  -> 天数没抽到，**必须先问用户**（前端弹窗），拿到答案再排行程
+        #   false -> 天数已经有了，直接拿 duration_days 当 num_days 排
+        # 不这么写的话，最省事的实现就是从 dates 反推天数，而 dates 反推是错的
+        # （["2026-08-09","2026-08-11"] 分不清"玩3天"还是"这两天各去一次"），
+        # 或者默默按 1 天排 —— 用户说了玩 3 天却拿到 1 天，还不会报错。
+        "needs_duration_input": duration_days is None,
         "places": [p.model_dump() for p in result.extraction.places],
     }
 
@@ -243,12 +259,18 @@ def recommend(request: RecommendRequest) -> dict:
 
 class PlanItineraryRequest(BaseModel):
     """
-    字段名对齐后端 `AiPlanningClient.generateDailyItinerary()`（目前还是 STUB）。
+    字段名对齐后端 `AiPlanningClient.planItinerary()`。
     places 复用 /recommend 的形状，后端不用为这个接口另写一套 DTO。
     """
     places: list[RecommendPlaceIn]
     start_date: str | None = None
-    num_days: int = Field(default=1, ge=1, le=30)
+    # 2026-08-14：默认值从 1 改成 None（= 必填）。
+    # 原来是 `default=1`，调用方漏传时会**静默**排成 1 天的行程并返回 200 ——
+    # 用户明明说了"玩3天"，结果拿到 1 天，全链路没有任何地方会报错，只能靠肉眼
+    # 发现。天数是这个接口唯一说不清就没法算的参数，宁可吵（400）也不要静默出错。
+    # 后端 AiPlanningClientHttp.planItinerary() 一直是显式传值的，所以这个改动
+    # 在现有调用方上不产生任何行为变化，只挡住"忘了接"这种情况。
+    num_days: int | None = Field(default=None, ge=1, le=30)
 
 
 @app.post("/plan-itinerary")
@@ -269,11 +291,29 @@ def plan_itinerary(request: PlanItineraryRequest) -> dict:
     - 传了 -> 每天各查各天的天气，按天气+距离排，返回每天的 `weather_summary`
     - 没传 -> 跳过天气，只按距离排，`weather_summary` / `time_of_day` 都是 `null`
 
+    `num_days` **必填**，来源只有两个（见 ai_contract.md 第 5.5 节）：
+    - `/extract-travel-info` 的 `duration_days` 不为 null -> 直接用它
+    - 为 null（`needs_duration_input: true`）-> 前端弹窗问用户，把答案传进来
+    漏传直接 400，不会默默按 1 天排。
+
     返回 `days` 数组，长度**永远等于 num_days**（某天没地点就是 `stops: []`），
     前端可以直接按天渲染，不用自己补空缺的天。每天的 `order` 从 1 重新开始。
     """
     if not request.places:
         raise HTTPException(status_code=400, detail="places must not be empty")
+
+    if request.num_days is None:
+        # 错误消息写英文并带一个稳定的前缀码：这条会经 HTTP 400 传到后端/前端，
+        # 是跨服务的对外文本；前缀码让对方能靠字符串前缀分支，不用解析整句话。
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "NUM_DAYS_REQUIRED: num_days is required and has no default. "
+                "Take it from /extract-travel-info's duration_days; when that is "
+                "null (needs_duration_input=true), ask the user how many days the "
+                "trip lasts and pass the answer here. Never infer it from dates."
+            ),
+        )
 
     try:
         result = run_daily_itinerary(

@@ -54,6 +54,55 @@ def test_bad_coords():
     )
 
 
+def expect_ok(name, fn):
+    try:
+        fn()
+    except Exception as e:
+        print(f"[FAIL] {name} -> unexpectedly raised {type(e).__name__}: {e}")
+    else:
+        print(f"[PASS] {name}")
+
+
+def test_duration_days_defaults_to_none():
+    # duration_days 是选填：文本没说玩几天时，模型不写这个字段也必须能过校验，
+    # 拿到的是 None 而不是报错——不能因为加了新字段就把老的抽取结果全判成不合规。
+    data = {
+        "destination": "Singapore",
+        "places": [{"name": "Gardens by the Bay", "type": "attraction"}],
+    }
+    trip = main.parse_and_validate(json.dumps(data))
+    if trip.duration_days is None:
+        print("[PASS] duration_days omitted -> defaults to None")
+    else:
+        print(f"[FAIL] duration_days omitted -> expected None, got {trip.duration_days!r}")
+
+
+def test_duration_days_accepts_valid_value():
+    # mock_extract 的 duration_days 是看输入文本的（见 mock_client.mock_duration_days），
+    # 所以这里要给一段真的写了天数的文本，否则测的是 None 那条分支。
+    expect_ok(
+        "duration_days from 'a 3-day trip' passes validation",
+        lambda: main.parse_and_validate(mock_client.mock_extract("a 3-day trip in Singapore")),
+    )
+
+
+def test_duration_days_rejects_out_of_range():
+    # 上限对齐 itinerary_planner.MAX_DAYS=30。模型偶尔会把"住 3 晚"之类的话
+    # 理解成很大的数，这种要在抽取这一关就拦下来，而不是传到 /plan-itinerary
+    # 才被 Pydantic 拒绝——那时候错误信息指向的是后端传参，排查方向就错了。
+    for bad_value in (0, 31):
+        data = {
+            "destination": "Singapore",
+            "duration_days": bad_value,
+            "places": [{"name": "Gardens by the Bay", "type": "attraction"}],
+        }
+        expect_raises(
+            f"duration_days={bad_value} out of 1..30",
+            ValidationError,
+            lambda d=data: main.parse_and_validate(json.dumps(d)),
+        )
+
+
 def test_retry_gives_up_after_max_attempts():
     # 模拟一个"永远答错"的模型：重试 MAX_ATTEMPTS 次后应该放弃，抛出 502 错误，而不是无限重试或直接崩溃
     original = main.EXTRACT_FN
@@ -97,5 +146,8 @@ if __name__ == "__main__":
     test_bad_json()
     test_missing_field()
     test_bad_coords()
+    test_duration_days_defaults_to_none()
+    test_duration_days_accepts_valid_value()
+    test_duration_days_rejects_out_of_range()
     test_retry_gives_up_after_max_attempts()
     test_retry_recovers_when_model_eventually_succeeds()

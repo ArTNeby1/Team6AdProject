@@ -60,6 +60,21 @@ class TripExtraction(BaseModel):
         "If the text only says Day 1 / Day 2 with no real dates, return an empty array. "
         "Never invent a year.",
     )
+    # 为什么单独加这个字段，而不是让下游从 dates 推算：dates 是"文中明确写出的日历
+    # 日期"，["2026-08-09", "2026-08-11"] 到底是"9号到11号玩3天"还是"9号和11号各去
+    # 一次"，从数组本身分辨不出来。而 /plan-itinerary 的 num_days 必须是个确定的数，
+    # 猜错了整个行程的天数就是错的。所以让模型直接抽"文本说玩几天"这件事本身，
+    # 抽不到就是 None —— 跟 coords/dates 一样，宁可为空也不编。
+    # 上限 30 对齐 itinerary_planner.MAX_DAYS，免得抽出个 200 天传下去才被拒。
+    duration_days: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=30,
+        description="Total number of days the whole trip lasts, if the text states it "
+        "(e.g. 'a 3-day trip', or the text is organised as Day 1 / Day 2 / Day 3). "
+        "Never guess or infer this from the number of places: return null when the "
+        "text does not say how long the trip is.",
+    )
     places: list[Place] = Field(min_length=1, description="Every place mentioned in the text")
 
 
