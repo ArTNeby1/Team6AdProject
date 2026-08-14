@@ -354,21 +354,31 @@ public class PlanningService {
      * Returns the offending {@code destination} string if the extraction landed outside
      * Singapore, or {@code null} if it's in scope (blank/missing destination counts as
      * in-scope — the AI just didn't say). Split out of {@link #persistExtraction} so
-     * {@link #createSession} can check it without committing to throwing: Bedrock's
-     * destination field is noisy on short, landmark-only notes (e.g. "Gardens by the Bay
-     * this morning...") — it sometimes echoes back the landmark name instead of inferring
-     * "Singapore", even though the trip is obviously local. One retry of the same extraction
-     * call clears this up in practice far more often than it doesn't, so createSession()
-     * gives it a second try before persistExtraction makes the final, throwing call.
+     * {@link #createSession} can check it without committing to throwing.
+     *
+     * <p>Product rule: "any landmark that exists in Singapore counts as Singapore" — this
+     * app only ever plans Singapore trips, so a global-namesake landmark should resolve to
+     * its Singapore instance, never get flagged as foreign. Bedrock's {@code destination}
+     * field is noisy on short, landmark-only notes (e.g. "Gardens by the Bay this
+     * morning...") — it sometimes echoes back the landmark name instead of inferring
+     * "Singapore". A plain substring check on that string would wrongly reject those, so
+     * when it doesn't literally say "Singapore" we geocode the string itself, scoped to
+     * Singapore (same {@code countrycodes=sg} restriction as every other place lookup —
+     * see MapPlacesClientHttp). A hit means the name genuinely exists here (Gardens by the
+     * Bay does); a miss means it's actually foreign (Tokyo Tower doesn't).
      */
     private String outOfScopeDestination(Map<String, Object> result) {
         Object destinationValue = result.get("destination");
-        if (destinationValue instanceof String destination
-                && !destination.isBlank()
-                && !destination.toLowerCase(java.util.Locale.ROOT).contains(DEFAULT_DESTINATION.toLowerCase(java.util.Locale.ROOT))) {
-            return destination;
+        if (!(destinationValue instanceof String destination) || destination.isBlank()) {
+            return null;
         }
-        return null;
+        if (destination.toLowerCase(java.util.Locale.ROOT).contains(DEFAULT_DESTINATION.toLowerCase(java.util.Locale.ROOT))) {
+            return null;
+        }
+        if (mapPlacesClient.existsNotablyInSingapore(destination)) {
+            return null;
+        }
+        return destination;
     }
 
     /**

@@ -86,6 +86,41 @@ public class MapPlacesClientHttp implements MapPlacesClient {
         }
     }
 
+    /** Nominatim's own "how significant is this result" score (0–1ish). A real landmark or
+     * neighbourhood lands well above this; a small business whose name happens to match
+     * doesn't — see the interface javadoc for the "Tokyo Soba" example that motivated this. */
+    private static final double NOTABLE_IMPORTANCE_THRESHOLD = 0.1;
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public boolean existsNotablyInSingapore(String name) {
+        if (name == null || name.isBlank()) {
+            return false;
+        }
+        try {
+            List<Map<String, Object>> results = restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/search")
+                            .queryParam("q", name)
+                            .queryParam("format", "json")
+                            .queryParam("limit", "3")
+                            .queryParam("addressdetails", "0")
+                            .queryParam("countrycodes", "sg")
+                            .build())
+                    .retrieve()
+                    .body(List.class);
+            if (results == null) {
+                return false;
+            }
+            return results.stream().anyMatch(r -> {
+                Object importance = r.get("importance");
+                return importance instanceof Number n && n.doubleValue() >= NOTABLE_IMPORTANCE_THRESHOLD;
+            });
+        } catch (RestClientException | ClassCastException e) {
+            return false;
+        }
+    }
+
     private static String buildQuery(String name, String address) {
         String n = name == null ? "" : name.trim();
         String a = address == null ? "" : address.trim();
