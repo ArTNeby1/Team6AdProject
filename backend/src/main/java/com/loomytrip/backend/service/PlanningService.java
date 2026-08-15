@@ -259,9 +259,9 @@ public class PlanningService {
             ));
             draftPlaceRepository.save(place);
 
-            // Nominatim asks for max ~1 request/second for the public instance.
+            // Keep a small gap between public geocoder calls (Photon / OSM etiquette).
             try {
-                Thread.sleep(1100L);
+                Thread.sleep(400L);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;

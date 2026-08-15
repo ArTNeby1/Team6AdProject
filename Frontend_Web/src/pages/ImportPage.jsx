@@ -180,7 +180,17 @@ const ImportPage = () => {
         setResults(placesForConfirmation);
       }
 
-      await api.post(`/planning-sessions/${sessionId}/validate-places`);
+      const validated = await api.post(`/planning-sessions/${sessionId}/validate-places`);
+      const validatedPlaces = mapDraftPlaces(validated.data.draftPlaces || []);
+      setResults(validatedPlaces);
+      const unresolved = validatedPlaces.filter((place) => place.status !== 'ok').map((place) => place.name);
+      if (unresolved.length > 0) {
+        alert(
+          `Could not locate these places on the map, so confirmation is blocked:\n${unresolved.join(', ')}\n\n`
+          + 'Edit the names to clearer Singapore landmarks and try again.'
+        );
+        return;
+      }
       // POST /planning-sessions/{id}/confirm — backend creates a brand new Trip.
       // The AI /recommend call it makes server-side (F-18) also returns suggestedAdditions
       // (nearby/similar places not already in the trip) — it's ephemeral, not persisted by
