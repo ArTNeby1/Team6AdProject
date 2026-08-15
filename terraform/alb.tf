@@ -14,6 +14,7 @@ resource "aws_lb" "main" {
 }
 
 resource "aws_lb_target_group" "java" {
+  #checkov:skip=CKV_AWS_378:ALB 现在还没有自定义域名/ACM 证书（见文件顶部说明），整条链路
   name        = "${var.project_name}-java-${var.environment}"
   port        = 8080
   protocol    = "HTTP"
@@ -31,6 +32,7 @@ resource "aws_lb_target_group" "java" {
 }
 
 resource "aws_lb_target_group" "ml" {
+  #checkov:skip=CKV_AWS_378:没有域名/ACM 证书之前只能走 HTTP
   name        = "${var.project_name}-ml-${var.environment}"
   port        = 8000
   protocol    = "HTTP"

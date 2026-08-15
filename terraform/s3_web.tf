@@ -11,6 +11,13 @@
 # 再补。
 
 resource "aws_s3_bucket" "frontend_web" {
+  #checkov:skip=CKV2_AWS_6:这个桶就是用来做公开静态网站托管的
+  #  + 公开读 policy），全部锁死 public access block 会直接把网站锁没了，跟用途冲突
+  #checkov:skip=CKV_AWS_145:桶里只放可重新构建的前端打包产物，不是用户数据，SSE-S3
+  #  已经够用；上 KMS 要额外建/管一把 key、每次读写多一次 KMS API 调用，对这个桶的
+  #  实际风险降低有限，性价比不划算
+  #checkov:skip=CKV_AWS_144:跨区域复制是灾备级别的要求，这个桶的内容每次 CI 部署都会
+  #  重新生成（aws s3 sync），丢了直接重新跑一次流水线就能恢复，不需要跨区域复制
   bucket = "${var.project_name}-frontend-web-${var.environment}"
 }
 

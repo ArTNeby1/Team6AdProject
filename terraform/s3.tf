@@ -1,6 +1,8 @@
 # 存储 Maven 构建产物的 JAR 包
 
 resource "aws_s3_bucket" "java_artifacts" {
+  #checkov:skip=CKV_AWS_145:桶里只放可重新构建的 JAR 制品，不是用户数据，SSE-S3 已经够用；
+  #  上 KMS 要额外建/管一把 key、每次读写多一次 KMS API 调用，性价比不划算
   bucket = "${var.project_name}-java-artifacts-${var.environment}"
 }
 

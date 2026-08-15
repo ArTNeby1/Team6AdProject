@@ -3,6 +3,8 @@
 # ============================================================
 
 resource "aws_s3_bucket" "frontend_android" {
+  #checkov:skip=CKV_AWS_145:桶里只放可重新构建的 APK 制品，不是用户数据，SSE-S3 已经够用；
+  #  上 KMS 要额外建/管一把 key、每次读写多一次 KMS API 调用，性价比不划算
   bucket = "${var.project_name}-frontend-android-${var.environment}"
 }
 
