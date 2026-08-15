@@ -78,6 +78,23 @@
 >
 > 自测脚本：`python ML/app/test_no_useful_content.py`（不需要 AWS/Ollama，11 条全绿）。
 
+> **⭐ 2026-08-15 更新（前端要看，`suggested_additions` 多了一种条目，字段不变）**
+>
+> 新功能：用户提到"夜市"这种**笼统类别**而不是具体地点名时（比如 `places` 里
+> 有一条 `name: "night market"` / `"夜市"`），`/recommend` 会自动把它换成
+> 1~2 个真实存在的具体夜市候选，**拼进已有的 `suggested_additions` 数组**，
+> 不是新字段、不是新接口——前端已经把 `suggested_additions` 当"推荐加入，用户
+> 勾选"的一块 UI，夜市候选跟景点候选混在同一个列表里，**不需要为夜市另做区分
+> 处理**，`type: "market"` 是唯一的区别（要单独显示分类图标可以按这个字段分）。
+> 触发条件很朴素：地点名精确匹配一份手工词表（"night market"/"夜市"/
+> "market"/"pasar malam" 等），不是语义理解——用户如果直接说了具体夜市的名字
+> （比如 "Bugis Street Market"），不会被当成笼统类别，走正常流程。
+> 目前只接了夜市这一个类别，数据集里对应两条真实候选（Chinatown Street
+> Market / Bugis Street Market，手工核实的真实地址坐标，来源不是官方
+> data.gov.sg 数据集，见 `ML/app/vague_place.py` 顶部说明）。
+> 代码：`ML/app/vague_place.py`，接在 `orchestrator.run_recommendation()`
+> 里。自测：`python ML/app/test_vague_place.py`（不需要 AWS/Ollama，10 条全绿）。
+
 > **S3 进度（2026-08-08）**：接口层没变化（后端联调还是卡点），但补齐了 S2/S3
 > 的几项欠账，都是独立于后端进度、可以先做的：F-18 补了 grounding 逻辑的自动化
 > 测试、F-32 顺序优化加了 2-opt、F-33 人流预测原型（季节性代理信号，还没接

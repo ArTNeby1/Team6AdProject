@@ -49,6 +49,7 @@ from recommend_agent import (  # noqa: E402
     recommend_places,
 )
 from trip_models import TripExtraction  # noqa: E402
+from vague_place import resolve_vague_place_suggestions  # noqa: E402
 
 # 跟 main.py 的 EXTRACT_PROVIDER 说明一致：固定默认 Bedrock Nova Lite，
 # 显式设 EXTRACT_PROVIDER=ollama / mock 才切走。
@@ -151,8 +152,12 @@ def run_recommendation(
     1. `ordered_stops` —— 把**用户自己确认的**地点重排（itinerary_planner）：
        下雨的时段排室内、不下雨排室外，同时段内按距离串线路。
        没给 target_date 或天气查不到时，退化成纯按距离排。
-    2. `suggested_additions` —— 推荐**用户没提过的**新地点（recommend_grounded）：
-       候选来自真实数据集，LLM 只负责从候选里挑并写理由，不会编造景点。
+    2. `suggested_additions` —— 推荐**用户没提过的**新地点，两部分拼在一起：
+       - recommend_grounded()：候选来自真实数据集，LLM 从候选里挑并写理由；
+       - resolve_vague_place_suggestions()：places 里如果有"夜市"这种笼统
+         类别名（不是具体地点），换成数据集里真实存在的具体候选（见
+         vague_place.py）。两部分字段形状完全一样，前端不用区分处理，
+         在同一块"推荐加入"列表里勾选就行。
 
     places: 用户确认后的地点，形状跟抽取结果的 places 一致。
         带 lat/lng 时才能算距离（"nearby"）和串线路，没有就自动退回纯文本相似度。
@@ -167,6 +172,12 @@ def run_recommendation(
         mode=mode,
         max_distance_km=max_distance_km,
     )
+    already_suggested = {s["name"].strip().lower() for s in suggested}
+    for vague_suggestion in resolve_vague_place_suggestions(places, top_n=top_n):
+        # 去重：避免 recommend_grounded 和笼统类别匹配都选中同一个地点时重复展示。
+        if vague_suggestion["name"].strip().lower() not in already_suggested:
+            suggested.append(vague_suggestion)
+            already_suggested.add(vague_suggestion["name"].strip().lower())
 
     # 传进 planner 的是副本：plan_ordered_stops 会往 dict 里塞内部用的 _io 字段，
     # 不复制的话会污染调用方传进来的原始数据。
