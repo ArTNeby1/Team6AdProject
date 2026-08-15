@@ -37,6 +37,9 @@ loomytrip:
     # ML/app 那个 FastAPI 服务的地址（uvicorn main:app --app-dir ML/app --port 8001）
     base-url: ${AI_SERVICE_BASE_URL:http://localhost:8001}
   map:
+    # Photon is the primary geocoder: public Nominatim often blocks AWS ECS IPs,
+    # which made every online validate-places call mark landmarks as INVALID.
+    photon-base-url: ${PHOTON_BASE_URL:https://photon.komoot.io}
     nominatim-base-url: ${NOMINATIM_BASE_URL:https://nominatim.openstreetmap.org}
     tile-url-template: ${MAP_TILE_URL_TEMPLATE:https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png}
     attribution: ${MAP_ATTRIBUTION:© OpenStreetMap contributors}

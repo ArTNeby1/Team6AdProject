@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Value;
@@ -13,8 +14,11 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 /**
- * Geocodes draft places via OpenStreetMap Nominatim (no API key required for course/dev use).
- * Failures degrade to {@link Optional#empty()} so planning flows stay usable offline.
+ * Geocodes draft places via Photon (OpenStreetMap).
+ *
+ * <p>The public Nominatim instance frequently returns empty results from AWS IP ranges,
+ * which left every online import stuck at {@code INVALID} and blocked confirm. Photon is
+ * used as the primary lookup so ECS deployments can resolve Singapore landmarks.
  */
 @Component
 public class MapPlacesClientHttp implements MapPlacesClient {
@@ -22,7 +26,7 @@ public class MapPlacesClientHttp implements MapPlacesClient {
     private final RestClient restClient;
 
     public MapPlacesClientHttp(
-            @Value("${loomytrip.map.nominatim-base-url:https://nominatim.openstreetmap.org}") String baseUrl
+            @Value("${loomytrip.map.photon-base-url:https://photon.komoot.io}") String baseUrl
     ) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout((int) Duration.ofSeconds(5).toMillis());
@@ -36,7 +40,6 @@ public class MapPlacesClientHttp implements MapPlacesClient {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public Optional<PlaceMatch> validatePlace(String name, String address) {
         String query = buildQuery(name, address);
         if (query.isBlank()) {
@@ -44,41 +47,25 @@ public class MapPlacesClientHttp implements MapPlacesClient {
         }
 
         try {
-            // countrycodes=sg 把结果锁定在新加坡——不加这个的话 Nominatim 是全球搜索，
-            // 像 "Chinatown" 这种哪个国家都有同名地标的查询，会按全球热度返回最高分的
-            // 那个（实测返回的是纽约唐人街 40.71,-73.99），而不是本地这个。整个 app
-            // 明确只做新加坡行程规划（见 PlanningService 的 OUT_OF_SCOPE 校验），
-            // 地理编码结果也该锁在同一个范围内，不然存进去的坐标可能悄悄跑去别的国家。
-            List<Map<String, Object>> results = restClient.get()
-                    .uri(uriBuilder -> uriBuilder
-                            .path("/search")
-                            .queryParam("q", query)
-                            .queryParam("format", "json")
-                            .queryParam("limit", "3")
-                            .queryParam("addressdetails", "0")
-                            .queryParam("countrycodes", "sg")
-                            .build())
-                    .retrieve()
-                    .body(List.class);
-
-            if (results == null || results.isEmpty()) {
+            Map<?, ?> body = search(query, 5);
+            Map<?, ?> best = firstSingaporeFeature(body).orElse(null);
+            if (best == null) {
                 return Optional.empty();
             }
 
-            Map<String, Object> best = results.get(0);
-            BigDecimal lat = toDecimal(best.get("lat"));
-            BigDecimal lon = toDecimal(best.get("lon"));
-            if (lat == null || lon == null) {
+            BigDecimal[] coords = coordinates(best);
+            if (coords == null) {
                 return Optional.empty();
             }
 
-            String displayName = stringVal(best.get("display_name"));
-            String placeId = stringVal(best.get("place_id"));
+            Map<?, ?> properties = asMap(best.get("properties"));
+            String displayName = displayName(properties, name);
+            String placeId = stringVal(properties == null ? null : properties.get("osm_id"));
             return Optional.of(new PlaceMatch(
                     name != null && !name.isBlank() ? name.trim() : displayName,
                     displayName,
-                    lat,
-                    lon,
+                    coords[0],
+                    coords[1],
                     placeId
             ));
         } catch (RestClientException | ClassCastException e) {
@@ -86,48 +73,149 @@ public class MapPlacesClientHttp implements MapPlacesClient {
         }
     }
 
-    /** Nominatim's own "how significant is this result" score (0–1ish). A real landmark or
-     * neighbourhood lands well above this; a small business whose name happens to match
-     * doesn't — see the interface javadoc for the "Tokyo Soba" example that motivated this. */
-    private static final double NOTABLE_IMPORTANCE_THRESHOLD = 0.1;
-
     @Override
-    @SuppressWarnings("unchecked")
     public boolean existsNotablyInSingapore(String name) {
         if (name == null || name.isBlank()) {
             return false;
         }
         try {
-            List<Map<String, Object>> results = restClient.get()
-                    .uri(uriBuilder -> uriBuilder
-                            .path("/search")
-                            .queryParam("q", name)
-                            .queryParam("format", "json")
-                            .queryParam("limit", "3")
-                            .queryParam("addressdetails", "0")
-                            .queryParam("countrycodes", "sg")
-                            .build())
-                    .retrieve()
-                    .body(List.class);
-            if (results == null) {
-                return false;
-            }
-            return results.stream().anyMatch(r -> {
-                Object importance = r.get("importance");
-                return importance instanceof Number n && n.doubleValue() >= NOTABLE_IMPORTANCE_THRESHOLD;
-            });
+            Map<?, ?> body = search(name.trim(), 5);
+            return firstSingaporeFeature(body)
+                    .map(feature -> {
+                        Map<?, ?> properties = asMap(feature.get("properties"));
+                        if (properties == null) {
+                            return false;
+                        }
+                        String matchedName = stringVal(properties.get("name"));
+                        if (matchedName == null || matchedName.isBlank()) {
+                            return false;
+                        }
+                        String needle = name.trim().toLowerCase(Locale.ROOT);
+                        String haystack = matchedName.toLowerCase(Locale.ROOT);
+                        return haystack.contains(needle) || needle.contains(haystack);
+                    })
+                    .orElse(false);
         } catch (RestClientException | ClassCastException e) {
             return false;
         }
     }
 
+    @SuppressWarnings("unchecked")
+    private Map<?, ?> search(String query, int limit) {
+        return restClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/")
+                        .queryParam("q", query)
+                        .queryParam("limit", limit)
+                        .queryParam("lang", "en")
+                        .build())
+                .retrieve()
+                .body(Map.class);
+    }
+
+    private Optional<Map<?, ?>> firstSingaporeFeature(Map<?, ?> body) {
+        if (body == null) {
+            return Optional.empty();
+        }
+        Object featuresValue = body.get("features");
+        if (!(featuresValue instanceof List<?> features) || features.isEmpty()) {
+            return Optional.empty();
+        }
+        for (Object feature : features) {
+            if (!(feature instanceof Map<?, ?> map)) {
+                continue;
+            }
+            if (isSingapore(map)) {
+                return Optional.of(map);
+            }
+        }
+        return Optional.empty();
+    }
+
+    private boolean isSingapore(Map<?, ?> feature) {
+        Map<?, ?> properties = asMap(feature.get("properties"));
+        if (properties == null) {
+            return false;
+        }
+        String countryCode = stringVal(properties.get("countrycode"));
+        if (countryCode != null && "sg".equalsIgnoreCase(countryCode)) {
+            return true;
+        }
+        String country = stringVal(properties.get("country"));
+        return country != null && country.toLowerCase(Locale.ROOT).contains("singapore");
+    }
+
+    private static BigDecimal[] coordinates(Map<?, ?> feature) {
+        Map<?, ?> geometry = asMap(feature.get("geometry"));
+        if (geometry == null) {
+            return null;
+        }
+        Object coordinatesValue = geometry.get("coordinates");
+        if (!(coordinatesValue instanceof List<?> coordinates) || coordinates.size() < 2) {
+            return null;
+        }
+        BigDecimal lon = toDecimal(coordinates.get(0));
+        BigDecimal lat = toDecimal(coordinates.get(1));
+        if (lat == null || lon == null) {
+            return null;
+        }
+        return new BigDecimal[]{lat, lon};
+    }
+
+    private static String displayName(Map<?, ?> properties, String fallback) {
+        if (properties == null) {
+            return fallback;
+        }
+        String name = stringVal(properties.get("name"));
+        String city = stringVal(properties.get("city"));
+        String country = stringVal(properties.get("country"));
+        StringBuilder display = new StringBuilder();
+        if (name != null && !name.isBlank()) {
+            display.append(name);
+        }
+        if (city != null && !city.isBlank()) {
+            if (!display.isEmpty()) {
+                display.append(", ");
+            }
+            display.append(city);
+        }
+        if (country != null && !country.isBlank()) {
+            if (!display.isEmpty()) {
+                display.append(", ");
+            }
+            display.append(country);
+        }
+        return display.isEmpty() ? fallback : display.toString();
+    }
+
     private static String buildQuery(String name, String address) {
-        String n = name == null ? "" : name.trim();
-        String a = address == null ? "" : address.trim();
+        String n = normalizeQuery(name);
+        String a = normalizeQuery(address);
         if (!n.isEmpty() && !a.isEmpty() && !a.equalsIgnoreCase(n)) {
             return n + ", " + a;
         }
         return !n.isEmpty() ? n : a;
+    }
+
+    /**
+     * Strips noise that makes Photon/Nominatim miss real Singapore landmarks
+     * (e.g. "Lau Pa Sat hawker centre", "Kampong Glam / Arab Street").
+     */
+    private static String normalizeQuery(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String cleaned = raw
+                .replaceAll("[（(][^）)]*[）)]", " ")
+                .replace('/', ' ')
+                .replaceAll("(?i)\\b(hawker\\s+centre|hawker\\s+center|food\\s+court)\\b", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+        return cleaned;
+    }
+
+    private static Map<?, ?> asMap(Object value) {
+        return value instanceof Map<?, ?> map ? map : null;
     }
 
     private static BigDecimal toDecimal(Object value) {
