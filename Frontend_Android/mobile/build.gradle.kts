@@ -57,6 +57,14 @@ android {
         compose = true
         buildConfig = true
     }
+
+    // lintDebug 本来就在跑（见 ci-android.yml 的 SAST 步骤），只是结果只传成了普通
+    // artifact，没接进 Code Scanning。AGP 4.2+ 原生支持 Lint 输出 SARIF，不用额外
+    // 转换工具——同一次分析多出一种格式。不写 sarifOutput 时默认落在
+    // build/reports/lint-results-debug.sarif，跟 ci-android.yml 里引用的路径一致。
+    lint {
+        sarifReport = true
+    }
 }
 
 kotlin {
