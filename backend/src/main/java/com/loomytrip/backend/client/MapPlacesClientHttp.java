@@ -100,6 +100,16 @@ public class MapPlacesClientHttp implements MapPlacesClient {
         }
     }
 
+    /**
+     * Singapore's bounding box (same values as DestinationService's self-healing check) —
+     * passed to Photon as {@code bbox} so common, globally-reused names ("Chinatown",
+     * "Arab Street", "night market") don't get squeezed out of the top-{@code limit}
+     * results by same-named places elsewhere in the world. Without this, Photon ranks
+     * purely by global relevance and Singapore's match often doesn't make the cut at all
+     * (verified: "Chinatown" with no bbox returns only US/UK results in the top 5).
+     */
+    private static final String SINGAPORE_BBOX = "103.59,1.13,104.10,1.48";
+
     @SuppressWarnings("unchecked")
     private Map<?, ?> search(String query, int limit) {
         return restClient.get()
@@ -108,6 +118,7 @@ public class MapPlacesClientHttp implements MapPlacesClient {
                         .queryParam("q", query)
                         .queryParam("limit", limit)
                         .queryParam("lang", "en")
+                        .queryParam("bbox", SINGAPORE_BBOX)
                         .build())
                 .retrieve()
                 .body(Map.class);
