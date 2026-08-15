@@ -23,6 +23,7 @@ import com.loomytrip.backend.entity.TripDay;
 import com.loomytrip.backend.entity.TripSchedule;
 import com.loomytrip.backend.entity.User;
 import com.loomytrip.backend.entity.ValidationStatus;
+import com.loomytrip.backend.event.InitialImportRequestedEvent;
 import com.loomytrip.backend.exception.ApiException;
 import com.loomytrip.backend.mapper.EntityMapper;
 import com.loomytrip.backend.repository.ChatMessageRepository;
@@ -43,6 +44,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -69,6 +71,8 @@ public class PlanningService {
     private final EntityMapper entityMapper;
     private final AiPlanningClient aiPlanningClient;
     private final MapPlacesClient mapPlacesClient;
+    private final NotificationService notificationService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public PlanningService(
             PlanningSessionRepository planningSessionRepository,
@@ -82,7 +86,9 @@ public class PlanningService {
             TripScheduleRepository tripScheduleRepository,
             EntityMapper entityMapper,
             AiPlanningClient aiPlanningClient,
-            MapPlacesClient mapPlacesClient
+            MapPlacesClient mapPlacesClient,
+            NotificationService notificationService,
+            ApplicationEventPublisher eventPublisher
     ) {
         this.planningSessionRepository = planningSessionRepository;
         this.chatMessageRepository = chatMessageRepository;
@@ -96,6 +102,8 @@ public class PlanningService {
         this.entityMapper = entityMapper;
         this.aiPlanningClient = aiPlanningClient;
         this.mapPlacesClient = mapPlacesClient;
+        this.notificationService = notificationService;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional(readOnly = true)
@@ -111,27 +119,57 @@ public class PlanningService {
         session.setUser(currentUser());
         session.setTitle(request.title());
         session.setInitialBrief(request.initialBrief());
-        session.setStatus(PlanningSessionStatus.ACTIVE);
+        boolean hasBrief = request.initialBrief() != null && !request.initialBrief().isBlank();
+        session.setStatus(hasBrief ? PlanningSessionStatus.PROCESSING : PlanningSessionStatus.ACTIVE);
         PlanningSession saved = planningSessionRepository.save(session);
 
-        if (request.initialBrief() != null && !request.initialBrief().isBlank()) {
+        if (hasBrief) {
             ChatMessage briefMessage = new ChatMessage();
             briefMessage.setSession(saved);
             briefMessage.setRole(ChatRole.user);
             briefMessage.setContent(request.initialBrief());
             chatMessageRepository.save(briefMessage);
-
-            Map<String, Object> result = aiPlanningClient.extractTravelInfo(request.initialBrief(), null);
-            if (outOfScopeDestination(result) != null) {
-                // 大概率是 Bedrock 这次抽取把地标名当成了 destination（见
-                // outOfScopeDestination 的注释），不是真的出了新加坡——重试一次，
-                // persistExtraction() 下面还是会做最终校验，真出了新加坡照样会被拒绝。
-                result = aiPlanningClient.extractTravelInfo(request.initialBrief(), null);
-            }
-            persistExtraction(saved, result);
+            eventPublisher.publishEvent(new InitialImportRequestedEvent(saved.getId()));
         }
 
         return loadSessionDetail(saved.getId());
+    }
+
+    /**
+     * Handles an initial brief after the create request has committed, so clients can leave
+     * the Import page and use the notification/session APIs to resume when it completes.
+     */
+    @Transactional
+    public void processInitialImport(Long sessionId) {
+        PlanningSession session = planningSessionRepository.findById(sessionId).orElse(null);
+        if (session == null || session.getStatus() != PlanningSessionStatus.PROCESSING) {
+            return;
+        }
+        try {
+            Map<String, Object> result = aiPlanningClient.extractTravelInfo(session.getInitialBrief(), null);
+            if (outOfScopeDestination(result) != null) {
+                result = aiPlanningClient.extractTravelInfo(session.getInitialBrief(), null);
+            }
+            validateExtractionResult(result);
+            persistExtraction(session, result);
+            if (session.getStatus() != PlanningSessionStatus.DRAFT_READY) {
+                throw new ApiException(
+                        HttpStatus.BAD_GATEWAY,
+                        "AI_NO_PLACES",
+                        "AI returned no usable places from your travel notes"
+                );
+            }
+            notificationService.createImportNotification(session, true, null);
+        } catch (Exception exception) {
+            session.setStatus(PlanningSessionStatus.FAILED);
+            session.setFailureReason(safeImportFailureReason(exception));
+            planningSessionRepository.save(session);
+            notificationService.createImportNotification(
+                    session,
+                    false,
+                    "We could not finish importing your travel notes. Please review the content and try again."
+            );
+        }
     }
 
     @Transactional
@@ -158,6 +196,7 @@ public class PlanningService {
     @Transactional
     public PlanningSessionDetailResponse refineWithAi(Long sessionId) {
         PlanningSession session = loadOwnedSession(sessionId);
+        ensureSessionEditable(session);
 
         List<Map<String, String>> messages = chatMessageRepository.findBySession_IdOrderByCreatedAtAsc(sessionId)
                 .stream()
@@ -187,6 +226,7 @@ public class PlanningService {
     @Transactional
     public PlanningSessionDetailResponse validateDraftPlaces(Long sessionId) {
         PlanningSession session = loadOwnedSession(sessionId);
+        ensureSessionEditable(session);
         List<DraftPlace> places = draftPlaceRepository.findBySession_Id(sessionId);
 
         for (DraftPlace place : places) {
@@ -256,6 +296,7 @@ public class PlanningService {
     @Transactional
     public ConfirmSessionResponse confirmSession(Long sessionId, ConfirmSessionRequest request) {
         PlanningSession session = loadOwnedSession(sessionId);
+        ensureSessionReadyToConfirm(session);
         List<DraftPlace> draftPlaces = draftPlaceRepository.findBySession_Id(sessionId);
         if (draftPlaces.isEmpty()) {
             throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "NO_PLACES", "Session has no confirmed places to plan");
@@ -396,6 +437,7 @@ public class PlanningService {
         DraftPlace place = draftPlaceRepository.findById(placeId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "PLACE_NOT_FOUND", "Draft place not found"));
         ensureSessionOwner(place.getSession());
+        ensureSessionEditable(place.getSession());
 
         if (request.name() != null) {
             place.setName(request.name());
@@ -423,6 +465,7 @@ public class PlanningService {
         DraftPlace place = draftPlaceRepository.findById(placeId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "PLACE_NOT_FOUND", "Draft place not found"));
         ensureSessionOwner(place.getSession());
+        ensureSessionEditable(place.getSession());
         draftPlaceRepository.delete(place);
     }
 
@@ -516,18 +559,27 @@ public class PlanningService {
 
         Object placesValue = result.get("places");
         if (!(placesValue instanceof List<?> rawPlaces) || rawPlaces.isEmpty()) {
-            return;
+            throw new ApiException(
+                    HttpStatus.BAD_GATEWAY,
+                    "AI_NO_PLACES",
+                    "AI returned no places; existing draft places were kept unchanged"
+            );
         }
 
+        int savedPlaces = 0;
         for (Object rawPlace : rawPlaces) {
             if (!(rawPlace instanceof Map<?, ?> placeMap)) {
                 continue;
             }
             Map<String, Object> place = (Map<String, Object>) placeMap;
+            String name = String.valueOf(place.getOrDefault("name", "")).trim();
+            if (name.isEmpty() || "null".equalsIgnoreCase(name)) {
+                continue;
+            }
 
             DraftPlace draftPlace = new DraftPlace();
             draftPlace.setSession(session);
-            draftPlace.setName(String.valueOf(place.getOrDefault("name", "")));
+            draftPlace.setName(name);
             draftPlace.setCategory((String) place.get("type"));
             draftPlace.setValidationStatus(ValidationStatus.UNVALIDATED);
 
@@ -539,6 +591,7 @@ public class PlanningService {
             });
 
             DraftPlace savedPlace = draftPlaceRepository.save(draftPlace);
+            savedPlaces++;
 
             Object activitiesValue = place.get("activities");
             if (activitiesValue instanceof List<?> activities) {
@@ -552,7 +605,16 @@ public class PlanningService {
             }
         }
 
+        if (savedPlaces == 0) {
+            throw new ApiException(
+                    HttpStatus.BAD_GATEWAY,
+                    "AI_NO_PLACES",
+                    "AI returned no usable places; existing draft places were kept unchanged"
+            );
+        }
+
         session.setStatus(PlanningSessionStatus.DRAFT_READY);
+        session.setFailureReason(null);
         planningSessionRepository.save(session);
     }
 
@@ -702,6 +764,68 @@ public class PlanningService {
             return null;
         }
         return value.length() > NOTE_MAX_LENGTH ? value.substring(0, NOTE_MAX_LENGTH) : value;
+    }
+
+    private static String safeImportFailureReason(Exception exception) {
+        if (exception instanceof ApiException apiException) {
+            return switch (apiException.getCode()) {
+                case "NO_USEFUL_CONTENT" -> "We could not find usable travel details in that text.";
+                case "OUT_OF_SCOPE" -> "This app only plans trips within Singapore.";
+                case "AI_NO_PLACES", "AI_EXTRACTION_FAILED", "AI_SERVICE_UNAVAILABLE" ->
+                        "The import service could not extract places right now. Please try again.";
+                default -> "We could not finish importing your travel notes.";
+            };
+        }
+        return "We could not finish importing your travel notes.";
+    }
+
+    private void ensureSessionEditable(PlanningSession session) {
+        if (session.getStatus() == PlanningSessionStatus.PROCESSING) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "IMPORT_IN_PROGRESS",
+                    "This import is still processing. Wait for it to finish before editing."
+            );
+        }
+        if (session.getStatus() == PlanningSessionStatus.CONFIRMED) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "SESSION_ALREADY_CONFIRMED",
+                    "This planning session has already been confirmed into a trip."
+            );
+        }
+    }
+
+    private void ensureSessionReadyToConfirm(PlanningSession session) {
+        if (session.getStatus() == PlanningSessionStatus.PROCESSING) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "IMPORT_IN_PROGRESS",
+                    "This import is still processing. Wait for it to finish before confirming."
+            );
+        }
+        if (session.getStatus() == PlanningSessionStatus.FAILED) {
+            throw new ApiException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "IMPORT_FAILED",
+                    "This import failed. Start a new import with updated travel notes."
+            );
+        }
+        if (session.getStatus() == PlanningSessionStatus.CONFIRMED) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "SESSION_ALREADY_CONFIRMED",
+                    "This planning session has already been confirmed into a trip."
+            );
+        }
+        if (session.getStatus() != PlanningSessionStatus.DRAFT_READY
+                && session.getStatus() != PlanningSessionStatus.ACTIVE) {
+            throw new ApiException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "SESSION_NOT_READY",
+                    "This planning session is not ready to confirm."
+            );
+        }
     }
 
     private PlanningSession loadOwnedSession(Long sessionId) {

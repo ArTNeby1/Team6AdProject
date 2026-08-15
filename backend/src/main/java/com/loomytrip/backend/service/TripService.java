@@ -11,6 +11,7 @@ import com.loomytrip.backend.dto.request.UpdateTripRequest;
 import com.loomytrip.backend.dto.response.GenerateItineraryResponse;
 import com.loomytrip.backend.dto.response.ShareTripResponse;
 import com.loomytrip.backend.dto.response.TripRouteResponse;
+import com.loomytrip.backend.dto.response.TripDashboardResponse;
 import com.loomytrip.backend.dto.response.TripSummaryResponse;
 import com.loomytrip.backend.dto.response.TripTransportResponse;
 import com.loomytrip.backend.entity.Destination;
@@ -41,6 +42,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -95,6 +98,82 @@ public class TripService {
         return tripRepository.findByUser_IdOrderByUpdatedAtDesc(user.getId()).stream()
                 .map(this::toSummary)
                 .toList();
+    }
+
+    /**
+     * Read-only trip-wide metrics for the traveler dashboard. Route values only use
+     * persisted transport legs so requesting a dashboard never starts external routing work.
+     */
+    @Transactional(readOnly = true)
+    public TripDashboardResponse getDashboard(Long tripId) {
+        Trip trip = loadOwnedTrip(tripId);
+        List<TripSchedule> schedules = tripScheduleRepository
+                .findByTripDay_Trip_IdOrderByTripDay_DaySequenceAscSequenceAsc(tripId);
+        Map<String, Long> categoryCounts = schedules.stream()
+                .collect(Collectors.groupingBy(
+                        schedule -> normalizeCategory(schedule.getDestination().getCategory()),
+                        LinkedHashMap::new,
+                        Collectors.counting()
+                ));
+        Set<Long> destinationIds = schedules.stream()
+                .map(schedule -> schedule.getDestination().getId())
+                .collect(Collectors.toCollection(HashSet::new));
+
+        List<TripTransport> transports = tripTransportRepository.findByTripDay_Trip_Id(tripId);
+        BigDecimal totalDistance = transports.stream()
+                .map(TripTransport::getDistanceKm)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+        int totalMinutes = transports.stream()
+                .map(TripTransport::getDurationMinutes)
+                .filter(java.util.Objects::nonNull)
+                .mapToInt(Integer::intValue)
+                .sum();
+
+        Map<Long, List<TripSchedule>> schedulesByDay = schedules.stream()
+                .collect(Collectors.groupingBy(
+                        schedule -> schedule.getTripDay().getId(),
+                        LinkedHashMap::new,
+                        Collectors.toList()
+                ));
+        Set<RouteLeg> expectedLegs = new HashSet<>();
+        for (Map.Entry<Long, List<TripSchedule>> entry : schedulesByDay.entrySet()) {
+            List<TripSchedule> daySchedules = entry.getValue();
+            for (int index = 1; index < daySchedules.size(); index++) {
+                expectedLegs.add(new RouteLeg(
+                        entry.getKey(),
+                        daySchedules.get(index - 1).getId(),
+                        daySchedules.get(index).getId()
+                ));
+            }
+        }
+        Set<RouteLeg> persistedLegs = transports.stream()
+                .map(transport -> new RouteLeg(
+                        transport.getTripDay().getId(),
+                        transport.getPrevSchedule().getId(),
+                        transport.getNextSchedule().getId()
+                ))
+                .collect(Collectors.toSet());
+        boolean complete = expectedLegs.equals(persistedLegs) && expectedLegs.size() == transports.size();
+        List<String> warnings = new ArrayList<>();
+        if (!complete) {
+            warnings.add("Route metrics are incomplete. Open each day on the map to calculate missing route legs.");
+        }
+
+        return new TripDashboardResponse(
+                tripId,
+                schedules.size(),
+                destinationIds.size(),
+                categoryCounts.entrySet().stream()
+                        .map(entry -> new TripDashboardResponse.CategoryCount(entry.getKey(), entry.getValue()))
+                        .toList(),
+                totalDistance,
+                totalMinutes,
+                complete,
+                (int) persistedLegs.stream().map(RouteLeg::tripDayId).distinct().count(),
+                warnings
+        );
     }
 
     @Transactional
@@ -681,6 +760,10 @@ public class TripService {
         return name.replaceAll("[^A-Za-z0-9]", "").toLowerCase(Locale.ROOT);
     }
 
+    private static String normalizeCategory(String category) {
+        return category == null || category.isBlank() ? "uncategorized" : category.trim().toLowerCase(Locale.ROOT);
+    }
+
     /**
      * Builds the `preference_text` string the AI `/recommend` endpoint expects (ai_contract.md:
      * "用户偏好，比如 travel_style=culture"). Mirrors PlanningService.buildPreferenceText() —
@@ -758,5 +841,8 @@ public class TripService {
         if (!trip.getUser().getId().equals(user.getId())) {
             throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN", "Trip does not belong to current user");
         }
+    }
+
+    private record RouteLeg(Long tripDayId, Long previousScheduleId, Long nextScheduleId) {
     }
 }

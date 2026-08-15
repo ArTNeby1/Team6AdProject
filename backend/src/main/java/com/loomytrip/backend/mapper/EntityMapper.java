@@ -114,6 +114,7 @@ public class EntityMapper {
                 session.getStatus(),
                 tripId,
                 session.getDurationDays(),
+                session.getFailureReason(),
                 placeResponses,
                 session.getUpdatedAt()
         );
