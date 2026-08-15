@@ -485,6 +485,18 @@ public class PlanningService {
      */
     @SuppressWarnings("unchecked")
     private void persistExtraction(PlanningSession session, Map<String, Object> result) {
+        // ML 侧区分了"用户输入没有可用的旅行信息"（422 NO_USEFUL_CONTENT，见
+        // AiPlanningClientHttp#mapExtractionError）跟"AI 服务真的挂了"——前者是输入
+        // 问题，该告诉用户"重新描述一下你的行程"，不是含糊的 AI_SERVICE_UNAVAILABLE，
+        // 不然用户会以为是服务故障去反复重试，而不是去改自己写的内容。
+        if ("NO_USEFUL_CONTENT".equals(result.get("status"))) {
+            throw new ApiException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "NO_USEFUL_CONTENT",
+                    String.valueOf(result.getOrDefault("message", "Couldn't find any travel info in that text — try describing where you went or want to go."))
+            );
+        }
+
         String outOfScopeDestination = outOfScopeDestination(result);
         if (outOfScopeDestination != null) {
             throw new ApiException(

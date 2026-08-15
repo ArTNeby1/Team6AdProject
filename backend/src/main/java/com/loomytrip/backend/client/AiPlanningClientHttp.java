@@ -7,6 +7,7 @@ import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
@@ -55,7 +56,7 @@ public class AiPlanningClientHttp implements AiPlanningClient {
                     .retrieve()
                     .body(Map.class);
         } catch (RestClientException e) {
-            return unavailableResponse("AI_SERVICE_UNAVAILABLE");
+            return mapExtractionError(e);
         }
     }
 
@@ -73,8 +74,33 @@ public class AiPlanningClientHttp implements AiPlanningClient {
                     .retrieve()
                     .body(Map.class);
         } catch (RestClientException e) {
-            return unavailableResponse("AI_SERVICE_UNAVAILABLE");
+            return mapExtractionError(e);
         }
+    }
+
+    /**
+     * Both `/extract-travel-info` and `/refine` share the same failure shape (see
+     * ML/app/main.py `_extraction_response`): a 422 with a {@code NO_USEFUL_CONTENT:}-
+     * prefixed body means the user's text had nothing travel-related in it — a 4xx input
+     * problem, not the AI service being down. Everything else (real 5xx, timeout, ML not
+     * running at all) degrades to the generic unavailable stub, same as before. Callers
+     * (PlanningService) branch on {@code status} to turn NO_USEFUL_CONTENT into a proper
+     * "please describe your trip" error instead of silently creating an empty session.
+     */
+    private Map<String, Object> mapExtractionError(RestClientException e) {
+        if (e instanceof HttpClientErrorException httpError
+                && httpError.getStatusCode().value() == 422) {
+            String body = httpError.getResponseBodyAsString();
+            int prefixIndex = body.indexOf("NO_USEFUL_CONTENT:");
+            if (prefixIndex >= 0) {
+                String message = body.substring(prefixIndex + "NO_USEFUL_CONTENT:".length()).trim();
+                // FastAPI wraps our detail string in {"detail": "..."} JSON — strip the
+                // trailing `"}` so callers get the plain message, not raw JSON escaping.
+                message = message.replaceAll("\"\\s*}\\s*$", "").trim();
+                return Map.of("status", "NO_USEFUL_CONTENT", "message", message, "places", List.of());
+            }
+        }
+        return unavailableResponse("AI_SERVICE_UNAVAILABLE");
     }
 
     @Override
