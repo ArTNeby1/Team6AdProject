@@ -331,7 +331,13 @@ public class PlanningService {
                 writeDaySchedules(savedDay, plannedDay.stops().stream().map(this::toStopView).toList());
             }
             weatherSummary = result.days().get(0).weatherSummary();
-            suggestions = List.of();
+            // /plan-itinerary 没有 suggested_additions，多调一次 /recommend 单独拿这块数据。
+            AiRecommendResult recommendResult = aiPlanningClient.recommend(places, startDate.toString(), buildPreferenceText(user));
+            suggestions = recommendResult.suggestedAdditions().stream()
+                    .map(s -> new SuggestedAdditionResponse(
+                            s.name(), s.type(), s.lat(), s.lng(), s.distanceKm(), s.reason(), s.activities()
+                    ))
+                    .toList();
         }
 
         session.setConfirmedTrip(savedTrip);
