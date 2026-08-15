@@ -211,15 +211,41 @@ jobs:
             --region ${{ env.AWS_REGION }}
 
       # ============================================================
-      # 等部署真正稳定：新任务起不来触发熔断自动回滚时，上面那步
-      # update-service 本身是成功的（命令发出去了），CI 会显示绿色，
-      # 只有手动查 AWS 才发现其实回滚了。这一步会等到服务稳定或超时，
+      # 等部署真正稳定：新任务起不来触发熔断自动回滚
       # 部署失败时非 0 退出，让 CI 直接标红。
       # ============================================================
       - name: 等待 ECS 部署稳定
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          aws ecs wait services-stable \
-            --cluster ad-project-dev \
-            --services ad-project-java-dev \
-            --region ${{ env.AWS_REGION }}
+          TIMEOUT_SECONDS=1200
+          INTERVAL_SECONDS=15
+          ELAPSED=0
+
+          while true; do
+            ROLLOUT_STATE=$(aws ecs describe-services \
+              --cluster ad-project-dev \
+              --services ad-project-java-dev \
+              --region ${{ env.AWS_REGION }} \
+              --query "services[0].deployments[?status=='PRIMARY']|[0].rolloutState" \
+              --output text)
+
+            echo "rolloutState=$ROLLOUT_STATE（已等待 ${ELAPSED}s）"
+
+            if [ "$ROLLOUT_STATE" = "COMPLETED" ]; then
+              echo "部署已稳定"
+              exit 0
+            fi
+
+            if [ "$ROLLOUT_STATE" = "FAILED" ]; then
+              echo "部署失败：rolloutState=FAILED（大概率是熔断触发了自动回滚）"
+              exit 1
+            fi
+
+            if [ "$ELAPSED" -ge "$TIMEOUT_SECONDS" ]; then
+              echo "等待超时（${TIMEOUT_SECONDS}s），当前 rolloutState=$ROLLOUT_STATE"
+              exit 1
+            fi
+
+            sleep "$INTERVAL_SECONDS"
+            ELAPSED=$((ELAPSED + INTERVAL_SECONDS))
+          done

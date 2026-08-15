@@ -14,6 +14,30 @@ resource "aws_s3_bucket" "frontend_web" {
   bucket = "${var.project_name}-frontend-web-${var.environment}"
 }
 
+# 版本控制：这个桶每次部署都是 aws s3 sync --delete 整体覆盖，开了版本控制之后
+# 万一某次发布出问题，能直接从 S3 控制台/CLI 回滚到上一个版本
+resource "aws_s3_bucket_versioning" "frontend_web_versioning" {
+  bucket = aws_s3_bucket.frontend_web.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+# 生命周期：只清理被覆盖后的旧版本，当前（最新）版本不设过期——那是线上正在跑的网站，
+# 不能被自动删掉。30 天足够回滚窗口，避免旧版本一直堆积占用存储。
+resource "aws_s3_bucket_lifecycle_configuration" "frontend_web_lifecycle" {
+  bucket = aws_s3_bucket.frontend_web.id
+
+  rule {
+    id     = "expire-old-versions"
+    status = "Enabled"
+
+    noncurrent_version_expiration {
+      noncurrent_days = 30
+    }
+  }
+}
+
 resource "aws_s3_bucket_server_side_encryption_configuration" "frontend_web_encryption" {
   bucket = aws_s3_bucket.frontend_web.id
   rule {
