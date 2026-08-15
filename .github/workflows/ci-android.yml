@@ -11,6 +11,7 @@ on:
     paths:
       - "Frontend_Android/**"
       - ".github/workflows/ci-android.yml"
+  workflow_dispatch: {}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -111,6 +112,14 @@ jobs:
         with:
           name: android-sast-report
           path: Frontend_Android/mobile/build/reports/lint-results-debug.xml
+
+      - name: 上传 SAST SARIF 到 Security 标签页
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: Frontend_Android/mobile/build/reports/lint-results-debug.sarif
+          category: android-lint
 
       - name: 单元测试
         run: ./gradlew :mobile:testDebugUnitTest --continue
