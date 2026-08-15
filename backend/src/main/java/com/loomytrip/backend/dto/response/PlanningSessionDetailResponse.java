@@ -21,6 +21,7 @@ public record PlanningSessionDetailResponse(
         PlanningSessionStatus status,
         Long confirmedTripId,
         Integer durationDays,
+        String failureCode,
         String failureReason,
         List<DraftPlaceResponse> draftPlaces,
         Instant updatedAt

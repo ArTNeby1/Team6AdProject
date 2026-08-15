@@ -50,6 +50,13 @@ public class PlanningSession {
     @Column(name = "failure_reason", length = 255)
     private String failureReason;
 
+    /** Stable machine-readable counterpart to {@link #failureReason} (which is a
+     * human-readable sentence) — e.g. {@code NO_USEFUL_CONTENT}, {@code OUT_OF_SCOPE},
+     * {@code IMPORT_FAILED} — so the frontend can branch on a fixed value instead of
+     * string-matching English prose. See PlanningService#safeImportFailureCode. */
+    @Column(name = "failure_code", length = 32)
+    private String failureCode;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "confirmed_trip_id")
     private Trip confirmedTrip;

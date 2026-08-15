@@ -99,6 +99,8 @@ public class EntityMapper {
                 place.getCategory(),
                 place.getValidationStatus(),
                 place.getNote(),
+                place.getSuggestedDay(),
+                place.getStartTime(),
                 activities.stream().map(this::toDraftActivity).toList()
         );
     }
@@ -119,6 +121,7 @@ public class EntityMapper {
                 session.getStatus(),
                 tripId,
                 session.getDurationDays(),
+                session.getFailureCode(),
                 session.getFailureReason(),
                 placeResponses,
                 session.getUpdatedAt()

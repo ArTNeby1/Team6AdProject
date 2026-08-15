@@ -160,6 +160,7 @@ public class PlanningService {
             notificationService.createImportNotification(session, true, null);
         } catch (Exception exception) {
             session.setStatus(PlanningSessionStatus.FAILED);
+            session.setFailureCode(safeImportFailureCode(exception));
             session.setFailureReason(safeImportFailureReason(exception));
             planningSessionRepository.save(session);
             notificationService.createImportNotification(
@@ -333,17 +334,11 @@ public class PlanningService {
         trip.setDurationDays(numDays);
         Trip savedTrip = tripRepository.save(trip);
 
-        // 按用户拖拽好的 suggested_day 分组；没拖过的（所有 activity 的 suggestedDay 都是
-        // null）默认分到第 1 天，不会因为没手动排过就把地点丢掉。
+        // 按用户拖拽好的 suggested_day 分组；没拖过的默认分到第 1 天，不会因为没手动
+        // 排过就把地点丢掉。
         Map<Integer, List<DraftPlace>> placesByDay = new java.util.TreeMap<>();
         for (DraftPlace place : draftPlaces) {
-            List<DraftActivity> acts = activitiesByPlaceId.getOrDefault(place.getId(), List.of());
-            int day = acts.stream()
-                    .map(DraftActivity::getSuggestedDay)
-                    .filter(java.util.Objects::nonNull)
-                    .findFirst()
-                    .orElse(1);
-            day = Math.max(1, Math.min(day, numDays));
+            int day = Math.max(1, Math.min(resolveSuggestedDay(place, activitiesByPlaceId), numDays));
             placesByDay.computeIfAbsent(day, d -> new ArrayList<>()).add(place);
         }
 
@@ -355,7 +350,7 @@ public class PlanningService {
 
             // 同一天内按用户设置的 start_time 排序；没设置的排在后面，保持原有相对顺序。
             List<DraftPlace> ordered = placesByDay.getOrDefault(dayNum, List.of()).stream()
-                    .sorted(java.util.Comparator.comparing(p -> firstActivityStartTime(p, activitiesByPlaceId)))
+                    .sorted(java.util.Comparator.comparing(p -> resolveStartTime(p, activitiesByPlaceId)))
                     .toList();
 
             int sequence = 1;
@@ -364,7 +359,7 @@ public class PlanningService {
             for (DraftPlace place : ordered) {
                 Destination destination = destinationService.findOrCreateByName(
                         place.getName(), place.getCategory(), place.getLatitude(), place.getLongitude());
-                LocalTime explicitStart = firstActivityStartTime(place, activitiesByPlaceId);
+                LocalTime explicitStart = resolveStartTime(place, activitiesByPlaceId);
                 LocalTime startTime;
                 if (explicitStart != LocalTime.MAX) {
                     startTime = explicitStart;
@@ -412,10 +407,29 @@ public class PlanningService {
         );
     }
 
-    /** First explicit {@code start_time} set on any of this place's draft activities (the
-     * user's drag-and-drop arrangement), or {@link LocalTime#MAX} if none was ever set —
-     * sorts places nobody has arranged yet to the end of their day, see confirmSession(). */
-    private LocalTime firstActivityStartTime(DraftPlace place, Map<Long, List<DraftActivity>> activitiesByPlaceId) {
+    /** Which day this place belongs to: place-level {@code suggested_day} wins (the current
+     * drag-and-drop UI writes here — works even for places with zero activities, unlike the
+     * old activity-only column), falling back to any activity's {@code suggested_day} for
+     * sessions arranged before this column existed. Defaults to day 1 when neither was ever
+     * set, same as before. */
+    private Integer resolveSuggestedDay(DraftPlace place, Map<Long, List<DraftActivity>> activitiesByPlaceId) {
+        if (place.getSuggestedDay() != null) {
+            return place.getSuggestedDay();
+        }
+        return activitiesByPlaceId.getOrDefault(place.getId(), List.of()).stream()
+                .map(DraftActivity::getSuggestedDay)
+                .filter(java.util.Objects::nonNull)
+                .findFirst()
+                .orElse(1);
+    }
+
+    /** Same place-first-then-activity precedence as {@link #resolveSuggestedDay}, for
+     * {@code start_time}. {@link LocalTime#MAX} means neither was ever set — sorts places
+     * nobody has arranged yet to the end of their day, see confirmSession(). */
+    private LocalTime resolveStartTime(DraftPlace place, Map<Long, List<DraftActivity>> activitiesByPlaceId) {
+        if (place.getStartTime() != null) {
+            return place.getStartTime();
+        }
         return activitiesByPlaceId.getOrDefault(place.getId(), List.of()).stream()
                 .map(DraftActivity::getStartTime)
                 .filter(java.util.Objects::nonNull)
@@ -447,6 +461,12 @@ public class PlanningService {
         }
         if (request.note() != null) {
             place.setNote(request.note());
+        }
+        if (request.suggestedDay() != null) {
+            place.setSuggestedDay(request.suggestedDay());
+        }
+        if (request.startTime() != null) {
+            place.setStartTime(request.startTime());
         }
         draftPlaceRepository.save(place);
     }
@@ -656,12 +676,18 @@ public class PlanningService {
             throw new ApiException(HttpStatus.BAD_GATEWAY, "AI_SERVICE_UNAVAILABLE", "AI service returned no response");
         }
         Object status = result.get("status");
-        if (status != null && !"OK".equalsIgnoreCase(String.valueOf(status))) {
+        // NO_USEFUL_CONTENT 有自己专门的错误码/文案（见 persistExtraction 和
+        // safeImportFailureCode），不能在这里被当成"AI 服务故障"笼统吞掉——不然
+        // "用户输入无效" 和 "AI 服务真的挂了" 在前端看来永远是同一个错误。
+        if (status != null && !"OK".equalsIgnoreCase(String.valueOf(status)) && !"NO_USEFUL_CONTENT".equals(status)) {
             throw new ApiException(
                     HttpStatus.BAD_GATEWAY,
                     "AI_EXTRACTION_FAILED",
                     "AI extraction failed (" + status + "); existing draft places were kept unchanged"
             );
+        }
+        if ("NO_USEFUL_CONTENT".equals(status)) {
+            return;
         }
         Object placesValue = result.get("places");
         if (!(placesValue instanceof List<?> rawPlaces) || rawPlaces.isEmpty()) {
@@ -706,6 +732,24 @@ public class PlanningService {
             parts.add("prefer_transport=" + user.getPreferTransport());
         }
         return parts.isEmpty() ? null : String.join(", ", parts);
+    }
+
+    /**
+     * Stable machine-readable code for {@link PlanningSession#getFailureCode()} — the
+     * frontend branches on this (e.g. show a dedicated "your input didn't have any travel
+     * info" dialog for NO_USEFUL_CONTENT) instead of string-matching the English sentence
+     * in {@link #safeImportFailureReason}. AI_NO_PLACES/AI_EXTRACTION_FAILED/
+     * AI_SERVICE_UNAVAILABLE collapse into one IMPORT_FAILED code — from the frontend's
+     * perspective those are all just "the service side didn't come through", same dialog.
+     */
+    private static String safeImportFailureCode(Exception exception) {
+        if (exception instanceof ApiException apiException) {
+            return switch (apiException.getCode()) {
+                case "NO_USEFUL_CONTENT", "OUT_OF_SCOPE" -> apiException.getCode();
+                default -> "IMPORT_FAILED";
+            };
+        }
+        return "IMPORT_FAILED";
     }
 
     private static String safeImportFailureReason(Exception exception) {
