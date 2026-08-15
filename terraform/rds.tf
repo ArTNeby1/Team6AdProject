@@ -5,6 +5,7 @@
 # ============================================================
 
 resource "aws_security_group" "rds" {
+  #checkov:skip=CKV_AWS_382:RDS 托管服务需要一定出站访问（指标上报/参数组同步等），收紧范围没把握不会误伤
   name        = "${var.project_name}-rds-${var.environment}"
   description = "RDS security group: only allow MySQL from ECS tasks"
   vpc_id      = aws_vpc.main.id
@@ -18,6 +19,7 @@ resource "aws_security_group" "rds" {
   }
 
   egress {
+    description = "Allow all outbound (managed service needs it for AWS-internal traffic)"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -47,6 +49,12 @@ resource "random_password" "db" {
 }
 
 resource "aws_db_instance" "main" {
+  #checkov:skip=CKV_AWS_157:课程项目单 AZ 就够，Multi-AZ 大致双倍费用，之前已经明确选过单 AZ
+  #checkov:skip=CKV_AWS_226:自动小版本升级可能在演示前触发重启，可预测性优先于自动打补丁
+  #checkov:skip=CKV_AWS_293:项目会整体 destroy/重建省成本，删除保护会挡住这个操作
+  #checkov:skip=CKV_AWS_161:改成 IAM 认证要动后端数据源配置，是应用层改动，不在这次 IaC 修复范围内
+  #checkov:skip=CKV_AWS_118:增强监控要多建 IAM 角色+更细粒度指标计费，这个规模用不上
+  #checkov:skip=CKV_AWS_16:storage_encrypted 在 RDS 上不能原地切换，加了会触发销毁重建——这是线上正在跑的库，有真实用户数据，绝不能顺手改，需要先做好快照/迁移预案
   identifier     = "${var.project_name}-${var.environment}"
   engine         = "mysql"
   engine_version = "8.0.46"
@@ -63,6 +71,8 @@ resource "aws_db_instance" "main" {
   publicly_accessible = false
   multi_az            = false
 
+  enabled_cloudwatch_logs_exports = ["error", "general", "slowquery"]
+
   # 学生/小团队项目，不需要跨环境保留备份体系；真要保数据再开
   backup_retention_period = 1
   skip_final_snapshot     = true
@@ -78,6 +88,7 @@ resource "aws_db_instance" "main" {
 # ------------------------------------------------------------
 
 resource "aws_secretsmanager_secret" "db" {
+  #checkov:skip=CKV_AWS_149:默认 AWS 管理的 key 已经加密，自建 CMK 多一层管理成本，对这个内容性价比不高
   name = "${var.project_name}/${var.environment}/db"
 }
 
@@ -99,6 +110,7 @@ resource "random_password" "jwt_secret" {
 }
 
 resource "aws_secretsmanager_secret" "jwt" {
+  #checkov:skip=CKV_AWS_149:同上，默认加密已经够用
   name = "${var.project_name}/${var.environment}/jwt-secret"
 }
 

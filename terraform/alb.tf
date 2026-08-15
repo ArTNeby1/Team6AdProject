@@ -6,11 +6,12 @@
 # ============================================================
 
 resource "aws_lb" "main" {
-  name               = "${var.project_name}-${var.environment}"
-  internal           = false
-  load_balancer_type = "application"
-  security_groups    = [aws_security_group.alb.id]
-  subnets            = aws_subnet.public[*].id
+  name                       = "${var.project_name}-${var.environment}"
+  internal                   = false
+  load_balancer_type         = "application"
+  security_groups            = [aws_security_group.alb.id]
+  subnets                    = aws_subnet.public[*].id
+  drop_invalid_header_fields = true
 }
 
 resource "aws_lb_target_group" "java" {
@@ -50,6 +51,7 @@ resource "aws_lb_target_group" "ml" {
 }
 
 resource "aws_lb_listener" "http" {
+  #checkov:skip=CKV_AWS_2:没有域名/ACM 证书，暂时只能走 HTTP
   load_balancer_arn = aws_lb.main.arn
   port              = 80
   protocol          = "HTTP"

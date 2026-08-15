@@ -11,13 +11,9 @@
 # 再补。
 
 resource "aws_s3_bucket" "frontend_web" {
-  #checkov:skip=CKV2_AWS_6:这个桶就是用来做公开静态网站托管的
-  #  + 公开读 policy），全部锁死 public access block 会直接把网站锁没了，跟用途冲突
-  #checkov:skip=CKV_AWS_145:桶里只放可重新构建的前端打包产物，不是用户数据，SSE-S3
-  #  已经够用；上 KMS 要额外建/管一把 key、每次读写多一次 KMS API 调用，对这个桶的
-  #  实际风险降低有限，性价比不划算
-  #checkov:skip=CKV_AWS_144:跨区域复制是灾备级别的要求，这个桶的内容每次 CI 部署都会
-  #  重新生成（aws s3 sync），丢了直接重新跑一次流水线就能恢复，不需要跨区域复制
+  #checkov:skip=CKV2_AWS_6:公开静态网站托管，锁死会直接把网站锁没
+  #checkov:skip=CKV_AWS_145:非用户数据，SSE-S3 够用，KMS 性价比不高
+  #checkov:skip=CKV_AWS_144:内容每次 CI 都会重新生成，不需要跨区域复制
   bucket = "${var.project_name}-frontend-web-${var.environment}"
 }
 
@@ -41,6 +37,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "frontend_web_lifecycle" {
 
     noncurrent_version_expiration {
       noncurrent_days = 30
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
     }
   }
 }
@@ -68,6 +68,8 @@ resource "aws_s3_bucket_website_configuration" "frontend_web" {
 
 # 只关闭"公开访问"里跟 bucket policy 相关的两项，ACL 相关的两项保持开启
 resource "aws_s3_bucket_public_access_block" "frontend_web_public_access" {
+  #checkov:skip=CKV_AWS_54:公开静态网站托管，跟 CKV2_AWS_6 同一个根因
+  #checkov:skip=CKV_AWS_56:同上
   bucket                  = aws_s3_bucket.frontend_web.id
   block_public_acls       = true
   ignore_public_acls      = true

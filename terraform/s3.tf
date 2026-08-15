@@ -1,8 +1,7 @@
 # 存储 Maven 构建产物的 JAR 包
 
 resource "aws_s3_bucket" "java_artifacts" {
-  #checkov:skip=CKV_AWS_145:桶里只放可重新构建的 JAR 制品，不是用户数据，SSE-S3 已经够用；
-  #  上 KMS 要额外建/管一把 key、每次读写多一次 KMS API 调用，性价比不划算
+  #checkov:skip=CKV_AWS_145:非用户数据，SSE-S3 够用，KMS 性价比不高
   bucket = "${var.project_name}-java-artifacts-${var.environment}"
 }
 
@@ -53,6 +52,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "java_artifacts_lifecycle" {
     # 非当前版本（被覆盖的旧 JAR）30 天后删除
     noncurrent_version_expiration {
       noncurrent_days = 30
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
     }
   }
 }

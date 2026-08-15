@@ -6,6 +6,7 @@
 # ============================================================
 
 resource "aws_ecs_cluster" "main" {
+  #checkov:skip=CKV_AWS_65:course 项目规模用不上 Container Insights 的额外计费
   name = "${var.project_name}-${var.environment}"
 }
 
@@ -14,11 +15,15 @@ resource "aws_ecs_cluster" "main" {
 # ------------------------------------------------------------
 
 resource "aws_cloudwatch_log_group" "java" {
+  #checkov:skip=CKV_AWS_158:默认加密已够用，KMS 性价比不高
+  #checkov:skip=CKV_AWS_338:course 项目生命周期短，14 天够用，1 年纯粹多付存储费
   name              = "/ecs/${var.project_name}-java-${var.environment}"
   retention_in_days = 14
 }
 
 resource "aws_cloudwatch_log_group" "ml" {
+  #checkov:skip=CKV_AWS_158:同上
+  #checkov:skip=CKV_AWS_338:同上
   name              = "/ecs/${var.project_name}-ml-${var.environment}"
   retention_in_days = 14
 }
@@ -28,6 +33,7 @@ resource "aws_cloudwatch_log_group" "ml" {
 # ------------------------------------------------------------
 
 resource "aws_ecs_task_definition" "java" {
+  #checkov:skip=CKV_AWS_336:容器运行时可能往本地写临时文件，锁只读前需要先验证不会跑挂，这台机器没有能测的环境
   family                   = "${var.project_name}-java-${var.environment}"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
@@ -85,6 +91,7 @@ resource "aws_ecs_task_definition" "java" {
 # ------------------------------------------------------------
 
 resource "aws_ecs_task_definition" "ml" {
+  #checkov:skip=CKV_AWS_336:同上，需要先验证容器不写本地盘再改
   family                   = "${var.project_name}-ml-${var.environment}"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
@@ -138,6 +145,7 @@ resource "aws_ecs_task_definition" "ml" {
 # ------------------------------------------------------------
 
 resource "aws_ecs_service" "java" {
+  #checkov:skip=CKV_AWS_333:有意不建 NAT 网关，任务跑在公有子网省成本（见 vpc.tf 顶部说明）
   name            = "${var.project_name}-java-${var.environment}"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.java.arn
@@ -171,6 +179,7 @@ resource "aws_ecs_service" "java" {
 # ------------------------------------------------------------
 
 resource "aws_ecs_service" "ml" {
+  #checkov:skip=CKV_AWS_333:同上，有意不建 NAT 网关
   name            = "${var.project_name}-ml-${var.environment}"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.ml.arn
