@@ -47,6 +47,9 @@ public class PlanningSession {
     @Column(name = "duration_days")
     private Integer durationDays;
 
+    @Column(name = "failure_reason", length = 255)
+    private String failureReason;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "confirmed_trip_id")
     private Trip confirmedTrip;

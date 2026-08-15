@@ -7,6 +7,7 @@ import com.loomytrip.backend.dto.request.UpdateTripRequest;
 import com.loomytrip.backend.dto.response.GenerateItineraryResponse;
 import com.loomytrip.backend.dto.response.ShareTripResponse;
 import com.loomytrip.backend.dto.response.TripRouteResponse;
+import com.loomytrip.backend.dto.response.TripDashboardResponse;
 import com.loomytrip.backend.dto.response.TripSummaryResponse;
 import com.loomytrip.backend.service.TripService;
 import jakarta.validation.Valid;
@@ -82,6 +83,11 @@ public class TripController {
             @RequestParam(defaultValue = "1") int day
     ) {
         return tripService.estimateRoute(tripId, day);
+    }
+
+    @GetMapping("/{tripId}/summary")
+    public TripDashboardResponse summary(@PathVariable Long tripId) {
+        return tripService.getDashboard(tripId);
     }
 
     @PostMapping("/{tripId}/generate")

@@ -23,6 +23,7 @@ import com.loomytrip.backend.entity.TripDay;
 import com.loomytrip.backend.entity.TripSchedule;
 import com.loomytrip.backend.entity.User;
 import com.loomytrip.backend.entity.ValidationStatus;
+import com.loomytrip.backend.event.InitialImportRequestedEvent;
 import com.loomytrip.backend.exception.ApiException;
 import com.loomytrip.backend.mapper.EntityMapper;
 import com.loomytrip.backend.repository.ChatMessageRepository;
@@ -43,6 +44,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -69,6 +71,8 @@ public class PlanningService {
     private final EntityMapper entityMapper;
     private final AiPlanningClient aiPlanningClient;
     private final MapPlacesClient mapPlacesClient;
+    private final NotificationService notificationService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public PlanningService(
             PlanningSessionRepository planningSessionRepository,
@@ -82,7 +86,9 @@ public class PlanningService {
             TripScheduleRepository tripScheduleRepository,
             EntityMapper entityMapper,
             AiPlanningClient aiPlanningClient,
-            MapPlacesClient mapPlacesClient
+            MapPlacesClient mapPlacesClient,
+            NotificationService notificationService,
+            ApplicationEventPublisher eventPublisher
     ) {
         this.planningSessionRepository = planningSessionRepository;
         this.chatMessageRepository = chatMessageRepository;
@@ -96,6 +102,8 @@ public class PlanningService {
         this.entityMapper = entityMapper;
         this.aiPlanningClient = aiPlanningClient;
         this.mapPlacesClient = mapPlacesClient;
+        this.notificationService = notificationService;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional(readOnly = true)
@@ -111,27 +119,50 @@ public class PlanningService {
         session.setUser(currentUser());
         session.setTitle(request.title());
         session.setInitialBrief(request.initialBrief());
-        session.setStatus(PlanningSessionStatus.ACTIVE);
+        boolean hasBrief = request.initialBrief() != null && !request.initialBrief().isBlank();
+        session.setStatus(hasBrief ? PlanningSessionStatus.PROCESSING : PlanningSessionStatus.ACTIVE);
         PlanningSession saved = planningSessionRepository.save(session);
 
-        if (request.initialBrief() != null && !request.initialBrief().isBlank()) {
+        if (hasBrief) {
             ChatMessage briefMessage = new ChatMessage();
             briefMessage.setSession(saved);
             briefMessage.setRole(ChatRole.user);
             briefMessage.setContent(request.initialBrief());
             chatMessageRepository.save(briefMessage);
-
-            Map<String, Object> result = aiPlanningClient.extractTravelInfo(request.initialBrief(), null);
-            if (outOfScopeDestination(result) != null) {
-                // 大概率是 Bedrock 这次抽取把地标名当成了 destination（见
-                // outOfScopeDestination 的注释），不是真的出了新加坡——重试一次，
-                // persistExtraction() 下面还是会做最终校验，真出了新加坡照样会被拒绝。
-                result = aiPlanningClient.extractTravelInfo(request.initialBrief(), null);
-            }
-            persistExtraction(saved, result);
+            eventPublisher.publishEvent(new InitialImportRequestedEvent(saved.getId()));
         }
 
         return loadSessionDetail(saved.getId());
+    }
+
+    /**
+     * Handles an initial brief after the create request has committed, so clients can leave
+     * the Import page and use the notification/session APIs to resume when it completes.
+     */
+    @Transactional
+    public void processInitialImport(Long sessionId) {
+        PlanningSession session = planningSessionRepository.findById(sessionId).orElse(null);
+        if (session == null || session.getStatus() != PlanningSessionStatus.PROCESSING) {
+            return;
+        }
+        try {
+            Map<String, Object> result = aiPlanningClient.extractTravelInfo(session.getInitialBrief(), null);
+            if (outOfScopeDestination(result) != null) {
+                result = aiPlanningClient.extractTravelInfo(session.getInitialBrief(), null);
+            }
+            validateExtractionResult(result);
+            persistExtraction(session, result);
+            notificationService.createImportNotification(session, true, null);
+        } catch (Exception exception) {
+            session.setStatus(PlanningSessionStatus.FAILED);
+            session.setFailureReason(truncate(exception.getMessage()));
+            planningSessionRepository.save(session);
+            notificationService.createImportNotification(
+                    session,
+                    false,
+                    "We could not finish importing your travel notes. Please review the content and try again."
+            );
+        }
     }
 
     @Transactional
