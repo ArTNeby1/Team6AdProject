@@ -36,6 +36,23 @@ public class DestinationService {
         return lat.compareTo(BigDecimal.ZERO) != 0 || lng.compareTo(BigDecimal.ZERO) != 0;
     }
 
+    /**
+     * Singapore's mainland + offshore islands (Sentosa, Pulau Ubin, Jurong Island, ...),
+     * generous enough to cover all real territory, tight enough to catch obviously-foreign
+     * coordinates. This app only ever plans Singapore trips (see PlanningService's
+     * OUT_OF_SCOPE check and MapPlacesClientHttp's {@code countrycodes=sg}), so any
+     * destination whose coordinates fall outside this box is corrupt data, not a valid
+     * result — see {@link #ensureGeocoded} for where this gets used to self-heal it.
+     */
+    private static boolean isWithinSingaporeBounds(BigDecimal lat, BigDecimal lng) {
+        if (lat == null || lng == null) {
+            return false;
+        }
+        double latVal = lat.doubleValue();
+        double lngVal = lng.doubleValue();
+        return latVal >= 1.13 && latVal <= 1.48 && lngVal >= 103.59 && lngVal <= 104.10;
+    }
+
     @Transactional(readOnly = true)
     public List<DestinationResponse> search(String keyword) {
         if (keyword == null || keyword.isBlank()) {
@@ -52,7 +69,9 @@ public class DestinationService {
      */
     @Transactional
     public Destination ensureGeocoded(Destination destination) {
-        if (hasUsableCoordinates(destination.getLatitude(), destination.getLongitude())) {
+        // 再多查一层超出新加坡范围也要重查——不是所有非零坐标都可信——实测过生产库里有条 "Chinatown" 在 countrycodes=sg 上线前就查过一次、存成了纽约坐标，之后一直被按名字直接复用。
+        if (hasUsableCoordinates(destination.getLatitude(), destination.getLongitude())
+                && isWithinSingaporeBounds(destination.getLatitude(), destination.getLongitude())) {
             return destination;
         }
 
@@ -79,25 +98,21 @@ public class DestinationService {
     /**
      * Looks up a destination by exact (case-insensitive) name, falling back to the first
      * loose match, and creates one if nothing matches. Coordinates come from the caller,
-     * or Nominatim geocoding — never {@link BigDecimal#ZERO}.
+     * or Nominatim geocoding — never {@link BigDecimal#ZERO}. Reused rows always go
+     * through {@link #ensureGeocoded}, which re-checks Singapore bounds even when the
+     * cached coordinates look “usable” (non-zero) — a name that got geocoded to the
+     * wrong country before countrycodes=sg existed would otherwise be served forever.
      */
     @Transactional
     public Destination findOrCreateByName(String name, String category, BigDecimal latitude, BigDecimal longitude) {
         List<Destination> matches = destinationRepository.findByNameContainingIgnoreCase(name);
         for (Destination candidate : matches) {
             if (candidate.getName().equalsIgnoreCase(name)) {
-                if (!hasUsableCoordinates(candidate.getLatitude(), candidate.getLongitude())) {
-                    return ensureGeocoded(candidate);
-                }
-                return candidate;
+                return ensureGeocoded(candidate);
             }
         }
         if (!matches.isEmpty()) {
-            Destination first = matches.get(0);
-            if (!hasUsableCoordinates(first.getLatitude(), first.getLongitude())) {
-                return ensureGeocoded(first);
-            }
-            return first;
+            return ensureGeocoded(matches.get(0));
         }
 
         BigDecimal resolvedLat = latitude;
