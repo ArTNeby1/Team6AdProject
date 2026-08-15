@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTrip } from '../context/TripContext';
-import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 
 const mapDraftPlaces = (draftPlaces) =>
@@ -11,13 +10,14 @@ const mapDraftPlaces = (draftPlaces) =>
     selected: true,
     status: p.validationStatus === 'VALID' ? 'ok' : 'warn',
     label: p.validationStatus === 'VALID' ? 'Located' : 'Check Location',
+    activities: p.activities || [],
+    day: p.activities?.find((activity) => activity.suggestedDay != null)?.suggestedDay ?? null,
   }));
 
 const ImportPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { fetchTrips, addLocationsToTripDay } = useTrip();
-  const { user } = useAuth();
 
   const targetTripId = searchParams.get('tripId');
   const targetDay = searchParams.get('day');
@@ -36,36 +36,87 @@ const ImportPage = () => {
   const [isParsing, setIsParsing] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
   const [refineText, setRefineText] = useState("");
+  const [durationDays, setDurationDays] = useState(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importError, setImportError] = useState("");
 
-  const loadDraftPlaces = async (sid, validate = true) => {
+  const persistPlaceDay = async (place, day) => {
+    await Promise.all(
+      place.activities.map((activity) =>
+        api.put(`/planning-sessions/draft-activities/${activity.id}`, { suggestedDay: day })
+      )
+    );
+  };
+
+  const distributePlacesAcrossDays = async (places, days) => {
+    if (!Number.isInteger(days) || days < 1 || places.length === 0) return places;
+
+    const assignments = places.map((place, index) => ({
+      ...place,
+      day: Math.min(days, Math.floor((index * days) / places.length) + 1),
+    }));
+    await Promise.all(
+      assignments
+        .filter((place) => place.activities.length > 0)
+        .map((place) => persistPlaceDay(place, place.day))
+    );
+    return assignments;
+  };
+
+  const loadDraftPlaces = async (sid, validate = true, autoSplit = false) => {
     if (validate) {
       await api.post(`/planning-sessions/${sid}/validate-places`);
     }
     const response = await api.get(`/planning-sessions/${sid}`);
-    if (response.data.draftPlaces) {
-      setResults(mapDraftPlaces(response.data.draftPlaces));
-    } else {
-      setResults([]);
+    const detectedDays = response.data.durationDays;
+    let places = mapDraftPlaces(response.data.draftPlaces || []);
+    setDurationDays(detectedDays ?? null);
+    if (autoSplit && detectedDays && places.every((place) => place.day == null)) {
+      places = await distributePlacesAcrossDays(places, detectedDays);
     }
+    setResults(places);
+    return response.data;
+  };
+
+  const waitForInitialImport = async (sid) => {
+    const deadline = Date.now() + 60_000;
+    while (Date.now() < deadline) {
+      const response = await api.get(`/planning-sessions/${sid}`);
+      if (response.data.status === 'DRAFT_READY') {
+        await loadDraftPlaces(sid, true, true);
+        return;
+      }
+      if (response.data.status === 'FAILED') {
+        throw new Error(response.data.failureReason || 'We could not import these travel notes.');
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 2_000));
+    }
+    throw new Error('Import timed out. Please try again.');
   };
 
   const handleStartParsing = async () => {
     if (!text.trim() || isParsing) return;
     setIsParsing(true);
+    setIsImporting(true);
+    setImportError("");
     try {
       const response = await api.post('/planning-sessions', {
         title: `Plan for ${text.substring(0, 15)}...`,
         initialBrief: text
       });
       setSessionId(response.data.id);
-      await loadDraftPlaces(response.data.id);
+      if (response.data.status === 'PROCESSING') {
+        await waitForInitialImport(response.data.id);
+      } else {
+        await loadDraftPlaces(response.data.id, true, true);
+      }
       setIsFinished(true);
     } catch (error) {
       console.error("Failed to start session:", error);
-      const message = error.response?.data?.message || "AI Analysis failed. Please try again.";
-      alert(message);
+      setImportError(error.response?.data?.message || error.message || "AI Analysis failed. Please try again.");
     } finally {
       setIsParsing(false);
+      setIsImporting(false);
     }
   };
 
@@ -96,7 +147,7 @@ const ImportPage = () => {
         content: refineText
       });
       await api.post(`/planning-sessions/${sessionId}/refine`);
-      await loadDraftPlaces(sessionId);
+      await loadDraftPlaces(sessionId, true, false);
       setRefineText("");
     } catch (e) {
       console.error(e);
@@ -118,12 +169,23 @@ const ImportPage = () => {
         return;
       }
 
+      if (!Number.isInteger(durationDays) || durationDays < 1 || durationDays > 30) {
+        setImportError('Tell us how many days this trip lasts (1–30) before confirming.');
+        return;
+      }
+
+      let placesForConfirmation = results;
+      if (placesForConfirmation.some((place) => place.day == null)) {
+        placesForConfirmation = await distributePlacesAcrossDays(placesForConfirmation, durationDays);
+        setResults(placesForConfirmation);
+      }
+
       await api.post(`/planning-sessions/${sessionId}/validate-places`);
       // POST /planning-sessions/{id}/confirm — backend creates a brand new Trip.
       // The AI /recommend call it makes server-side (F-18) also returns suggestedAdditions
       // (nearby/similar places not already in the trip) — it's ephemeral, not persisted by
       // the backend, so it's handed to ItineraryDetailPage via navigation state only.
-      const response = await api.post(`/planning-sessions/${sessionId}/confirm`);
+      const response = await api.post(`/planning-sessions/${sessionId}/confirm`, { durationDays });
 
       const { id: newTripId, weatherSummary, suggestedAdditions } = response.data;
 
@@ -150,6 +212,8 @@ const ImportPage = () => {
     setSessionId(null);
     setResults([]);
     setIsFinished(false);
+    setDurationDays(null);
+    setImportError("");
     setText("");
   };
 
@@ -172,9 +236,10 @@ const ImportPage = () => {
             />
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
               <button className="btn-primary" onClick={handleStartParsing} disabled={isParsing || !text.trim()}>
-                {isParsing ? '🚀 Analyzing...' : '✨ Start Parsing'}
+                {isImporting ? '🚀 Importing itinerary...' : isParsing ? '🚀 Analyzing...' : '✨ Start Parsing'}
               </button>
             </div>
+            {importError && <p style={{ color: 'var(--coral)', margin: '12px 0 0' }}>{importError}</p>}
           </div>
         )}
 
@@ -184,8 +249,55 @@ const ImportPage = () => {
               <div style={{ fontSize: '24px' }}>🤖</div>
               <div>
                 <strong>LoomyTrip AI Agent</strong>
-                <p>I've extracted {results.length} locations. You can edit names, delete ones you don't like, or tell me more below.</p>
+                <p>
+                  I&apos;ve extracted {results.length} locations
+                  {durationDays ? ` and detected a ${durationDays}-day trip.` : '.'}
+                  {' '}Review the automatic day split before confirming.
+                </p>
               </div>
+            </div>
+
+            <div style={{ marginBottom: '24px', padding: '16px', background: '#fff', border: '1px solid var(--line-soft)', borderRadius: '16px' }}>
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px' }} htmlFor="duration-days">
+                Trip duration
+              </label>
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <input
+                  id="duration-days"
+                  type="number"
+                  min="1"
+                  max="30"
+                  value={durationDays ?? ''}
+                  onChange={(event) => setDurationDays(event.target.value === '' ? null : Number(event.target.value))}
+                  style={{ width: '90px', padding: '10px', borderRadius: '8px', border: '1px solid var(--line)' }}
+                />
+                <span style={{ color: 'var(--muted)' }}>days</span>
+                <button
+                  className="btn-secondary"
+                  onClick={async () => {
+                    if (!Number.isInteger(durationDays) || durationDays < 1 || durationDays > 30) {
+                      setImportError('Enter a whole number from 1 to 30 first.');
+                      return;
+                    }
+                    setIsParsing(true);
+                    try {
+                      setResults(await distributePlacesAcrossDays(results, durationDays));
+                      setImportError('');
+                    } catch (error) {
+                      console.error(error);
+                      setImportError('Could not save the automatic day split. Please try again.');
+                    } finally {
+                      setIsParsing(false);
+                    }
+                  }}
+                  disabled={isParsing || results.length === 0}
+                >
+                  Auto-distribute places
+                </button>
+              </div>
+              <p style={{ color: 'var(--muted)', margin: '10px 0 0', fontSize: '13px' }}>
+                Places are split in the order extracted from your notes. You can change a place&apos;s day below.
+              </p>
             </div>
 
             <div className="extracted-list" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -201,10 +313,34 @@ const ImportPage = () => {
                   {res.label !== 'Located' && (
                     <span style={{ fontSize: '12px', color: 'var(--muted)' }}>{res.label}</span>
                   )}
+                  <select
+                    aria-label={`Day for ${res.name}`}
+                    value={res.day ?? 1}
+                    onChange={async (event) => {
+                      const day = Number(event.target.value);
+                      setIsParsing(true);
+                      try {
+                        await persistPlaceDay(res, day);
+                        setResults((current) => current.map((place) => place.id === res.id ? { ...place, day } : place));
+                      } catch (error) {
+                        console.error(error);
+                        setImportError(`Could not save the day for ${res.name}.`);
+                      } finally {
+                        setIsParsing(false);
+                      }
+                    }}
+                    disabled={isParsing || !durationDays}
+                    style={{ padding: '8px', borderRadius: '8px', border: '1px solid var(--line)' }}
+                  >
+                    {Array.from({ length: durationDays || 1 }, (_, index) => index + 1).map((day) => (
+                      <option key={day} value={day}>Day {day}</option>
+                    ))}
+                  </select>
                   <button onClick={() => deleteItem(res.id)} style={{ border: 'none', background: 'none', color: 'var(--coral)', cursor: 'pointer' }}>Delete</button>
                 </div>
               ))}
             </div>
+            {importError && <p style={{ color: 'var(--coral)', marginTop: '16px' }}>{importError}</p>}
 
             <div className="refine-area" style={{ marginTop: '32px', padding: '20px', background: 'var(--paper)', borderRadius: '16px' }}>
               <label style={{ display: 'block', marginBottom: '10px', fontWeight: 'bold' }}>Need adjustments?</label>
