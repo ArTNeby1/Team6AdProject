@@ -57,11 +57,7 @@ jobs:
         id: cache-week
         run: echo "week=$(date -u +%Y-W%V)" >> "$GITHUB_OUTPUT"
 
-      # 之前这里写的是 ~/.gradle/dependency-check-data，是瞎猜的路径，从没验证过。
-      # Maven/Gradle 两个插件底层是同一个 dependency-check-core 引擎，默认数据目录
-      # 是同一个 ~/.dependency-check/data（照抄 ci-java.yml 里已经验证过能用的路径）。
-      # 缓存路径不对等于每次都要全量同步一遍 NVD，跟 Java 那次"SCA 跑一个多小时"
-      # 是同一个坑，很可能就是这个导致同步超时/被限流、什么报告都没产出。
+
       - name: 缓存 NVD 数据
         uses: actions/cache@v4
         with:
@@ -76,11 +72,6 @@ jobs:
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
 
-      # 诊断用：上一轮日志证实 dependencyCheckAnalyze 任务本身是成功的（BUILD
-      # SUCCESSFUL，还打印了"Generating report for project mobile"），但
-      # mobile/build/reports/ 下翻遍了什么都没有——说明报告被写到了别的路径，
-      # 不是任务没跑。这次不再猜单一路径，直接在 Frontend_Android 全目录下
-      # 搜 dependency-check-report* 文件名，把真实落地位置钉死。
       - name: 列出报告目录内容（诊断用）
         if: always()
         run: |
@@ -91,22 +82,20 @@ jobs:
           echo "=== build/reports/（根项目）==="
           find build/reports -type f 2>&1 || echo "build/reports 目录不存在或为空"
 
+
       - name: 上传 SCA 报告
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: android-sca-report
-          path: Frontend_Android/mobile/build/reports/dependency-check-report.json
+          path: Frontend_Android/mobile/build/reports/dependency-check/dependency-check-report.json
 
-      # continue-on-error：dependencyCheckAnalyze 有没有真的产出这个 .sarif 文件
-      # 还没在真实 CI 里验证过（这台机器没有 Gradle 环境测不了），先别让这步
-      # 的失败拖垮整个 job，报告本身照样能从 android-sca-report 那个 artifact 里看。
       - name: 上传 SCA SARIF 到 Security 标签页
         if: always()
         continue-on-error: true
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: Frontend_Android/mobile/build/reports/dependency-check-report.sarif
+          sarif_file: Frontend_Android/mobile/build/reports/dependency-check/dependency-check-report.sarif
           category: dependency-check-android
 
       # ============================================================
