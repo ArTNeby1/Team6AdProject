@@ -13,6 +13,10 @@ dependencyCheck {
     // SARIF 给 GitHub Code Scanning 用（Security 标签页持续追踪 open/resolved）
     formats = listOf("JSON", "HTML", "SARIF")
     nvd.apiKey = System.getenv("NVD_API_KEY") ?: ""
+
+
+    scanConfigurations = listOf("implementation", "debugImplementation")
+    skipTestGroups = true
 }
 
 android {
