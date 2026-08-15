@@ -198,7 +198,9 @@ const ImportPage = () => {
                     onChange={(e) => updateItemName(res.id, e.target.value)}
                     style={{ flex: 1, border: 'none', background: 'transparent', fontSize: '16px', fontWeight: 'bold' }}
                   />
-                  <span style={{ fontSize: '12px', color: 'var(--muted)' }}>{res.label}</span>
+                  {res.label !== 'Located' && (
+                    <span style={{ fontSize: '12px', color: 'var(--muted)' }}>{res.label}</span>
+                  )}
                   <button onClick={() => deleteItem(res.id)} style={{ border: 'none', background: 'none', color: 'var(--coral)', cursor: 'pointer' }}>Delete</button>
                 </div>
               ))}
