@@ -96,8 +96,13 @@ jobs:
       # ============================================================
       # SAST：静态代码扫描
       # ============================================================
+      # SpotBugs 分析的是编译后的字节码，不是源码——之前直接跑 spotbugs:check/spotbugs
+      # 这两个独立 goal，没有触发任何编译，target/classes 是空的，实测日志是
+      # "No files found to run spotbugs; check compile phase has been run."，report
+      # 步骤直接被跳过，自然也不会有 spotbugsSarif.json。先跑一次 compile 补上。
       - name: SAST 静态代码扫描
         run: |
+          mvn compile
           mvn spotbugs:check -Dspotbugs.failOnError=false
           mvn spotbugs:spotbugs -Dspotbugs.outputFormat=xml -Dspotbugs.sarifOutput=true
         continue-on-error: true
