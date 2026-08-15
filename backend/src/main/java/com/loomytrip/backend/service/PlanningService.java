@@ -1,12 +1,12 @@
 package com.loomytrip.backend.service;
 
-import com.loomytrip.backend.client.AiPlanItineraryResult;
 import com.loomytrip.backend.client.AiPlanningClient;
 import com.loomytrip.backend.client.AiRecommendResult;
 import com.loomytrip.backend.client.MapPlacesClient;
 import com.loomytrip.backend.dto.request.ConfirmSessionRequest;
 import com.loomytrip.backend.dto.request.CreateChatMessageRequest;
 import com.loomytrip.backend.dto.request.CreatePlanningSessionRequest;
+import com.loomytrip.backend.dto.request.UpdateDraftActivityRequest;
 import com.loomytrip.backend.dto.request.UpdateDraftPlaceRequest;
 import com.loomytrip.backend.dto.response.ConfirmSessionResponse;
 import com.loomytrip.backend.dto.response.PlanningSessionDetailResponse;
@@ -35,7 +35,6 @@ import com.loomytrip.backend.repository.TripRepository;
 import com.loomytrip.backend.repository.TripScheduleRepository;
 import com.loomytrip.backend.repository.UserRepository;
 import com.loomytrip.backend.util.SecurityUtils;
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
@@ -52,7 +51,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class PlanningService {
 
     private static final String DEFAULT_DESTINATION = "Singapore";
-    private static final int NOTE_MAX_LENGTH = 255;
     private static final int DEFAULT_VISIT_SLOT_MINUTES = 90;
     /** Mirrors ML's itinerary_planner.MAX_DAYS / trip_models.MAX_DURATION_DAYS — see
      * ML/docs/handoff_duration_2026-08-14.md. Kept in sync manually since it's a small,
@@ -274,8 +272,7 @@ public class PlanningService {
     }
 
     /**
-     * F-18: sends the user's confirmed draft places to the AI, then persists the result as
-     * a Trip.
+     * F-18: persists the user's confirmed draft places as a Trip.
      *
      * <p>Day count precedence: {@code request.durationDays()} (the frontend asked the user
      * directly) beats {@code session.getDurationDays()} (the AI picked it up from the
@@ -285,13 +282,13 @@ public class PlanningService {
      * silent default (e.g. always 1) — guessing a day count the user never agreed to would
      * mean confirming a trip shorter or longer than what they actually asked for.
      *
-     * <p>1 day still goes through {@code /recommend} (weather-aware ordering, plus
-     * suggested_additions the frontend shows in the post-confirm summary — see
-     * ai_contract.md 2.4). More than 1 day switches to {@code /plan-itinerary}, which
-     * route-first/split-second groups stops by day so nearby places land together instead
-     * of each day crossing the whole island; that endpoint doesn't return
-     * suggested_additions (a `/recommend`-only field), so multi-day confirmations just don't
-     * have any — the frontend already treats that list as optional.
+     * <p>Day/time assignment comes from {@code draft_activity.suggested_day}/{@code start_time}
+     * — the user's own drag-and-drop arrangement in the import review UI (see
+     * {@link #updateDraftActivity}), not a fresh AI re-ordering. A place with no
+     * {@code suggested_day} set on any of its activities (never dragged) defaults to day 1
+     * rather than being dropped. {@code /recommend} is still called once, purely for
+     * {@code weatherSummary}/{@code suggestedAdditions} — its {@code ordered_stops} (the
+     * AI's own ordering) is intentionally ignored here.
      */
     @Transactional
     public ConfirmSessionResponse confirmSession(Long sessionId, ConfirmSessionRequest request) {
@@ -312,10 +309,6 @@ public class PlanningService {
             );
         }
         if (numDays < 1 || numDays > MAX_DURATION_DAYS) {
-            // 上限跟 ML itinerary_planner.MAX_DAYS 对齐（见 ML/schema/trip_models.py）——
-            // 这里提前挡住，不然会在调 /plan-itinerary 时才被拒（AiPlanningClientHttp
-            // 把那个 4xx 降级成空 days，最后报出来的是容易让人误会的
-            // AI_SERVICE_UNAVAILABLE，不如现在就说清楚是天数不对。
             throw new ApiException(
                     HttpStatus.UNPROCESSABLE_ENTITY,
                     "INVALID_DURATION",
@@ -340,40 +333,68 @@ public class PlanningService {
         trip.setDurationDays(numDays);
         Trip savedTrip = tripRepository.save(trip);
 
-        String weatherSummary;
-        List<SuggestedAdditionResponse> suggestions;
-
-        if (numDays == 1) {
-            AiRecommendResult result = aiPlanningClient.recommend(places, startDate.toString(), buildPreferenceText(user));
-            List<AiRecommendResult.OrderedStop> orderedStops = resolveOrderedStops(result, places);
-
-            TripDay day = new TripDay();
-            day.setTrip(savedTrip);
-            day.setDaySequence(1);
-            TripDay savedDay = tripDayRepository.save(day);
-            writeDaySchedules(savedDay, orderedStops.stream().map(this::toStopView).toList());
-
-            weatherSummary = result.weatherSummary();
-            suggestions = result.suggestedAdditions().stream()
-                    .map(s -> new SuggestedAdditionResponse(
-                            s.name(), s.type(), s.lat(), s.lng(), s.distanceKm(), s.reason(), s.activities()
-                    ))
-                    .toList();
-        } else {
-            AiPlanItineraryResult result = aiPlanningClient.planItinerary(places, startDate.toString(), numDays);
-            if (result.days().isEmpty()) {
-                throw new ApiException(HttpStatus.BAD_GATEWAY, "AI_SERVICE_UNAVAILABLE", "Itinerary planning service is unavailable");
-            }
-            for (AiPlanItineraryResult.PlannedDay plannedDay : result.days()) {
-                TripDay day = new TripDay();
-                day.setTrip(savedTrip);
-                day.setDaySequence(plannedDay.day());
-                TripDay savedDay = tripDayRepository.save(day);
-                writeDaySchedules(savedDay, plannedDay.stops().stream().map(this::toStopView).toList());
-            }
-            weatherSummary = result.days().get(0).weatherSummary();
-            suggestions = List.of();
+        // 按用户拖拽好的 suggested_day 分组；没拖过的（所有 activity 的 suggestedDay 都是
+        // null）默认分到第 1 天，不会因为没手动排过就把地点丢掉。
+        Map<Integer, List<DraftPlace>> placesByDay = new java.util.TreeMap<>();
+        for (DraftPlace place : draftPlaces) {
+            List<DraftActivity> acts = activitiesByPlaceId.getOrDefault(place.getId(), List.of());
+            int day = acts.stream()
+                    .map(DraftActivity::getSuggestedDay)
+                    .filter(java.util.Objects::nonNull)
+                    .findFirst()
+                    .orElse(1);
+            day = Math.max(1, Math.min(day, numDays));
+            placesByDay.computeIfAbsent(day, d -> new ArrayList<>()).add(place);
         }
+
+        for (int dayNum = 1; dayNum <= numDays; dayNum++) {
+            TripDay tripDay = new TripDay();
+            tripDay.setTrip(savedTrip);
+            tripDay.setDaySequence(dayNum);
+            TripDay savedDay = tripDayRepository.save(tripDay);
+
+            // 同一天内按用户设置的 start_time 排序；没设置的排在后面，保持原有相对顺序。
+            List<DraftPlace> ordered = placesByDay.getOrDefault(dayNum, List.of()).stream()
+                    .sorted(java.util.Comparator.comparing(p -> firstActivityStartTime(p, activitiesByPlaceId)))
+                    .toList();
+
+            int sequence = 1;
+            LocalTime clockCursor = LocalTime.of(9, 0);
+            boolean isFirstStopOfDay = true;
+            for (DraftPlace place : ordered) {
+                Destination destination = destinationService.findOrCreateByName(
+                        place.getName(), place.getCategory(), place.getLatitude(), place.getLongitude());
+                LocalTime explicitStart = firstActivityStartTime(place, activitiesByPlaceId);
+                LocalTime startTime;
+                if (explicitStart != LocalTime.MAX) {
+                    startTime = explicitStart;
+                } else if (isFirstStopOfDay) {
+                    startTime = LocalTime.of(9, 0);
+                } else {
+                    startTime = clockCursor;
+                }
+                clockCursor = startTime.plusMinutes(DEFAULT_VISIT_SLOT_MINUTES);
+                isFirstStopOfDay = false;
+
+                TripSchedule schedule = new TripSchedule();
+                schedule.setTripDay(savedDay);
+                schedule.setDestination(destination);
+                schedule.setSequence(sequence++);
+                schedule.setLocked(false);
+                schedule.setStartTime(startTime);
+                tripScheduleRepository.save(schedule);
+            }
+        }
+
+        // 附近推荐/天气单独调一次 /recommend，只取这两块附加信息，排序结果不用
+        // （行程结构已经交给用户自己拖拽好的 suggested_day/start_time）。
+        AiRecommendResult recommendResult = aiPlanningClient.recommend(places, startDate.toString(), buildPreferenceText(user));
+        String weatherSummary = recommendResult.weatherSummary();
+        List<SuggestedAdditionResponse> suggestions = recommendResult.suggestedAdditions().stream()
+                .map(s -> new SuggestedAdditionResponse(
+                        s.name(), s.type(), s.lat(), s.lng(), s.distanceKm(), s.reason(), s.activities()
+                ))
+                .toList();
 
         session.setConfirmedTrip(savedTrip);
         session.setStatus(PlanningSessionStatus.CONFIRMED);
@@ -391,45 +412,15 @@ public class PlanningService {
         );
     }
 
-    /** Common shape `writeDaySchedules` needs from either AI response type (single-day
-     * `/recommend`'s OrderedStop or multi-day `/plan-itinerary`'s PlannedStop) — same fields,
-     * different Java records, so this lets one write-loop serve both branches of
-     * confirmSession. */
-    private record StopView(String name, String type, BigDecimal lat, BigDecimal lng, String timeOfDay, String reason) {
-    }
-
-    private StopView toStopView(AiRecommendResult.OrderedStop stop) {
-        return new StopView(stop.name(), stop.type(), stop.lat(), stop.lng(), stop.timeOfDay(), stop.reason());
-    }
-
-    private StopView toStopView(AiPlanItineraryResult.PlannedStop stop) {
-        return new StopView(stop.name(), stop.type(), stop.lat(), stop.lng(), stop.timeOfDay(), stop.reason());
-    }
-
-    /** Persists one day's stops as TripSchedule rows. First stop of the day is pinned to
-     * 09:00 regardless of the AI's time-of-day suggestion — same rule as
-     * TripService#addSchedules, see the comment there for why. */
-    private void writeDaySchedules(TripDay savedDay, List<StopView> stops) {
-        int sequence = 1;
-        LocalTime clockCursor = LocalTime.of(9, 0);
-        boolean isFirstStopOfDay = true;
-        for (StopView stop : stops) {
-            Destination destination = destinationService.findOrCreateByName(stop.name(), stop.type(), stop.lat(), stop.lng());
-            if (isFirstStopOfDay) {
-                isFirstStopOfDay = false;
-            } else {
-                clockCursor = nextStartTime(clockCursor, stop.timeOfDay());
-            }
-            TripSchedule schedule = new TripSchedule();
-            schedule.setTripDay(savedDay);
-            schedule.setDestination(destination);
-            schedule.setSequence(sequence++);
-            schedule.setLocked(false);
-            schedule.setNote(truncate(stop.reason()));
-            schedule.setStartTime(clockCursor);
-            tripScheduleRepository.save(schedule);
-            clockCursor = clockCursor.plusMinutes(DEFAULT_VISIT_SLOT_MINUTES);
-        }
+    /** First explicit {@code start_time} set on any of this place's draft activities (the
+     * user's drag-and-drop arrangement), or {@link LocalTime#MAX} if none was ever set —
+     * sorts places nobody has arranged yet to the end of their day, see confirmSession(). */
+    private LocalTime firstActivityStartTime(DraftPlace place, Map<Long, List<DraftActivity>> activitiesByPlaceId) {
+        return activitiesByPlaceId.getOrDefault(place.getId(), List.of()).stream()
+                .map(DraftActivity::getStartTime)
+                .filter(java.util.Objects::nonNull)
+                .findFirst()
+                .orElse(LocalTime.MAX);
     }
 
     @Transactional
@@ -467,6 +458,24 @@ public class PlanningService {
         ensureSessionOwner(place.getSession());
         ensureSessionEditable(place.getSession());
         draftPlaceRepository.delete(place);
+    }
+
+    /** Drag-and-drop reorder in the import review UI — confirmSession() groups/schedules
+     * by these two fields instead of asking the AI to re-order. */
+    @Transactional
+    public void updateDraftActivity(Long activityId, UpdateDraftActivityRequest request) {
+        DraftActivity activity = draftActivityRepository.findById(activityId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "ACTIVITY_NOT_FOUND", "Draft activity not found"));
+        ensureSessionOwner(activity.getSession());
+        ensureSessionEditable(activity.getSession());
+
+        if (request.suggestedDay() != null) {
+            activity.setSuggestedDay(request.suggestedDay());
+        }
+        if (request.startTime() != null) {
+            activity.setStartTime(request.startTime());
+        }
+        draftActivityRepository.save(activity);
     }
 
     // ---------------------------------------------------------------------
@@ -681,46 +690,6 @@ public class PlanningService {
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private List<AiRecommendResult.OrderedStop> resolveOrderedStops(
-            AiRecommendResult result,
-            List<Map<String, Object>> draftPlaces
-    ) {
-        if (result != null
-                && "OK".equalsIgnoreCase(result.status())
-                && !result.orderedStops().isEmpty()) {
-            return result.orderedStops();
-        }
-
-        List<AiRecommendResult.OrderedStop> fallback = new ArrayList<>();
-        int order = 1;
-        for (Map<String, Object> place : draftPlaces) {
-            Object lat = place.get("lat");
-            Object lng = place.get("lng");
-            fallback.add(new AiRecommendResult.OrderedStop(
-                    String.valueOf(place.get("name")),
-                    String.valueOf(place.getOrDefault("type", "other")),
-                    lat instanceof BigDecimal bigLat ? bigLat : null,
-                    lng instanceof BigDecimal bigLng ? bigLng : null,
-                    place.get("activities") instanceof List<?> activities
-                            ? (List<String>) activities
-                            : List.of(),
-                    order++,
-                    null,
-                    null,
-                    "Fallback order (AI recommendation unavailable)"
-            ));
-        }
-        if (fallback.isEmpty()) {
-            throw new ApiException(
-                    HttpStatus.BAD_GATEWAY,
-                    "RECOMMENDATION_FAILED",
-                    "Could not build an itinerary from confirmed places"
-            );
-        }
-        return fallback;
-    }
-
     /**
      * Builds the `preference_text` string the AI `/recommend` and `/refine` endpoints expect
      * (ai_contract.md: "用户偏好，比如 travel_style=culture"), from the user's saved
@@ -737,33 +706,6 @@ public class PlanningService {
             parts.add("prefer_transport=" + user.getPreferTransport());
         }
         return parts.isEmpty() ? null : String.join(", ", parts);
-    }
-
-    /**
-     * Converts a stop's `time_of_day` bucket (morning/afternoon/evening/null — see
-     * ai_contract.md section 5) into a concrete, strictly-increasing {@link LocalTime} to
-     * store on the schedule. {@code time_of_day} is only ever a coarse bucket, never an exact
-     * clock time, so this is a display-time heuristic, not something the AI actually decided
-     * minute-by-minute: jump forward to the bucket's opening time when the AI's ordering moves
-     * into a new part of the day, otherwise just advance the cursor by a default 90-minute
-     * visit slot so consecutive stops in the same bucket don't collide on the same timestamp.
-     */
-    private LocalTime nextStartTime(LocalTime cursor, String timeOfDay) {
-        LocalTime bucketStart = switch (timeOfDay == null ? "" : timeOfDay.toLowerCase()) {
-            case "morning" -> LocalTime.of(9, 0);
-            case "afternoon" -> LocalTime.of(13, 0);
-            case "evening" -> LocalTime.of(18, 0);
-            default -> cursor;
-        };
-        LocalTime next = bucketStart.isAfter(cursor) ? bucketStart : cursor;
-        return next.isBefore(LocalTime.of(22, 30)) ? next : LocalTime.of(22, 30);
-    }
-
-    private String truncate(String value) {
-        if (value == null) {
-            return null;
-        }
-        return value.length() > NOTE_MAX_LENGTH ? value.substring(0, NOTE_MAX_LENGTH) : value;
     }
 
     private static String safeImportFailureReason(Exception exception) {
