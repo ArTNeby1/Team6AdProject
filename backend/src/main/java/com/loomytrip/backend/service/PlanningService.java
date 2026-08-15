@@ -377,6 +377,7 @@ public class PlanningService {
                 schedule.setSequence(sequence++);
                 schedule.setLocked(false);
                 schedule.setStartTime(startTime);
+                schedule.setNote(buildScheduleNote(place, activitiesByPlaceId));
                 tripScheduleRepository.save(schedule);
             }
         }
@@ -405,6 +406,32 @@ public class PlanningService {
                 weatherSummary,
                 suggestions
         );
+    }
+
+    /** {@code trip_schedule.note} per the data dictionary ("draft_activity ... maps to
+     * formal trip_day / trip_schedule on confirm") — draft_activity.title (the actual
+     * "what to do here" text) was previously dropped entirely at confirm time, only
+     * suggested_day/start_time made it through. Prefers the place's own manually-written
+     * note (user's exact words win); falls back to the place's activity titles joined
+     * together, so AI-extracted detail ("Visit the Supertree Grove; Visit the Cloud
+     * Forest") survives into the formal trip instead of vanishing. Null when neither
+     * exists — DB column is nullable, no need to force an empty string. */
+    private String buildScheduleNote(DraftPlace place, Map<Long, List<DraftActivity>> activitiesByPlaceId) {
+        if (place.getNote() != null && !place.getNote().isBlank()) {
+            return place.getNote();
+        }
+        String joined = activitiesByPlaceId.getOrDefault(place.getId(), List.of()).stream()
+                .map(DraftActivity::getTitle)
+                .filter(java.util.Objects::nonNull)
+                .map(String::trim)
+                .filter(title -> !title.isBlank())
+                .collect(Collectors.joining("; "));
+        if (joined.isBlank()) {
+            return null;
+        }
+        // trip_schedule.note is VARCHAR(255) per the data dictionary — don't let a long
+        // activity list blow past the column and fail the insert.
+        return joined.length() > 255 ? joined.substring(0, 255) : joined;
     }
 
     /** Which day this place belongs to: place-level {@code suggested_day} wins (the current
