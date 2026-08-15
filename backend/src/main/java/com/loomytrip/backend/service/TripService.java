@@ -131,10 +131,31 @@ public class TripService {
                 .mapToInt(Integer::intValue)
                 .sum();
 
-        Map<Long, Long> stopsByDay = schedules.stream()
-                .collect(Collectors.groupingBy(schedule -> schedule.getTripDay().getId(), Collectors.counting()));
-        long expectedLegs = stopsByDay.values().stream().mapToLong(count -> Math.max(0, count - 1)).sum();
-        boolean complete = expectedLegs == transports.size();
+        Map<Long, List<TripSchedule>> schedulesByDay = schedules.stream()
+                .collect(Collectors.groupingBy(
+                        schedule -> schedule.getTripDay().getId(),
+                        LinkedHashMap::new,
+                        Collectors.toList()
+                ));
+        Set<RouteLeg> expectedLegs = new HashSet<>();
+        for (Map.Entry<Long, List<TripSchedule>> entry : schedulesByDay.entrySet()) {
+            List<TripSchedule> daySchedules = entry.getValue();
+            for (int index = 1; index < daySchedules.size(); index++) {
+                expectedLegs.add(new RouteLeg(
+                        entry.getKey(),
+                        daySchedules.get(index - 1).getId(),
+                        daySchedules.get(index).getId()
+                ));
+            }
+        }
+        Set<RouteLeg> persistedLegs = transports.stream()
+                .map(transport -> new RouteLeg(
+                        transport.getTripDay().getId(),
+                        transport.getPrevSchedule().getId(),
+                        transport.getNextSchedule().getId()
+                ))
+                .collect(Collectors.toSet());
+        boolean complete = expectedLegs.equals(persistedLegs) && expectedLegs.size() == transports.size();
         List<String> warnings = new ArrayList<>();
         if (!complete) {
             warnings.add("Route metrics are incomplete. Open each day on the map to calculate missing route legs.");
@@ -150,7 +171,7 @@ public class TripService {
                 totalDistance,
                 totalMinutes,
                 complete,
-                (int) transports.stream().map(transport -> transport.getTripDay().getId()).distinct().count(),
+                (int) persistedLegs.stream().map(RouteLeg::tripDayId).distinct().count(),
                 warnings
         );
     }
@@ -820,5 +841,8 @@ public class TripService {
         if (!trip.getUser().getId().equals(user.getId())) {
             throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN", "Trip does not belong to current user");
         }
+    }
+
+    private record RouteLeg(Long tripDayId, Long previousScheduleId, Long nextScheduleId) {
     }
 }

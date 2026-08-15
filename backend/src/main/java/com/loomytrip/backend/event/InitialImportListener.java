@@ -15,7 +15,7 @@ public class InitialImportListener {
         this.planningService = planningService;
     }
 
-    @Async
+    @Async("importTaskExecutor")
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void process(InitialImportRequestedEvent event) {
         planningService.processInitialImport(event.sessionId());

@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,21 +47,25 @@ public class AdminAnalyticsService {
 
     @Transactional(readOnly = true)
     public AdminAnalyticsResponse overview(LocalDate from, LocalDate to, String bucket, int limit) {
-        Instant fromInstant = from.atStartOfDay().toInstant(ZoneOffset.UTC);
+        Instant fromInclusive = from.atStartOfDay().toInstant(ZoneOffset.UTC);
         Instant toExclusive = to.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC);
-        List<Trip> trips = tripRepository.findByCreatedAtBetween(fromInstant, toExclusive);
-        List<PlanningSession> sessionsCreated = planningSessionRepository.findByCreatedAtBetween(fromInstant, toExclusive);
-        List<PlanningSession> sessionsUpdated = planningSessionRepository.findByUpdatedAtBetween(fromInstant, toExclusive);
+        List<Trip> trips = tripRepository.findByCreatedAtGreaterThanEqualAndCreatedAtLessThan(fromInclusive, toExclusive);
+        List<PlanningSession> sessionsCreated = planningSessionRepository
+                .findByCreatedAtGreaterThanEqualAndCreatedAtLessThan(fromInclusive, toExclusive);
+        List<PlanningSession> sessionsUpdated = planningSessionRepository
+                .findByUpdatedAtGreaterThanEqualAndUpdatedAtLessThan(fromInclusive, toExclusive);
 
         Set<Long> activeUserIds = new HashSet<>();
         trips.forEach(trip -> activeUserIds.add(trip.getUser().getId()));
         sessionsUpdated.forEach(session -> activeUserIds.add(session.getUser().getId()));
 
         Map<String, long[]> trend = new LinkedHashMap<>();
-        Set<Long> importedTripIds = new HashSet<>();
-        sessionsCreated.stream()
-                .filter(session -> session.getConfirmedTrip() != null)
-                .forEach(session -> importedTripIds.add(session.getConfirmedTrip().getId()));
+        Set<Long> tripIds = trips.stream().map(Trip::getId).collect(Collectors.toSet());
+        Set<Long> importedTripIds = tripIds.isEmpty()
+                ? Set.of()
+                : planningSessionRepository.findByConfirmedTrip_IdIn(tripIds).stream()
+                        .map(session -> session.getConfirmedTrip().getId())
+                        .collect(Collectors.toSet());
         for (Trip trip : trips) {
             String key = bucketKey(trip.getCreatedAt(), bucket);
             long[] values = trend.computeIfAbsent(key, ignored -> new long[3]);
@@ -72,13 +77,9 @@ public class AdminAnalyticsService {
             }
         }
 
-        Set<Long> tripIds = trips.stream().map(Trip::getId).collect(java.util.stream.Collectors.toSet());
         Map<Long, PopularAccumulator> popularity = new HashMap<>();
         if (!tripIds.isEmpty()) {
-            for (TripSchedule schedule : tripScheduleRepository.findAll()) {
-                if (!tripIds.contains(schedule.getTripDay().getTrip().getId())) {
-                    continue;
-                }
+            for (TripSchedule schedule : tripScheduleRepository.findAnalyticsSchedulesByTripIds(tripIds)) {
                 Long id = schedule.getDestination().getId();
                 PopularAccumulator accumulator = popularity.computeIfAbsent(
                         id,
@@ -89,10 +90,13 @@ public class AdminAnalyticsService {
             }
         }
 
-        long completed = sessionsCreated.stream()
-                .filter(session -> session.getStatus() == PlanningSessionStatus.CONFIRMED)
+        // Import completion for F-20 is DRAFT_READY (notification fires then). CONFIRMED is a
+        // later conversion step and still counts as a successful import outcome.
+        long completed = sessionsUpdated.stream()
+                .filter(session -> session.getStatus() == PlanningSessionStatus.DRAFT_READY
+                        || session.getStatus() == PlanningSessionStatus.CONFIRMED)
                 .count();
-        long failed = sessionsCreated.stream()
+        long failed = sessionsUpdated.stream()
                 .filter(session -> session.getStatus() == PlanningSessionStatus.FAILED)
                 .count();
         long terminal = completed + failed;
@@ -117,7 +121,7 @@ public class AdminAnalyticsService {
                 Map.of(
                         "activeUsers", "Distinct travelers with a trip creation or planning-session update in the selected range.",
                         "popularDestinations", "Places ranked by trip schedule appearances for trips created in the selected range.",
-                        "importSuccessRate", "Confirmed imports divided by confirmed plus failed imports; in-progress imports are excluded."
+                        "importSuccessRate", "Successful imports (DRAFT_READY or CONFIRMED) divided by successful plus failed imports updated in the selected range; in-progress imports are excluded."
                 )
         );
     }
@@ -126,7 +130,9 @@ public class AdminAnalyticsService {
         LocalDate date = timestamp.atZone(ZoneOffset.UTC).toLocalDate();
         if ("week".equalsIgnoreCase(bucket)) {
             WeekFields fields = WeekFields.of(Locale.ROOT);
-            return date.getYear() + "-W" + String.format("%02d", date.get(fields.weekOfWeekBasedYear()));
+            return date.get(fields.weekBasedYear())
+                    + "-W"
+                    + String.format("%02d", date.get(fields.weekOfWeekBasedYear()));
         }
         return date.toString();
     }

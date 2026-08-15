@@ -124,6 +124,18 @@ class FeatureInsightsIntegrationTest {
                 .andExpect(jsonPath("$.totalTravelDurationMinutes").value(12))
                 .andExpect(jsonPath("$.metricsComplete").value(true))
                 .andExpect(jsonPath("$.categoryCounts.length()").value(2));
+
+        // A duplicate row has the right count but is not a valid route leg. The dashboard
+        // must validate the actual schedule pair rather than comparing only leg counts.
+        jdbc.update(
+                "INSERT INTO trip_transport (trip_day_id, prev_schedule_id, next_schedule_id, transport_type, distance_km, duration_minutes) "
+                        + "VALUES (?, ?, ?, ?, ?, ?)",
+                dayId, firstScheduleId, secondScheduleId, "driving", 2.5, 12
+        );
+        mockMvc.perform(get("/api/v1/trips/{id}/summary", tripId).header("Authorization", bearer(travelerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.metricsComplete").value(false))
+                .andExpect(jsonPath("$.warnings").isNotEmpty());
     }
 
     @Test
@@ -144,6 +156,29 @@ class FeatureInsightsIntegrationTest {
                 .andExpect(jsonPath("$.totalUsers").value(1))
                 .andExpect(jsonPath("$.definitions.activeUsers").isNotEmpty())
                 .andExpect(jsonPath("$.importStats.sessionsStarted").value(0));
+
+        mockMvc.perform(get("/api/v1/admin/analytics/overview?limit=0")
+                        .header("Authorization", bearer(adminToken)))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(get("/api/v1/admin/analytics/overview?from=2024-01-01&to=2026-01-01")
+                        .header("Authorization", bearer(adminToken)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void confirmIsBlockedWhileImportIsStillProcessing() throws Exception {
+        jdbc.update(
+                "INSERT INTO planning_session (user_id, title, initial_brief, status, created_at, updated_at) "
+                        + "VALUES (?, ?, ?, ?, ?, ?)",
+                travelerId, "Processing import", "Day 1 Gardens. Day 2 Sentosa.", "PROCESSING",
+                Timestamp.from(Instant.now()), Timestamp.from(Instant.now())
+        );
+        long sessionId = jdbc.queryForObject("SELECT id FROM planning_session", Long.class);
+
+        mockMvc.perform(post("/api/v1/planning-sessions/{id}/confirm", sessionId)
+                        .header("Authorization", bearer(travelerToken)))
+                .andExpect(status().isConflict());
     }
 
     private static String bearer(String token) {

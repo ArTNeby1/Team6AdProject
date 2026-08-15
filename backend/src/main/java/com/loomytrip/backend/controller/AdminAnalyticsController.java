@@ -4,6 +4,7 @@ import com.loomytrip.backend.dto.response.AdminAnalyticsResponse;
 import com.loomytrip.backend.exception.ApiException;
 import com.loomytrip.backend.service.AdminAnalyticsService;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -34,6 +35,13 @@ public class AdminAnalyticsController {
         LocalDate start = from == null ? end.minusDays(29) : from;
         if (start.isAfter(end)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_DATE_RANGE", "from must be on or before to");
+        }
+        long inclusiveDays = ChronoUnit.DAYS.between(start, end) + 1;
+        if (inclusiveDays > 366) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "DATE_RANGE_TOO_LARGE", "from/to span must be at most 366 days");
+        }
+        if (limit < 1 || limit > 50) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_LIMIT", "limit must be between 1 and 50");
         }
         if (!"day".equalsIgnoreCase(bucket) && !"week".equalsIgnoreCase(bucket)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_BUCKET", "bucket must be day or week");

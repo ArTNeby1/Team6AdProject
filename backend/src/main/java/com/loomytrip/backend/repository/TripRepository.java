@@ -11,5 +11,5 @@ public interface TripRepository extends JpaRepository<Trip, Long> {
 
     Optional<Trip> findByShareToken(String shareToken);
 
-    List<Trip> findByCreatedAtBetween(Instant from, Instant to);
+    List<Trip> findByCreatedAtGreaterThanEqualAndCreatedAtLessThan(Instant fromInclusive, Instant toExclusive);
 }
