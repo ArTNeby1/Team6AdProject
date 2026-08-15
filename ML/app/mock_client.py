@@ -116,6 +116,20 @@ def mock_extract_missing_field(text: str, source_name: str = "mock") -> str:
     return json.dumps(data, ensure_ascii=False)
 
 
+def mock_extract_no_content(text: str, source_name: str = "mock") -> str:
+    """
+    坏情况4（其实是"好情况"，模型没犯错）：模拟文本里压根没有可提取的旅行信息——
+    模型老老实实回 destination/places 全空，不编。用来测 orchestrator 把这种
+    结果识别成 NO_USEFUL_CONTENT 而不是 ExtractionFailedError 那条分支。
+    真实链路不会主动挑这个函数用：这是给单元测试直接注入 EXTRACT_FN 用的，
+    HTTP 层的 mock_extract() 不看输入内容、恒定返回两条假地点，跟其它字段的
+    mock 限制一致（见 main.py 顶部 mock 模式说明），要测这条分支只能靠这个
+    函数或真实模型。
+    """
+    data = {"destination": "", "places": []}
+    return json.dumps(data, ensure_ascii=False)
+
+
 def mock_extract_bad_coords(text: str, source_name: str = "mock") -> str:
     """坏情况3：JSON 格式没错，但坐标是模型瞎编的，而且连类型都不对(lat应该是数字)。"""
     data = {

@@ -47,6 +47,11 @@ Read the travel blog text and output ONLY a single JSON object that matches
 this JSON Schema exactly. Do not include markdown code fences, explanations,
 or any text other than the JSON object itself.
 
+If the text contains no real destination, place, or attraction at all (e.g. it
+is greetings, small talk, complaints, or content unrelated to travel), output
+"places": [] and "destination": "". Do NOT invent a place or destination just
+to make the output non-empty.
+
 JSON Schema:
 {schema}
 """

@@ -150,6 +150,12 @@ def _extraction_response(result) -> dict:
     等于用户还没确认就先推荐了，现在拆开了。
     """
     if result.error:
+        if result.error_code == "NO_USEFUL_CONTENT":
+            # 用户输入没有可用的旅行信息（全是废话/无关内容），不是服务出故障——
+            # 422 而不是 502，跟 /plan-itinerary 的 NUM_DAYS_REQUIRED 一个道理：
+            # 参数/输入的问题是 4xx，免得后端把"用户没说有用的东西"当成"AI 服务挂了"
+            # 去排查。前缀码稳定，后端可以直接按前缀分支，不用解析整句话。
+            raise HTTPException(status_code=422, detail=f"NO_USEFUL_CONTENT: {result.error}")
         raise HTTPException(status_code=502, detail=result.error)
     duration_days = result.extraction.duration_days
     return {

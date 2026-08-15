@@ -82,7 +82,18 @@ class TripExtraction(BaseModel):
         "Never guess or infer this from the number of places: return null when the "
         "text does not say how long the trip is.",
     )
-    places: list[Place] = Field(min_length=1, description="Every place mentioned in the text")
+    # 2026-08-14 起允许空列表：以前 min_length=1 逼着模型在"文本压根没提地点"时
+    # 要么编一个地方出来、要么校验失败触发 3 次白费的重试，最后还是 502。
+    # 跟 coords/dates/duration_days 一样的原则——宁可为空也不编：真的没有就让
+    # extract_with_retry 一次成功返回 places=[]，orchestrator.run_extraction()
+    # 把"抽到了但地点是空的"识别成 NO_USEFUL_CONTENT，直接告诉用户重新输入，
+    # 不用再靠重试碰运气。
+    places: list[Place] = Field(
+        default_factory=list,
+        description="Every place mentioned in the text. Return an empty list when the "
+        "text contains no actual destination, place, or attraction to extract — never "
+        "invent one just to make this list non-empty.",
+    )
 
 
 if __name__ == "__main__":

@@ -168,6 +168,48 @@ def recommend_from_dataset(
     return candidates[:top_n]
 
 
+def recommend_by_type(
+    place_type: str,
+    user_places: list[dict] | None = None,
+    top_n: int = 3,
+) -> list[dict]:
+    """
+    按 type 精确过滤候选，不算 TF-IDF 相似度——给"用户提到的地点名本身就是个
+    笼统类别"这种情况用（比如只说了"夜市"没说具体是哪个，见 vague_place.py）。
+
+    这种场景下套 recommend_from_dataset() 的相似度没意义：查询文本本来就是
+    这个类别词本身，跟同类别的所有候选算出来的相似度都差不多高，排序意义不大。
+    直接精确匹配 type 列，有坐标就按离用户已确认地点的距离升序，没有坐标的
+    候选排在最后（不算错误，只是排序依据少一项）。
+
+    user_places: 用户已确认的地点（可能没坐标），只用来算距离排序；
+        不传或都没坐标时退化成数据集里的原始顺序。
+    """
+    df = _load_dataset()
+    matched = df[df["type"].str.strip().str.lower() == place_type.strip().lower()]
+
+    candidates = []
+    for _, row in matched.iterrows():
+        distance_km = None
+        if user_places:
+            distance_km = min_distance_to_places(float(row["lat"]), float(row["lng"]), user_places)
+        candidates.append(
+            {
+                "name": row["name"],
+                "type": row["type"],
+                "address": row["address"],
+                "lat": float(row["lat"]),
+                "lng": float(row["lng"]),
+                "distance_km": round(distance_km, 2) if distance_km is not None else None,
+            }
+        )
+
+    # 用 (distance is None, distance) 排序：有距离的按近到远排在前面，
+    # 没有距离的（都是 inf 效果）统一排到最后，而不是意外排到最前面。
+    candidates.sort(key=lambda c: (c["distance_km"] is None, c["distance_km"] or 0.0))
+    return candidates[:top_n]
+
+
 if __name__ == "__main__":
     # 手动冒烟测试：不需要 Ollama/AWS，纯本地跑，证明这条路径独立于 LLM 也能用
     demo_trip = {

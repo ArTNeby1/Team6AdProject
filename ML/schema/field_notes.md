@@ -6,7 +6,7 @@
 | --------------- | -------- | -------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `destination` | string   | 是             | 整趟行程的目的地城市/地区，如 "Singapore"                                                                             |
 | `dates`       | string[] | 否，默认`[]` | 文本里明确写出的日历日期（YYYY-MM-DD）。很多攻略只写 "Day 1/Day 2" 没有真实日期，这种情况留空数组，不要让模型瞎编年份 |
-| `places`      | object[] | 是，至少 1 项  | 见下表                                                                                                                |
+| `places`      | object[] | 是，允许空数组`[]`（2026-08-15 起，见下方"为什么允许空数组"） | 见下表                                                                                                                |
 
 ## `places[]` 里每个地点的字段
 
@@ -16,3 +16,17 @@
 | `type`       | enum: attraction / restaurant / hotel / market / other | 是               | `category`（DB 是 varchar 不限枚举，但抽取阶段先用枚举保证一致性，方便后面任务 6 做 TF-IDF 时类别干净） | 地点类型                                                                                     |
 | `coords`     | {lat, lng}\| null                                      | 否，默认`null` | `latitude` / `longitude`（DB 里是 NOT NULL！）                                                        | **禁止模型编造坐标**，缺失填 null；真实坐标由下游单独用地图 API 查，见下方"待讨论"部分 |
 | `activities` | string[]                                               | 否，默认`[]`   | 无对应列，可能存进`trip_schedule.note` 或前端展示用                                                     | 在这个地点做的事情                                                                           |
+
+## 为什么允许空数组（2026-08-15）
+
+以前 `places` 是 `min_length=1`：文本里真的没提到任何地点时，模型要么编一个
+地方出来（幻觉），要么老实交白卷触发 schema 校验失败 -> `extract_with_retry`
+重试 3 次（3 次真实模型调用，问几次答案都一样）-> 最后整条请求 502，
+`destination` 一起丢掉。用户看到的是"AI 服务挂了"，而不是"你没说有用的信息"。
+
+跟 `coords` / `dates` / `duration_days` 一样的原则——**宁可为空也不编**：现在
+`places` 允许 `[]`，模型可以在文本没有任何目的地/地点信息时一次性诚实返回
+`{"destination": "", "places": []}`，不用重试。下游 `orchestrator.run_extraction()`
+把这种"抽到了但是空的"结果识别成 `error_code="NO_USEFUL_CONTENT"`，跟"过滤后
+文本为空"走同一条分支，最终经 `main.py` 转成 HTTP 422（不是 502），详见
+`ML/docs/ai_contract.md` "无有效信息" 一节。
