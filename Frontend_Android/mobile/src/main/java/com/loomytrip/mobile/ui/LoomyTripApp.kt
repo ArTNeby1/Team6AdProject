@@ -1,5 +1,6 @@
 package com.loomytrip.mobile.ui
 
+import android.content.Intent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -40,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -110,6 +112,7 @@ private data class BottomItem(
 fun LoomyTripApp() {
     val navController = rememberNavController()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val tripRepository = remember { MockTripRepository() }
     val extractedPlaces = remember { mutableStateListOf<ExtractedPlace>() }
     val trips = remember { mutableStateListOf<TripDto>() }
@@ -156,6 +159,8 @@ fun LoomyTripApp() {
     var itineraryGenerating by remember { mutableStateOf(false) }
     var itineraryGenerateError by remember { mutableStateOf<String?>(null) }
     var itineraryGenerateSummary by remember { mutableStateOf<String?>(null) }
+    var itinerarySharing by remember { mutableStateOf(false) }
+    var itineraryShareError by remember { mutableStateOf<String?>(null) }
     var importGuideSeed by remember { mutableStateOf(DEFAULT_IMPORT_GUIDE) }
 
     fun selectTrip(tripId: Long?) {
@@ -165,6 +170,7 @@ fun LoomyTripApp() {
         preferencesError = null
         itineraryGenerateError = null
         itineraryGenerateSummary = null
+        itineraryShareError = null
         activeTripId = trip?.id
         editorDayCount = trip?.durationDays ?: 1
         baselineSchedules = trip?.schedules ?: emptyList()
@@ -636,6 +642,8 @@ fun LoomyTripApp() {
                     isGenerating = itineraryGenerating,
                     generateErrorMessage = itineraryGenerateError,
                     generateSummary = itineraryGenerateSummary,
+                    isSharing = itinerarySharing,
+                    shareErrorMessage = itineraryShareError,
                     onTripNameChange = { newName ->
                         val tripId = activeTrip?.id
                         if (tripId == null) {
@@ -739,6 +747,33 @@ fun LoomyTripApp() {
                                     itineraryGenerateError = error.userMessage("AI could not reorganize this itinerary.")
                                 } finally {
                                     itineraryGenerating = false
+                                }
+                            }
+                        }
+                    },
+                    onShare = {
+                        val tripId = activeTrip?.id
+                        if (tripId == null) {
+                            itineraryShareError = "Select an itinerary before sharing."
+                        } else {
+                            scope.launch {
+                                itinerarySharing = true
+                                itineraryShareError = null
+                                try {
+                                    val shareUrl = TripSyncRepository.createShareLink(tripId)
+                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_SUBJECT, activeTrip?.tripName ?: "LoomyTrip itinerary")
+                                        putExtra(
+                                            Intent.EXTRA_TEXT,
+                                            "${activeTrip?.tripName ?: "LoomyTrip itinerary"}\n$shareUrl"
+                                        )
+                                    }
+                                    context.startActivity(Intent.createChooser(shareIntent, "Share itinerary"))
+                                } catch (error: Exception) {
+                                    itineraryShareError = error.userMessage("Could not create the share link.")
+                                } finally {
+                                    itinerarySharing = false
                                 }
                             }
                         }

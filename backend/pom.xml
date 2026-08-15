@@ -159,8 +159,11 @@
                 <version>12.2.2</version>
                 <configuration>
                     <nvdApiKey>${env.NVD_API_KEY}</nvdApiKey>
+                    <!-- SARIF 给 GitHub Code Scanning 用（Security 标签页持续追踪 open/resolved），
+                         JSON 保留给现有的 artifact 上传步骤 -->
                     <formats>
                         <format>JSON</format>
+                        <format>SARIF</format>
                     </formats>
                     <failBuildOnCVSS>7.0</failBuildOnCVSS>
                 </configuration>

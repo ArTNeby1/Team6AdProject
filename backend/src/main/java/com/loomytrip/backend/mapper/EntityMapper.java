@@ -113,6 +113,7 @@ public class EntityMapper {
                 session.getInitialBrief(),
                 session.getStatus(),
                 tripId,
+                session.getDurationDays(),
                 placeResponses,
                 session.getUpdatedAt()
         );

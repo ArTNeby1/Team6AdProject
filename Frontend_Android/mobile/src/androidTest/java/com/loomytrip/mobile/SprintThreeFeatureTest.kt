@@ -28,7 +28,7 @@ class SprintThreeFeatureTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun destinationDetail_showsLocalPhotosInformationAndReviews() {
+    fun destinationDetail_showsLocalPhotosAndVisitorInformationWithoutReviews() {
         val destination = checkNotNull(
             LocalExploreRepository.destination("chiang-mai-wat-chedi-luang")
         )
@@ -40,10 +40,8 @@ class SprintThreeFeatureTest {
         }
 
         composeRule.onNodeWithText("Wat Chedi Luang").assertIsDisplayed()
-        composeRule.onNodeWithText("Popular choice").assertIsDisplayed()
-        composeRule.onNode(hasScrollAction()).performScrollToIndex(3)
-        composeRule.onNodeWithText("Traveler reviews").assertIsDisplayed()
-        composeRule.onNodeWithText("Write").assertIsDisplayed()
+        composeRule.onNode(hasScrollAction()).performScrollToIndex(2)
+        composeRule.onNodeWithText("Visitor information").assertIsDisplayed()
     }
 
     @Test
@@ -73,10 +71,33 @@ class SprintThreeFeatureTest {
 
         composeRule.onNodeWithText("Preferences for this trip").performClick()
         composeRule.onNodeWithText("Relaxed").performClick()
+        composeRule.onNodeWithText("Cycling").performClick()
         composeRule.onNodeWithText("Save").performClick()
 
         assertEquals("Relaxed", savedStyle)
-        assertEquals("Public transport", savedTransport)
+        assertEquals("Cycling", savedTransport)
+    }
+
+    @Test
+    fun routeScreen_shareButtonCallsShareAction() {
+        var shared = false
+        composeRule.setContent {
+            MaterialTheme {
+                RouteScreen(
+                    activities = emptyList(),
+                    tripName = "Singapore Test",
+                    startDate = "2026-08-20",
+                    tripStatus = "NOT_STARTED",
+                    totalDays = 1,
+                    onViewMap = {},
+                    onEdit = {},
+                    onShare = { shared = true }
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Share itinerary").performClick()
+        assertTrue(shared)
     }
 
     @Test

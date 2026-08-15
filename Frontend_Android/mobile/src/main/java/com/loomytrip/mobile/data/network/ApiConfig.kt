@@ -18,6 +18,8 @@ import retrofit2.http.Query
 
 object ApiConfig {
     val baseUrl: String = "${BuildConfig.BACKEND_BASE_URL.trimEnd('/')}/api/v1/"
+
+    fun publicTripUrl(shareToken: String): String = "${baseUrl}public/trips/$shareToken"
 }
 
 object TokenStore {
@@ -95,6 +97,12 @@ interface TripApi {
 
     @POST("trips/{id}/generate")
     suspend fun generateItinerary(@Path("id") tripId: Long): GenerateItineraryResponseDto
+
+    @POST("trips/{id}/share")
+    suspend fun shareTrip(@Path("id") tripId: Long): ShareTripResponseDto
+
+    @DELETE("trips/{id}/share")
+    suspend fun unshareTrip(@Path("id") tripId: Long): ShareTripResponseDto
 }
 
 interface UserApi {
