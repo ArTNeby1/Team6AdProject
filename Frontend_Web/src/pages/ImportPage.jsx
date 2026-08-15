@@ -250,7 +250,7 @@ const ImportPage = () => {
               <div>
                 <strong>LoomyTrip AI Agent</strong>
                 <p>
-                  I've extracted {results.length} locations
+                  I&apos;ve extracted {results.length} locations
                   {durationDays ? ` and detected a ${durationDays}-day trip.` : '.'}
                   {' '}Review the automatic day split before confirming.
                 </p>
