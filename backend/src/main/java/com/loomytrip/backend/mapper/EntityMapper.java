@@ -81,7 +81,12 @@ public class EntityMapper {
     }
 
     public DraftActivityResponse toDraftActivity(DraftActivity activity) {
-        return new DraftActivityResponse(activity.getId(), activity.getTitle());
+        return new DraftActivityResponse(
+                activity.getId(),
+                activity.getTitle(),
+                activity.getSuggestedDay(),
+                activity.getStartTime()
+        );
     }
 
     public DraftPlaceResponse toDraftPlace(DraftPlace place, List<DraftActivity> activities) {

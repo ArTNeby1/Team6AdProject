@@ -3,6 +3,7 @@ package com.loomytrip.backend.controller;
 import com.loomytrip.backend.dto.request.ConfirmSessionRequest;
 import com.loomytrip.backend.dto.request.CreateChatMessageRequest;
 import com.loomytrip.backend.dto.request.CreatePlanningSessionRequest;
+import com.loomytrip.backend.dto.request.UpdateDraftActivityRequest;
 import com.loomytrip.backend.dto.request.UpdateDraftPlaceRequest;
 import com.loomytrip.backend.dto.response.ConfirmSessionResponse;
 import com.loomytrip.backend.dto.response.PlanningSessionDetailResponse;
@@ -84,5 +85,11 @@ public class PlanningController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteDraftPlace(@PathVariable Long placeId) {
         planningService.deleteDraftPlace(placeId);
+    }
+
+    @PutMapping("/draft-activities/{activityId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void updateDraftActivity(@PathVariable Long activityId, @RequestBody UpdateDraftActivityRequest request) {
+        planningService.updateDraftActivity(activityId, request);
     }
 }
