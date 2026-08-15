@@ -13,6 +13,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalTime;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -55,6 +56,18 @@ public class DraftPlace {
 
     @Column(length = 255)
     private String note;
+
+    /** Drag-and-drop day/time assignment at the *place* level — see DraftActivity's
+     * matching columns for the original (activity-level) version. Needed because a place
+     * frequently has zero activities (AI extraction often returns an empty list), so
+     * relying only on DraftActivity.suggestedDay leaves those places with nowhere to
+     * record which day they belong to. confirmSession() checks this field first, falling
+     * back to any activity's suggestedDay for places set up before this column existed. */
+    @Column(name = "suggested_day")
+    private Integer suggestedDay;
+
+    @Column(name = "start_time")
+    private LocalTime startTime;
 
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private Instant createdAt;
