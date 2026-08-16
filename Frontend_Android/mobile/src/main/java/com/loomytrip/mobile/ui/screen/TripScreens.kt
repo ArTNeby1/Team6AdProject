@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -34,12 +35,14 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Directions
+import androidx.compose.material.icons.filled.DirectionsBike
+import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.DirectionsTransit
+import androidx.compose.material.icons.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -70,6 +73,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
@@ -84,11 +88,14 @@ import com.loomytrip.mobile.data.network.MapConfigDto
 import com.loomytrip.mobile.data.network.NearbyRecommendationDto
 import com.loomytrip.mobile.data.network.SuggestedAdditionDto
 import com.loomytrip.mobile.data.network.TripRouteDto
+import com.loomytrip.mobile.data.network.TripTransportDto
 import com.loomytrip.mobile.ui.component.LeafletTripMap
 import com.loomytrip.mobile.ui.component.hasMapCoordinates
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlin.math.hypot
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 data class MapTripOption(
     val id: Long,
@@ -102,46 +109,53 @@ fun RouteScreen(
     startDate: String?,
     tripStatus: String?,
     totalDays: Int,
+    initialDay: Int = 1,
     isUpdatingTripName: Boolean = false,
     tripNameError: String? = null,
     isUpdatingStartDate: Boolean = false,
     startDateError: String? = null,
     isDeletingTrip: Boolean = false,
     deleteErrorMessage: String? = null,
-    travelStyle: String? = null,
-    preferTransport: String? = null,
-    isSavingPreferences: Boolean = false,
-    preferencesErrorMessage: String? = null,
+    routeSummary: TripRouteDto? = null,
+    isRouteLoading: Boolean = false,
+    routeErrorMessage: String? = null,
     isGenerating: Boolean = false,
     generateErrorMessage: String? = null,
     generateSummary: String? = null,
     aiWeatherSummary: String? = null,
     suggestedAdditions: List<SuggestedAdditionDto> = emptyList(),
-    isSharing: Boolean = false,
-    shareErrorMessage: String? = null,
+    addingSuggestedPlace: String? = null,
+    suggestionErrorMessage: String? = null,
     onTripNameChange: (String) -> Unit = {},
     onStartDateChange: (LocalDate) -> Unit = {},
+    onDaySelected: (Int) -> Unit = {},
     onViewMap: (Int) -> Unit,
     onEdit: (Int) -> Unit,
-    onSavePreferences: (String, String) -> Unit = { _, _ -> },
+    onAddSuggestedPlace: (SuggestedAdditionDto, Int) -> Unit = { _, _ -> },
     onSmartReorder: () -> Unit = {},
-    onShare: () -> Unit = {},
     onDeleteTrip: () -> Unit = {}
 ) {
-    var selectedDay by rememberSaveable { mutableIntStateOf(1) }
+    var selectedDay by rememberSaveable { mutableIntStateOf(initialDay) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showTripNameDialog by remember { mutableStateOf(false) }
-    var showPreferencesDialog by remember { mutableStateOf(false) }
     var showGenerateDialog by remember { mutableStateOf(false) }
+    var showAiNotesDialog by remember { mutableStateOf(false) }
     val dayCount = totalDays.coerceAtLeast(1)
     val dayActivities = activities.filter { it.day == selectedDay }
     val context = LocalContext.current
+
+    LaunchedEffect(initialDay, dayCount) {
+        val availableDay = initialDay.coerceIn(1, dayCount)
+        if (selectedDay !in 1..dayCount || selectedDay != availableDay) {
+            selectedDay = availableDay
+        }
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 20.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -190,66 +204,59 @@ fun RouteScreen(
         }
         if (!aiWeatherSummary.isNullOrBlank() || suggestedAdditions.isNotEmpty()) {
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showAiNotesDialog = true }
+                    .semantics { contentDescription = "View AI trip notes" },
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
             ) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("AI trip notes", fontWeight = FontWeight.Bold)
-                    aiWeatherSummary?.takeIf(String::isNotBlank)?.let { summary ->
-                        Text(summary, fontSize = 13.sp)
-                    }
-                    if (suggestedAdditions.isNotEmpty()) {
-                        Text("Nearby ideas", fontWeight = FontWeight.Medium, fontSize = 13.sp)
-                        suggestedAdditions.take(3).forEach { suggestion ->
-                            Text(
-                                buildString {
-                                    append("• ${suggestion.name}")
-                                    suggestion.distanceKm?.let { append(" · ${"%.1f".format(it)} km") }
-                                    suggestion.reason?.takeIf(String::isNotBlank)?.let { append(" — $it") }
-                                },
-                                fontSize = 12.sp
-                            )
-                        }
-                    }
-                }
-            }
-        }
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(enabled = tripStatus != "FINISHED") { showPreferencesDialog = true },
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-        ) {
-            Row(
-                modifier = Modifier.padding(13.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Default.Settings, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(start = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    Text("Preferences for this trip", fontWeight = FontWeight.Bold)
-                    Text(
-                        "${travelStyle ?: "Balanced"} · ${preferTransport ?: "Public transport"}",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f)
+                    Icon(
+                        Icons.Default.AutoAwesome,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.primary
                     )
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text("AI trip notes", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text(
+                            text = aiNotesPreview(aiWeatherSummary, suggestedAdditions.size),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f)
+                        )
+                    }
+                    Text("View", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
-                Text("Edit", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
-        preferencesErrorMessage?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+        DaySelector(
+            selectedDay = selectedDay,
+            dayCount = dayCount,
+            onDaySelected = { day ->
+                selectedDay = day
+                onDaySelected(day)
+            }
+        )
+        routeErrorMessage?.let { error ->
+            Text(
+                "Travel times unavailable. $error",
+                color = MaterialTheme.colorScheme.error,
+                fontSize = 12.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
         }
-        DaySelector(selectedDay = selectedDay, dayCount = dayCount, onDaySelected = { selectedDay = it })
         if (dayActivities.isEmpty()) {
             EmptyDay(modifier = Modifier.weight(1f))
         } else {
@@ -258,7 +265,18 @@ fun RouteScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 itemsIndexed(dayActivities, key = { _, activity -> activity.id }) { index, activity ->
-                    ItineraryActivityCard(index = index, activity = activity)
+                    ItineraryActivityCard(
+                        index = index,
+                        activity = activity
+                    )
+                    dayActivities.getOrNull(index + 1)?.let { nextActivity ->
+                        TransportOptionsRow(
+                            from = activity,
+                            to = nextActivity,
+                            route = routeSummary?.takeIf { it.day == selectedDay },
+                            isLoading = isRouteLoading
+                        )
+                    }
                 }
             }
         }
@@ -284,18 +302,6 @@ fun RouteScreen(
                 Spacer(Modifier.width(6.dp))
                 Text("Edit day")
             }
-        }
-        OutlinedButton(
-            onClick = onShare,
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !isSharing
-        ) {
-            Icon(Icons.Default.Share, contentDescription = null)
-            Spacer(Modifier.width(7.dp))
-            Text(if (isSharing) "Preparing share link..." else "Share itinerary")
-        }
-        shareErrorMessage?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
         }
         deleteErrorMessage?.let {
             Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
@@ -327,6 +333,20 @@ fun RouteScreen(
                 color = MaterialTheme.colorScheme.error
             )
         }
+    }
+
+    if (showAiNotesDialog) {
+        AiTripNotesDialog(
+            weatherSummary = aiWeatherSummary,
+            suggestedAdditions = suggestedAdditions,
+            selectedDay = selectedDay,
+            existingPlaceNames = activities.map { it.title.trim().lowercase() }.toSet(),
+            addingSuggestedPlace = addingSuggestedPlace,
+            errorMessage = suggestionErrorMessage,
+            canAdd = tripStatus != "FINISHED",
+            onAddSuggestion = { suggestion -> onAddSuggestedPlace(suggestion, selectedDay) },
+            onDismiss = { showAiNotesDialog = false }
+        )
     }
 
     if (showDeleteDialog) {
@@ -362,19 +382,6 @@ fun RouteScreen(
         )
     }
 
-    if (showPreferencesDialog) {
-        TripPreferencesDialog(
-            currentTravelStyle = travelStyle,
-            currentTransport = preferTransport,
-            isSaving = isSavingPreferences,
-            onDismiss = { if (!isSavingPreferences) showPreferencesDialog = false },
-            onSave = { style, transport ->
-                onSavePreferences(style, transport)
-                showPreferencesDialog = false
-            }
-        )
-    }
-
     if (showGenerateDialog) {
         AlertDialog(
             onDismissRequest = { showGenerateDialog = false },
@@ -395,6 +402,232 @@ fun RouteScreen(
             }
         )
     }
+}
+
+private fun routeTransportsBetween(
+    route: TripRouteDto,
+    from: TripActivity,
+    to: TripActivity
+): List<TripTransportDto> {
+    val fromId = from.id.toLongOrNull()
+    val toId = to.id.toLongOrNull()
+    val byId = route.transports.filter { transport ->
+        fromId != null && toId != null &&
+            transport.prevScheduleId == fromId && transport.nextScheduleId == toId
+    }
+    if (byId.isNotEmpty()) return byId
+    return route.transports.filter { transport ->
+        transport.fromName.equals(from.title, ignoreCase = true) &&
+            transport.toName.equals(to.title, ignoreCase = true)
+    }
+}
+
+@Composable
+private fun TransportOptionsRow(
+    from: TripActivity,
+    to: TripActivity,
+    route: TripRouteDto?,
+    isLoading: Boolean
+) {
+    val context = LocalContext.current
+    val estimates = route?.let { routeTransportsBetween(it, from, to) }.orEmpty()
+        .associateBy { it.transportType.lowercase() }
+    val inferredFallback = routeEstimatesLookApproximate(estimates)
+    val modes = listOf(
+        TransportModeDisplay("transit", "Public transport", Icons.Default.DirectionsTransit),
+        TransportModeDisplay("driving", "Driving", Icons.Default.DirectionsCar),
+        TransportModeDisplay("bicycling", "Cycling", Icons.Default.DirectionsBike),
+        TransportModeDisplay("walking", "Walking", Icons.Default.DirectionsWalk)
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            "${from.title} → ${to.title}",
+            modifier = Modifier.padding(horizontal = 4.dp),
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        modes.chunked(2).forEach { rowModes ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                rowModes.forEach { mode ->
+                    val estimate = estimates[mode.key]
+                    val routeUrl = estimate?.googleMapLink?.takeIf(String::isNotBlank)
+                    Card(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable(enabled = routeUrl != null) {
+                                openGoogleMapsRoute(context, requireNotNull(routeUrl))
+                            }
+                            .semantics {
+                                contentDescription = "Open ${mode.label} route from ${from.title} to ${to.title}"
+                            },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                mode.icon,
+                                contentDescription = null,
+                                modifier = Modifier.size(19.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = 7.dp),
+                                verticalArrangement = Arrangement.spacedBy(1.dp)
+                            ) {
+                                Text(mode.label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                Text(
+                                    transportDetails(estimate, isLoading, inferredFallback),
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                    maxLines = 1
+                                )
+                            }
+                            Icon(
+                                Icons.Default.Directions,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private data class TransportModeDisplay(val key: String, val label: String, val icon: ImageVector)
+
+private fun transportDetails(
+    estimate: TripTransportDto?,
+    isLoading: Boolean,
+    inferredFallback: Boolean
+): String = when {
+    isLoading && estimate == null -> "Calculating…"
+    estimate == null -> "Open in Maps"
+    else -> (if (estimate.approximate || inferredFallback) "Approx. " else "") + listOfNotNull(
+        estimate.durationMinutes?.let { "$it min" },
+        estimate.distanceKm?.let { "${"%.1f".format(it)} km" }
+    ).joinToString(" · ").ifBlank { "Open in Maps" }
+}
+
+private fun routeEstimatesLookApproximate(estimates: Map<String, TripTransportDto>): Boolean {
+    val speeds = mapOf("driving" to 25.0, "transit" to 20.0, "bicycling" to 15.0, "walking" to 5.0)
+    if (!speeds.keys.all(estimates::containsKey)) return false
+    val distances = speeds.keys.mapNotNull { estimates[it]?.distanceKm }
+    if (distances.size != speeds.size || distances.max() - distances.min() > 0.02) return false
+    val distance = distances.first()
+    return speeds.all { (mode, speed) ->
+        val actual = estimates[mode]?.durationMinutes ?: return@all false
+        abs(actual - (distance / speed * 60.0).roundToInt().coerceAtLeast(1)) <= 1
+    }
+}
+
+private fun aiNotesPreview(weatherSummary: String?, nearbyIdeaCount: Int): String {
+    val weather = weatherSummary?.trim().orEmpty()
+    val ideas = when (nearbyIdeaCount) {
+        0 -> ""
+        1 -> "1 nearby idea"
+        else -> "$nearbyIdeaCount nearby ideas"
+    }
+    return listOf(weather, ideas).filter(String::isNotBlank).joinToString(" · ")
+}
+
+@Composable
+private fun AiTripNotesDialog(
+    weatherSummary: String?,
+    suggestedAdditions: List<SuggestedAdditionDto>,
+    selectedDay: Int,
+    existingPlaceNames: Set<String>,
+    addingSuggestedPlace: String?,
+    errorMessage: String?,
+    canAdd: Boolean,
+    onAddSuggestion: (SuggestedAdditionDto) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("AI trip notes") },
+        text = {
+            LazyColumn(
+                modifier = Modifier.heightIn(max = 420.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                weatherSummary?.takeIf(String::isNotBlank)?.let { summary ->
+                    item {
+                        Text("Weather", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Spacer(Modifier.height(3.dp))
+                        Text(summary, fontSize = 13.sp)
+                    }
+                }
+                if (suggestedAdditions.isNotEmpty()) {
+                    item {
+                        Text("Nearby ideas", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                    items(suggestedAdditions.take(3)) { suggestion ->
+                        val alreadyAdded = suggestion.name.trim().lowercase() in existingPlaceNames
+                        val isAdding = addingSuggestedPlace.equals(suggestion.name, ignoreCase = true)
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(suggestion.name, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                            Text(
+                                buildString {
+                                    suggestion.distanceKm?.let { append("${"%.1f".format(it)} km") }
+                                    suggestion.reason?.takeIf(String::isNotBlank)?.let { reason ->
+                                        if (isNotEmpty()) append(" · ")
+                                        append(reason)
+                                    }
+                                },
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            )
+                            OutlinedButton(
+                                onClick = { onAddSuggestion(suggestion) },
+                                enabled = canAdd && !alreadyAdded && addingSuggestedPlace == null,
+                                modifier = Modifier.semantics {
+                                    contentDescription = "Add ${suggestion.name} to Day $selectedDay"
+                                }
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(5.dp))
+                                Text(
+                                    when {
+                                        alreadyAdded -> "Added"
+                                        isAdding -> "Adding…"
+                                        else -> "Add to Day $selectedDay"
+                                    },
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+                }
+                errorMessage?.let { message ->
+                    item {
+                        Text(message, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close") }
+        }
+    )
 }
 
 @Composable
@@ -433,63 +666,11 @@ private fun RenameTripDialog(
     )
 }
 
-private val tripStyleOptions = listOf("Balanced", "Relaxed", "Cultural", "Food-focused", "Fast-paced")
-private val tripTransportOptions = listOf("Public transport", "Driving", "Cycling", "Walking")
-
 @Composable
-private fun TripPreferencesDialog(
-    currentTravelStyle: String?,
-    currentTransport: String?,
-    isSaving: Boolean,
-    onDismiss: () -> Unit,
-    onSave: (String, String) -> Unit
+private fun ItineraryActivityCard(
+    index: Int,
+    activity: TripActivity
 ) {
-    var travelStyle by remember(currentTravelStyle) {
-        mutableStateOf(currentTravelStyle?.takeIf { it in tripStyleOptions } ?: "Balanced")
-    }
-    var transport by remember(currentTransport) {
-        mutableStateOf(currentTransport?.takeIf { it in tripTransportOptions } ?: "Public transport")
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Trip preferences") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("These choices apply only to this itinerary.")
-                Text("Travel style", fontWeight = FontWeight.Bold)
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    items(tripStyleOptions) { option ->
-                        FilterChip(
-                            selected = travelStyle == option,
-                            onClick = { travelStyle = option },
-                            label = { Text(option) }
-                        )
-                    }
-                }
-                Text("Preferred transport", fontWeight = FontWeight.Bold)
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    items(tripTransportOptions) { option ->
-                        FilterChip(
-                            selected = transport == option,
-                            onClick = { transport = option },
-                            label = { Text(option) }
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onSave(travelStyle, transport) }, enabled = !isSaving) {
-                Text(if (isSaving) "Saving…" else "Save")
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss, enabled = !isSaving) { Text("Cancel") } }
-    )
-}
-
-@Composable
-private fun ItineraryActivityCard(index: Int, activity: TripActivity) {
-    val context = LocalContext.current
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
@@ -538,15 +719,6 @@ private fun ItineraryActivityCard(index: Int, activity: TripActivity) {
                     overflow = TextOverflow.Ellipsis,
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f)
-                )
-            }
-            IconButton(
-                onClick = { openExternalNavigation(context, activity) }
-            ) {
-                Icon(
-                    Icons.Default.Directions,
-                    contentDescription = "Navigate to ${activity.title}",
-                    tint = MaterialTheme.colorScheme.primary
                 )
             }
         }
@@ -1098,26 +1270,6 @@ private fun routeMapPoints(
             y = padding + (((maxLatitude - activity.latitude) / latitudeSpan).toFloat() * (height - padding * 2f))
         )
         center + (base - center) * zoom + pan
-    }
-}
-
-private fun openExternalNavigation(context: Context, activity: TripActivity) {
-    val googleNavigation = Intent(
-        Intent.ACTION_VIEW,
-        Uri.parse("google.navigation:q=${activity.latitude},${activity.longitude}&mode=w")
-    ).apply { setPackage("com.google.android.apps.maps") }
-
-    try {
-        context.startActivity(googleNavigation)
-    } catch (_: ActivityNotFoundException) {
-        val fallback = Intent(
-            Intent.ACTION_VIEW,
-            Uri.parse(
-                "geo:${activity.latitude},${activity.longitude}?q=${activity.latitude},${activity.longitude}(" +
-                    Uri.encode(activity.title) + ")"
-            )
-        )
-        context.startActivity(fallback)
     }
 }
 

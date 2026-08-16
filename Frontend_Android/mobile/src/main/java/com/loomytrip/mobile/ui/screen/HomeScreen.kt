@@ -7,16 +7,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -24,33 +20,23 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.layout.ContentScale
-import coil.compose.AsyncImage
 
 data class ExploreCity(
     val city: String,
@@ -62,48 +48,15 @@ data class ExploreCity(
     val colors: List<Color>
 )
 
-private val exploreCities = listOf(
-    ExploreCity(
-        city = "Chiang Mai",
-        detail = "Temples & markets",
-        description = "Explore the old city, Lanna temples and northern Thai food markets.",
-        latitude = 18.7883,
-        longitude = 98.9853,
-        imageUrl = "https://images.unsplash.com/photo-1528181304800-259b08848526?w=900&h=600&fit=crop",
-        colors = listOf(Color(0xFF48785E), Color(0xFFB8C7A3))
-    ),
-    ExploreCity(
-        city = "Kyoto",
-        detail = "Culture & gardens",
-        description = "Discover historic districts, quiet gardens and traditional Japanese culture.",
-        latitude = 35.0116,
-        longitude = 135.7681,
-        imageUrl = "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=900&h=600&fit=crop",
-        colors = listOf(Color(0xFF9A574A), Color(0xFFE5B58D))
-    ),
-    ExploreCity(
-        city = "Bali",
-        detail = "Coast & wellness",
-        description = "Combine beaches, temples, rice terraces and relaxed island experiences.",
-        latitude = -8.4095,
-        longitude = 115.1889,
-        imageUrl = "https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=900&h=600&fit=crop",
-        colors = listOf(Color(0xFF34777C), Color(0xFF92C6B8))
-    )
-)
-
 @Composable
 fun HomeScreen(
     onStartPlanning: () -> Unit,
-    onExploreCity: (ExploreCity) -> Unit,
     onViewTrip: () -> Unit,
     onViewAllTrips: () -> Unit,
     tripName: String?,
     tripDayCount: Int,
     tripStopCount: Int
 ) {
-    var searchQuery by remember { mutableStateOf("") }
-
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -134,26 +87,6 @@ fun HomeScreen(
             }
         }
 
-        item {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                leadingIcon = {
-                    Icon(Icons.Default.Search, contentDescription = null)
-                },
-                placeholder = { Text("Search destinations or trips") },
-                shape = RoundedCornerShape(18.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    unfocusedBorderColor = Color.Transparent,
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                    focusedContainerColor = MaterialTheme.colorScheme.surface
-                )
-            )
-        }
-
         item { AiPlannerCard(onStartPlanning) }
 
         item {
@@ -176,32 +109,8 @@ fun HomeScreen(
             }
         }
 
-        item {
-            SectionHeader(title = "Explore next")
-        }
-
-        item {
-            val filtered = exploreCities.filter {
-                searchQuery.isBlank() || it.city.contains(searchQuery, ignoreCase = true)
-            }
-            if (filtered.isEmpty()) {
-                Text(
-                    text = "No matching destinations yet.",
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
-                )
-            } else {
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(filtered) { destination ->
-                        DestinationCard(destination, onClick = { onExploreCity(destination) })
-                    }
-                }
-            }
-        }
     }
 }
-
 @Composable
 private fun AiPlannerCard(onStartPlanning: () -> Unit) {
     Card(
@@ -351,58 +260,6 @@ private fun CurrentTripCard(tripName: String, dayCount: Int, stopCount: Int, onC
                 Icons.AutoMirrored.Filled.ArrowForward,
                 contentDescription = "Open trip",
                 tint = MaterialTheme.colorScheme.primary
-            )
-        }
-    }
-}
-
-@Composable
-private fun DestinationCard(destination: ExploreCity, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier
-            .width(168.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(1.5f)
-                .background(Brush.linearGradient(destination.colors)),
-            contentAlignment = Alignment.Center
-        ) {
-            AsyncImage(
-                model = destination.imageUrl,
-                contentDescription = destination.city,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.22f))
-                        )
-                    )
-            )
-        }
-        Column(Modifier.padding(13.dp)) {
-            Text(
-                text = destination.city,
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = destination.detail,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                fontSize = 12.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
             )
         }
     }

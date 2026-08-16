@@ -66,4 +66,14 @@ class MockTripRepositoryTest {
 
         assertEquals("16:15", added.first { it.title == "Coffee workshop" }.startTime)
     }
+
+    @Test
+    fun deleteDay_removesItsStopsAndMovesLaterDaysForward() {
+        val original = repository.initialItinerary()
+        val deleted = repository.deleteDay(original, 2)
+
+        assertFalse(deleted.any { it.id == "wat-phra-that" || it.id == "bhubing-palace" })
+        assertEquals(2, deleted.first { it.id == "elephant-nature-park" }.day)
+        assertEquals(setOf(1, 2), deleted.map { it.day }.toSet())
+    }
 }

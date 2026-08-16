@@ -2,6 +2,7 @@ package com.loomytrip.backend.dto.response;
 
 import com.loomytrip.backend.entity.PlanningSessionStatus;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -21,6 +22,7 @@ public record PlanningSessionDetailResponse(
         PlanningSessionStatus status,
         Long confirmedTripId,
         Integer durationDays,
+        LocalDate startDate,
         String failureCode,
         String failureReason,
         List<DraftPlaceResponse> draftPlaces,

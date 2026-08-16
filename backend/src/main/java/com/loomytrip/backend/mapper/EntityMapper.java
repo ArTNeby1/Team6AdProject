@@ -122,6 +122,7 @@ public class EntityMapper {
                 session.getStatus(),
                 tripId,
                 session.getDurationDays(),
+                session.getStartDate(),
                 session.getFailureCode(),
                 session.getFailureReason(),
                 placeResponses,

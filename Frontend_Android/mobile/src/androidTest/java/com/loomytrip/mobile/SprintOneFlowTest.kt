@@ -123,6 +123,8 @@ class SprintOneFlowTest {
             }
         }
 
+        assertTrue(composeRule.onAllNodesWithText("Located").fetchSemanticsNodes().isEmpty())
+
         composeRule.onNodeWithText("Add another instruction").performTextInput("Add a garden")
         composeRule.onNodeWithText("Update places with AI").performClick()
         assertEquals("Add a garden", submittedRefinement)

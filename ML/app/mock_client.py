@@ -18,7 +18,7 @@ mock_extract_bad_coords    -- 坏情况3：JSON 格式是对的，但坐标是�
 import json
 import re
 import sys
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 SCHEMA_DIR = Path(__file__).resolve().parent.parent / "schema"
@@ -61,6 +61,19 @@ def mock_duration_days(text: str) -> int | None:
     return None
 
 
+def mock_dates(text: str) -> list[str]:
+    """Mock-only equivalent of the model's `dates` extraction for ISO dates in user text."""
+    dates: list[str] = []
+    for value in re.findall(r"\b\d{4}-\d{2}-\d{2}\b", text):
+        try:
+            parsed = date.fromisoformat(value).isoformat()
+        except ValueError:
+            continue
+        if parsed not in dates:
+            dates.append(parsed)
+    return dates
+
+
 def mock_extract(text: str, source_name: str = "mock") -> str:
     """
     假装"读了 text 之后抽取出结构化数据"。地点数据是写死的（不看 text），
@@ -74,11 +87,9 @@ def mock_extract(text: str, source_name: str = "mock") -> str:
       "a 3-day trip in Singapore" -> duration_days=3, needs_duration_input=false
       "I want to see Gardens by the Bay" -> duration_days=null, needs_duration_input=true
     """
-    start = date.today() + timedelta(days=30)
-    end = start + timedelta(days=1)
     data = {
         "destination": "Singapore",
-        "dates": [start.isoformat(), end.isoformat()],
+        "dates": mock_dates(text),
         # 故意**不**跟上面两个日期联动：dates 有两个日期不代表"玩2天"，这正是
         # duration_days 单独存在的理由（见 trip_models.py 里那段注释）。
         "duration_days": mock_duration_days(text),

@@ -93,6 +93,7 @@ fun EditTripScreen(
     onRestore: (TripActivity, Int) -> Unit,
     onAdd: (Int, String, String) -> Unit,
     onUpdateActivity: (String, String) -> Unit,
+    onDeleteDay: (Int) -> Unit,
     onAddDay: () -> Unit,
     onSave: () -> Unit,
     onSaveAndSmartReorder: () -> Unit = {},
@@ -102,6 +103,7 @@ fun EditTripScreen(
 ) {
     var addToDay by remember { mutableStateOf<Int?>(null) }
     var editActivity by remember { mutableStateOf<TripActivity?>(null) }
+    var deleteDayRequest by remember { mutableStateOf<Int?>(null) }
     var selectedDay by rememberSaveable { mutableIntStateOf(initialDay) }
     var draggedId by remember { mutableStateOf<String?>(null) }
     var draggedDistance by remember { mutableFloatStateOf(0f) }
@@ -176,7 +178,9 @@ fun EditTripScreen(
                                 day = row.day,
                                 stopCount = dayItems.size,
                                 durationMinutes = dayItems.sumOf { it.durationMinutes },
-                                isDropTarget = dropTarget?.day == row.day && draggedId != null
+                                isDropTarget = dropTarget?.day == row.day && draggedId != null,
+                                canDelete = dayCount > 1,
+                                onDelete = { deleteDayRequest = row.day }
                             )
                         }
 
@@ -364,6 +368,33 @@ fun EditTripScreen(
             }
         )
     }
+
+    deleteDayRequest?.let { day ->
+        val stopCount = activities.count { it.day == day }
+        AlertDialog(
+            onDismissRequest = { deleteDayRequest = null },
+            title = { Text("Delete Day $day?") },
+            text = {
+                Text(
+                    "This removes $stopCount ${if (stopCount == 1) "stop" else "stops"}. " +
+                        "Later days will move forward. Save the itinerary to sync this change."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteDay(day)
+                        deleteDayRequest = null
+                    }
+                ) {
+                    Text("Delete day", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteDayRequest = null }) { Text("Cancel") }
+            }
+        )
+    }
 }
 
 @Composable
@@ -371,7 +402,9 @@ private fun EditorDayHeader(
     day: Int,
     stopCount: Int,
     durationMinutes: Int,
-    isDropTarget: Boolean
+    isDropTarget: Boolean,
+    canDelete: Boolean,
+    onDelete: () -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -399,6 +432,17 @@ private fun EditorDayHeader(
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold
                 )
+            } else if (canDelete) {
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier.semantics { contentDescription = "Delete Day $day" }
+                ) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
             }
         }
     }

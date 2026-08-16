@@ -12,6 +12,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.time.LocalDate;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -46,6 +47,11 @@ public class PlanningSession {
      * (see PlanningService#confirmSession). */
     @Column(name = "duration_days")
     private Integer durationDays;
+
+    /** First calendar date explicitly stated in the imported notes. Null means the user
+     * did not provide a date, so confirmation keeps the existing today fallback. */
+    @Column(name = "start_date")
+    private LocalDate startDate;
 
     @Column(name = "failure_reason", length = 255)
     private String failureReason;

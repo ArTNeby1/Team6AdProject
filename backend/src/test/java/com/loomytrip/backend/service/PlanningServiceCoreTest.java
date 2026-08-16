@@ -40,6 +40,7 @@ import com.loomytrip.backend.repository.TripRepository;
 import com.loomytrip.backend.repository.TripScheduleRepository;
 import com.loomytrip.backend.repository.UserRepository;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
@@ -229,6 +230,7 @@ class PlanningServiceCoreTest {
     void confirmSession_createsTripAndMarksConfirmed() {
         PlanningSession session = ownedSession(40L, PlanningSessionStatus.DRAFT_READY);
         session.setTitle("SG Trip");
+        session.setStartDate(LocalDate.of(2026, 9, 18));
         DraftPlace place = draftPlace(204L, session, "MBS", new BigDecimal("1.28"), new BigDecimal("103.85"));
         place.setValidationStatus(ValidationStatus.VALID);
         when(planningSessionRepository.findById(40L)).thenReturn(Optional.of(session));
@@ -255,6 +257,7 @@ class PlanningServiceCoreTest {
         ConfirmSessionResponse response = planningService.confirmSession(40L, new ConfirmSessionRequest(1));
 
         assertThat(response.id()).isEqualTo(400L);
+        assertThat(response.startDate()).isEqualTo(LocalDate.of(2026, 9, 18));
         assertThat(response.weatherSummary()).isEqualTo("sunny");
         assertThat(session.getStatus()).isEqualTo(PlanningSessionStatus.CONFIRMED);
         assertThat(session.getConfirmedTrip().getId()).isEqualTo(400L);
@@ -333,7 +336,7 @@ class PlanningServiceCoreTest {
                     PlanningSession s = inv.getArgument(0);
                     return new PlanningSessionDetailResponse(
                             s.getId(), s.getTitle(), s.getInitialBrief(), s.getStatus(),
-                            null, s.getDurationDays(), s.getFailureCode(), s.getFailureReason(),
+                            null, s.getDurationDays(), s.getStartDate(), s.getFailureCode(), s.getFailureReason(),
                             List.of(), null
                     );
                 });

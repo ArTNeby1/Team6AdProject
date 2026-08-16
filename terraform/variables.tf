@@ -53,3 +53,10 @@ variable "bedrock_region" {
   type        = string
   default     = "us-east-1"
 }
+
+variable "google_maps_api_key_secret_arn" {
+  description = "Secrets Manager ARN containing the Google Maps API key used by the Java Routes client"
+  type        = string
+  sensitive   = true
+  default     = ""
+}

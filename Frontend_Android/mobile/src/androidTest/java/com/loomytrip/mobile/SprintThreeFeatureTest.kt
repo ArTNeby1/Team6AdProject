@@ -2,6 +2,7 @@ package com.loomytrip.mobile
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -45,10 +46,7 @@ class SprintThreeFeatureTest {
     }
 
     @Test
-    fun tripPreferences_areSavedForTheOpenTripOnly() {
-        var savedStyle = ""
-        var savedTransport = ""
-
+    fun itinerary_doesNotShowPreferenceControls() {
         composeRule.setContent {
             MaterialTheme {
                 RouteScreen(
@@ -57,47 +55,13 @@ class SprintThreeFeatureTest {
                     startDate = "2026-08-20",
                     tripStatus = "NOT_STARTED",
                     totalDays = 1,
-                    travelStyle = "Balanced",
-                    preferTransport = "Public transport",
                     onViewMap = {},
-                    onEdit = {},
-                    onSavePreferences = { style, transport ->
-                        savedStyle = style
-                        savedTransport = transport
-                    }
+                    onEdit = {}
                 )
             }
         }
 
-        composeRule.onNodeWithText("Preferences for this trip").performClick()
-        composeRule.onNodeWithText("Relaxed").performClick()
-        composeRule.onNodeWithText("Cycling").performClick()
-        composeRule.onNodeWithText("Save").performClick()
-
-        assertEquals("Relaxed", savedStyle)
-        assertEquals("Cycling", savedTransport)
-    }
-
-    @Test
-    fun routeScreen_shareButtonCallsShareAction() {
-        var shared = false
-        composeRule.setContent {
-            MaterialTheme {
-                RouteScreen(
-                    activities = emptyList(),
-                    tripName = "Singapore Test",
-                    startDate = "2026-08-20",
-                    tripStatus = "NOT_STARTED",
-                    totalDays = 1,
-                    onViewMap = {},
-                    onEdit = {},
-                    onShare = { shared = true }
-                )
-            }
-        }
-
-        composeRule.onNodeWithText("Share itinerary").performClick()
-        assertTrue(shared)
+        composeRule.onNodeWithText("Preferences", substring = true).assertIsNotDisplayed()
     }
 
     @Test
