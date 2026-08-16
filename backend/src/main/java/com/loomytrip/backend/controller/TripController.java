@@ -77,6 +77,11 @@ public class TripController {
         return tripService.deleteSchedule(tripId, scheduleId);
     }
 
+    @DeleteMapping("/{tripId}/days/{daySequence}")
+    public TripSummaryResponse deleteDay(@PathVariable Long tripId, @PathVariable Integer daySequence) {
+        return tripService.deleteDay(tripId, daySequence);
+    }
+
     @GetMapping("/{tripId}/route")
     public TripRouteResponse estimateRoute(
             @PathVariable Long tripId,
