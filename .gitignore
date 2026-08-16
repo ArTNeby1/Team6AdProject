@@ -3,6 +3,9 @@
 *.iml
 .vscode/
 .DS_Store
+
+# Office temp / lock files (e.g. ~$工作簿.xlsx) created while a doc is open
+~$*
 Thumbs.db
 
 # Android / Gradle
