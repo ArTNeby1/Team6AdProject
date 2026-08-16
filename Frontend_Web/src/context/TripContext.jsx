@@ -48,7 +48,11 @@ export const TripProvider = ({ children }) => {
           duration: s.plannedDurationMinutes ? (s.plannedDurationMinutes / 60).toFixed(1) : '1.5',
           transport: '🚕 TBD',
           lat: s.destination.latitude || 0,
-          lng: s.destination.longitude || 0
+          lng: s.destination.longitude || 0,
+          // trip_schedule.is_locked (2026-08-16): true once the user hand-types a start
+          // time on EditPage.jsx — a drag-and-drop reorder's auto-cascaded times skip
+          // locked stops instead of overwriting a time picked on purpose.
+          timeLocked: !!s.locked
         })) : []
       }));
 
@@ -77,6 +81,20 @@ export const TripProvider = ({ children }) => {
     } catch (err) {
       console.error('Failed to delete trip:', err);
       throw err;
+    }
+  };
+
+  // Deletes a whole day (not just its stops) — backend shifts every later day down by one
+  // and shrinks trip.duration_days to match (DELETE /trips/{id}/days/{daySequence}), so a
+  // full refetch is needed rather than a local splice: every day after the deleted one has
+  // a new daySequence, and EditPage.jsx's day-section rendering keys off that field.
+  const deleteDay = async (tripId, daySequence) => {
+    try {
+      await api.delete(`/trips/${tripId}/days/${daySequence}`);
+      await fetchTrips();
+    } catch (error) {
+      console.error('Failed to delete day:', error);
+      throw error;
     }
   };
 
@@ -219,7 +237,13 @@ export const TripProvider = ({ children }) => {
           (scheduleByDay[loc.day] ||= []).push(loc);
         });
       const schedules = Object.entries(scheduleByDay).flatMap(([day, locs]) =>
-        locs.map((loc, idx) => ({ id: parseInt(loc.id, 10), day: parseInt(day, 10), sequence: idx + 1, startTime: loc.time || null }))
+        locs.map((loc, idx) => ({
+          id: parseInt(loc.id, 10),
+          day: parseInt(day, 10),
+          sequence: idx + 1,
+          startTime: loc.time || null,
+          locked: !!loc.timeLocked
+        }))
       );
       if (schedules.length > 0) {
         await api.put(`/trips/${tripId}/schedules/bulk`, { schedules });
@@ -273,6 +297,7 @@ export const TripProvider = ({ children }) => {
       getActiveTrip,
       getTripById,
       addDayToTrip,
+      deleteDay,
       saveTripEdits,
       createNewTrip,
       updateTripTitle,

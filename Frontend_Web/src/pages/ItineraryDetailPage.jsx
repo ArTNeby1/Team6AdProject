@@ -449,29 +449,37 @@ const ItineraryDetailPage = () => {
                     {idx < dayLocations.length - 1 && (
                       <div className="tl-transport">
                         <div className="tl-left"><div className="tl-line-dotted"></div></div>
-                        <div className="tl-trans-info">
+                        <div className="tl-trans-info" style={{ flexWrap: 'wrap', gap: '16px' }}>
                           {(() => {
-                            const transport = routeStats.transports.find(
+                            // Backend now returns one entry per travel mode for the same
+                            // prev/next pair (driving/walking/transit/bicycling, F-14,
+                            // 2026-08-16) instead of a single guessed one — show all four
+                            // instead of picking one.
+                            const legTransports = routeStats.transports.filter(
                               t => t.prevScheduleId.toString() === item.id.toString() &&
                                    t.nextScheduleId.toString() === dayLocations[idx + 1].id.toString()
                             );
-                            if (transport) {
-                              const iconMap = {
-                                'walking': '🚶',
-                                'driving': '🚕',
-                                'taxi': '🚕',
-                                'bus': '🚌',
-                                'transit': '🚌',
-                                'bicycle': '🚲'
-                              };
-                              const icon = iconMap[transport.transportType.toLowerCase()] || '🚕';
-                              return (
-                                <span>
-                                  {icon} {transport.durationMinutes} min {transport.transportType}
-                                </span>
-                              );
+                            if (legTransports.length === 0) {
+                              return <span>🚕 15 min Transport</span>;
                             }
-                            return <span>🚕 15 min Transport</span>;
+                            const iconMap = {
+                              walking: '🚶',
+                              driving: '🚕',
+                              transit: '🚌',
+                              bicycling: '🚲'
+                            };
+                            // Fixed display order — transportType is now always one of these
+                            // four clean labels (see TripService#estimateRoute), backend's
+                            // array order isn't guaranteed to match what reads best here.
+                            const modeOrder = ['driving', 'walking', 'transit', 'bicycling'];
+                            const sorted = [...legTransports].sort(
+                              (a, b) => modeOrder.indexOf(a.transportType) - modeOrder.indexOf(b.transportType)
+                            );
+                            return sorted.map(transport => (
+                              <span key={transport.id}>
+                                {iconMap[transport.transportType] || '🚕'} {transport.durationMinutes} min {transport.transportType}
+                              </span>
+                            ));
                           })()}
                         </div>
                       </div>

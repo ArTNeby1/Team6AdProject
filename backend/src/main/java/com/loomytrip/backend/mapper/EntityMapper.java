@@ -64,7 +64,8 @@ public class EntityMapper {
                 schedule.getStartTime(),
                 schedule.getEndTime(),
                 schedule.getPlannedDurationMinutes(),
-                schedule.getNote()
+                schedule.getNote(),
+                schedule.getLocked()
         );
     }
 
