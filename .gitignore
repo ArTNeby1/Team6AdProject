@@ -42,3 +42,6 @@ notes/
 node_modules/
 dist/
 .eslintcache
+
+# Test coverage reports (generated)
+coverage/
