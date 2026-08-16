@@ -3,9 +3,60 @@ import { useNavigate } from 'react-router-dom';
 import { useTrip } from '../context/TripContext';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
+const addMinutes = (time, minutes) => {
+  // handleTimeChange re-cascades on every keystroke of its HH:mm mask, so this sees
+  // half-typed values like "1" (no colon yet, no minutes half at all) mid-edit — fall back
+  // to 0 for whichever half is missing/non-numeric instead of propagating NaN into every
+  // stop after the one being typed into.
+  const [hRaw, mRaw] = (time || '09:00').split(':');
+  const h = Number(hRaw) || 0;
+  const m = Number(mRaw) || 0;
+  const total = ((h * 60 + m + minutes) % 1440 + 1440) % 1440;
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+};
+
+// Re-sorts one day's stops into real chronological order and re-cascades times around any
+// timeLocked anchors (set by handleTimeChange whenever the user hand-types a time — mirrors
+// trip_schedule.is_locked). Used after both a drag-and-drop reorder and a direct time edit:
+// locked stops sort by their own real time (so retyping stop 1 from 09:00 to 14:00 while
+// stop 2 is locked at 12:00 moves stop 1 to *after* stop 2, not just past it visually while
+// staying first in the list) — DEFAULT_VISIT_SLOT_MINUTES on the backend matches the 90min
+// cascade step used here.
+//
+// Unlocked stops don't carry a "real" time of their own (theirs is just whatever the last
+// cascade happened to leave them with), so they're not sorted by that value directly —
+// each one inherits the time of whichever locked stop precedes it in the current order (or
+// '00:00' if none does yet) as its sort key instead, then a *stable* sort (spec-guaranteed
+// in all modern JS engines) keeps same-key stops in their existing relative order. That
+// means ordinary drag-and-drop among unlocked stops is completely unaffected by this
+// function — they just "float" along with whichever locked anchor they were already
+// sitting after — and only locked stops actually get reordered by real time.
+const recomputeDayOrder = (items) => {
+  let precedingLockedTime = '00:00';
+  const withSortKey = items.map((item) => {
+    if (item.timeLocked) {
+      precedingLockedTime = item.time || '00:00';
+      return { item, sortKey: item.time || '00:00' };
+    }
+    return { item, sortKey: precedingLockedTime };
+  });
+  withSortKey.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+
+  let cursor = '09:00';
+  return withSortKey.map(({ item }) => {
+    if (item.timeLocked) {
+      cursor = addMinutes(item.time, 90);
+      return item;
+    }
+    const time = cursor;
+    cursor = addMinutes(time, 90);
+    return { ...item, time };
+  });
+};
+
 const EditPage = () => {
   const navigate = useNavigate();
-  const { getActiveTrip, saveTripEdits } = useTrip();
+  const { getActiveTrip, saveTripEdits, deleteDay } = useTrip();
   const trip = getActiveTrip();
 
   // Local state for "Draft" mode
@@ -14,6 +65,7 @@ const EditPage = () => {
   const [manualAddDay, setManualAddDay] = useState(null);
   const [manualName, setManualAddName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [deletingDay, setDeletingDay] = useState(null);
 
   // Initial Sort helper
   const sortByTime = (items) => {
@@ -62,15 +114,6 @@ const EditPage = () => {
     const [originalMovedItem] = newFullList.splice(sourceIdx, 1);
     const movedItem = { ...originalMovedItem, day: destDay };
 
-    // Requirement 2: Swap times based on slots
-    // If moving within the same day or to another day, the item takes the time of the target slot.
-    // The items being shifted will move to new slots and take their times.
-
-    // To implement "times are properties of slots":
-    // 1. Group items by day
-    // 2. For the destination day, get the sequence of times currently present
-    // 3. Insert the item, re-distribute the times
-
     const dayGroups = {};
     for (let d = 1; d <= localDayCount; d++) {
         dayGroups[d] = newFullList.filter(l => l.day === d);
@@ -79,31 +122,13 @@ const EditPage = () => {
     // Insert into target day helper
     dayGroups[destDay].splice(destination.index, 0, movedItem);
 
-    // Re-assign times for the affected day(s)
-    // We assume the times are sorted in the UI.
-    // If an item moves to a position, it should ideally represent that time slot.
-    // However, since times are editable, we'll keep the list of times per day constant but change who owns them.
-
-    const updateDayTimes = (day) => {
-        const originalDayItems = localLocations.filter(l => l.day === day);
-        const originalTimes = originalDayItems.map(l => l.time).sort();
-
-        dayGroups[day] = dayGroups[day].map((item, idx) => {
-            if (originalTimes[idx]) {
-                return { ...item, time: originalTimes[idx] };
-            }
-            // If we moved an item TO this day and it has more items than before
-            // We'll give it a sensible default if the original times are exhausted
-            if (!item.time || item.time === '待定') {
-                return { ...item, time: '09:00' };
-            }
-            return item;
-        });
-    };
-
-    updateDayTimes(destDay);
+    // Re-sort + re-cascade the affected day(s) — see recomputeDayOrder's own comment for
+    // why this beats both a plain positional cascade (never gave a moved stop its own real
+    // time) and a naive "just reorder, don't retime" drag (leaves locked stops wherever the
+    // drag put them even when their real time now puts them chronologically out of order).
+    dayGroups[destDay] = recomputeDayOrder(dayGroups[destDay]);
     if (sourceDay !== destDay) {
-        updateDayTimes(sourceDay);
+        dayGroups[sourceDay] = recomputeDayOrder(dayGroups[sourceDay]);
     }
 
     // Flatten back
@@ -139,7 +164,25 @@ const EditPage = () => {
     if (clean.length >= 2) formatted += ':';
     formatted += mm;
 
-    updateItemField(id, 'time', formatted);
+    // A direct edit means the user picked this time on purpose — lock it (mirrors
+    // trip_schedule.is_locked) so drag-and-drop's auto-cascade treats it as an anchor
+    // instead of silently overwriting it. It can also jump the stop chronologically past
+    // its neighbours (e.g. typing 14:00 on a stop that was sitting before a 12:00-locked
+    // one) — re-run the same recompute drag uses so the list re-sorts into real time
+    // order right away, not just whenever the user happens to drag something next.
+    setLocalLocations(prev => {
+      const targetItem = prev.find(item => item.id === id);
+      if (!targetItem) return prev;
+      const withEdit = prev.map(item =>
+        item.id === id ? { ...item, time: formatted, timeLocked: true } : item
+      );
+      const result = [];
+      for (let d = 1; d <= localDayCount; d++) {
+        const dayItems = withEdit.filter(item => item.day === d);
+        result.push(...(d === targetItem.day ? recomputeDayOrder(dayItems) : dayItems));
+      }
+      return result;
+    });
   };
 
   const handleDelete = (id) => {
@@ -183,6 +226,27 @@ const EditPage = () => {
     setLocalDayCount(trip.dayCount || 1);
   };
 
+  // Unlike everything else on this page, deletion isn't a local draft edit that waits for
+  // Save — the backend owns the renumbering (later days shift down, duration_days shrinks),
+  // so this hits the API immediately and refetches, same reasoning as EditPage's existing
+  // per-location delete-via-Save flow but without a draft step in between (there's no sane
+  // way to preview "day 4 becomes day 3" purely in local state without duplicating that
+  // logic here and risking it drifting from the backend's).
+  const handleDeleteDay = async (day) => {
+    if (localDayCount <= 1) return;
+    if (!window.confirm(`Delete Day ${day}? Every location on it will be removed, and later days will shift down to fill the gap.`)) {
+      return;
+    }
+    setDeletingDay(day);
+    try {
+      await deleteDay(trip.id, day);
+    } catch (error) {
+      alert(error.response?.data?.message || 'Failed to delete day, please try again');
+    } finally {
+      setDeletingDay(null);
+    }
+  };
+
   const checkTimeConflict = (item) => {
     return localLocations.some(l =>
       l.day === item.day &&
@@ -222,8 +286,18 @@ const EditPage = () => {
             const dayLocations = localLocations.filter(loc => loc.day === day);
             return (
               <div key={day} className="edit-day-section" style={{marginBottom: '48px'}}>
-                <h2 style={{fontSize: '20px', marginBottom: '16px', borderBottom: '2px solid var(--line-soft)', paddingBottom: '8px'}}>
+                <h2 style={{fontSize: '20px', marginBottom: '16px', borderBottom: '2px solid var(--line-soft)', paddingBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                   Day {day}
+                  {localDayCount > 1 && (
+                    <button
+                      className="btn-del"
+                      style={{fontSize: '13px', fontWeight: 'normal', border: 'none', background: 'none', cursor: 'pointer'}}
+                      onClick={() => handleDeleteDay(day)}
+                      disabled={deletingDay === day}
+                    >
+                      {deletingDay === day ? 'Deleting...' : '🗑️ Delete Day'}
+                    </button>
+                  )}
                 </h2>
 
                 <Droppable droppableId={`day-${day}`}>

@@ -15,7 +15,8 @@ public record TripScheduleResponse(
         LocalTime startTime,
         LocalTime endTime,
         Integer plannedDurationMinutes,
-        String note
+        String note,
+        Boolean locked
 ) {
     public record TripDayInfo(Long id, Integer daySequence) {
     }

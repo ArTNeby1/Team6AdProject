@@ -578,6 +578,9 @@ public class TripService {
                     // reorder/save over one bad time string.
                 }
             }
+            if (update.locked() != null) {
+                schedules.get(i).setLocked(update.locked());
+            }
         }
         tripScheduleRepository.saveAllAndFlush(schedules);
 
@@ -666,6 +669,7 @@ public class TripService {
                 .map(TripPreference::getPreferTransport)
                 .filter(value -> value != null && !value.isBlank())
                 .orElse("driving");
+        RoutingClient.TransportMode primaryMode = guessTransportMode(transportType);
 
         tripTransportRepository.deleteByTripDay_Id(tripDay.getId());
 
@@ -687,49 +691,70 @@ public class TripService {
                 continue;
             }
 
-            RoutingClient.RouteEstimate estimate = routingClient.estimate(
-                    fromDest.getLatitude(), fromDest.getLongitude(),
-                    toDest.getLatitude(), toDest.getLongitude()
-            ).orElse(null);
-            if (estimate == null) {
+            // One call per mode (F-14, 2026-08-16: frontend shows "6 min driving" style tags
+            // and wants every mode's ETA, not just the trip's preferred one) — Google's
+            // Routes API only ever returns a single travelMode per request. Missing modes
+            // (e.g. a failed call) are simply absent from the map rather than blocking the
+            // rest of the leg.
+            Map<RoutingClient.TransportMode, RoutingClient.RouteEstimate> estimatesByMode = new LinkedHashMap<>();
+            for (RoutingClient.TransportMode mode : RoutingClient.TransportMode.values()) {
+                routingClient.estimate(
+                        fromDest.getLatitude(), fromDest.getLongitude(),
+                        toDest.getLatitude(), toDest.getLongitude(),
+                        mode
+                ).ifPresent(estimate -> estimatesByMode.put(mode, estimate));
+            }
+
+            RoutingClient.RouteEstimate primaryEstimate = estimatesByMode.get(primaryMode);
+            if (primaryEstimate == null) {
                 warnings.add("Could not estimate route leg: " + fromLabel + " → " + toLabel);
                 continue;
             }
 
-            totalDistance = totalDistance.add(estimate.distanceKm());
-            totalMinutes += estimate.durationMinutes();
+            totalDistance = totalDistance.add(primaryEstimate.distanceKm());
+            totalMinutes += primaryEstimate.durationMinutes();
             legs.add(new TripRouteResponse.RouteLegResponse(
                     from.getId(),
                     to.getId(),
                     fromDest.getName(),
                     toDest.getName(),
-                    estimate.distanceKm(),
-                    estimate.durationMinutes(),
-                    estimate.googleMapLink()
+                    primaryEstimate.distanceKm(),
+                    primaryEstimate.durationMinutes(),
+                    primaryEstimate.googleMapLink()
             ));
 
-            TripTransport transport = new TripTransport();
-            transport.setTripDay(tripDay);
-            transport.setPrevSchedule(from);
-            transport.setNextSchedule(to);
-            transport.setTransportType(transportType);
-            transport.setDistanceKm(estimate.distanceKm());
-            transport.setDurationMinutes(estimate.durationMinutes());
-            transport.setGoogleMapLink(estimate.googleMapLink());
-            transport.setRouteDesc(fromDest.getName() + " → " + toDest.getName());
-            TripTransport saved = tripTransportRepository.save(transport);
-            transports.add(new TripTransportResponse(
-                    saved.getId(),
-                    from.getId(),
-                    to.getId(),
-                    fromDest.getName(),
-                    toDest.getName(),
-                    transportType,
-                    estimate.distanceKm(),
-                    estimate.durationMinutes(),
-                    estimate.googleMapLink(),
-                    transport.getRouteDesc()
-            ));
+            for (Map.Entry<RoutingClient.TransportMode, RoutingClient.RouteEstimate> entry : estimatesByMode.entrySet()) {
+                // Always the plain Google label ("driving"/"walking"/"transit"/"bicycling")
+                // — the frontend renders all four side by side (F-14) and needs a clean,
+                // consistent key to map onto an icon, not the trip's free-text preference
+                // string (e.g. "Public", "walk_taxi") that used to leak through here for
+                // whichever mode happened to be the "primary" one.
+                String modeLabel = entry.getKey().label();
+                RoutingClient.RouteEstimate estimate = entry.getValue();
+
+                TripTransport transport = new TripTransport();
+                transport.setTripDay(tripDay);
+                transport.setPrevSchedule(from);
+                transport.setNextSchedule(to);
+                transport.setTransportType(modeLabel);
+                transport.setDistanceKm(estimate.distanceKm());
+                transport.setDurationMinutes(estimate.durationMinutes());
+                transport.setGoogleMapLink(estimate.googleMapLink());
+                transport.setRouteDesc(fromDest.getName() + " → " + toDest.getName());
+                TripTransport saved = tripTransportRepository.save(transport);
+                transports.add(new TripTransportResponse(
+                        saved.getId(),
+                        from.getId(),
+                        to.getId(),
+                        fromDest.getName(),
+                        toDest.getName(),
+                        modeLabel,
+                        estimate.distanceKm(),
+                        estimate.durationMinutes(),
+                        estimate.googleMapLink(),
+                        transport.getRouteDesc()
+                ));
+            }
         }
 
         if (schedules.size() >= 2 && legs.isEmpty()) {
@@ -750,6 +775,28 @@ public class TripService {
                 transports,
                 warnings
         );
+    }
+
+    /**
+     * {@code trip_preference.prefer_transport} is free text picked before this feature
+     * existed (seen values include "Public", "walk_taxi" — never validated against a fixed
+     * enum, see ProfilePage.jsx), not one of Google's four travel modes. Best-effort keyword
+     * match onto {@link RoutingClient.TransportMode} for picking which mode's numbers count
+     * toward the day's totals/legs; defaults to driving when nothing matches, same fallback
+     * this method's caller used before per-mode support existed.
+     */
+    private static RoutingClient.TransportMode guessTransportMode(String preferTransport) {
+        String normalized = preferTransport.toLowerCase(Locale.ROOT);
+        if (normalized.contains("walk")) {
+            return RoutingClient.TransportMode.WALKING;
+        }
+        if (normalized.contains("transit") || normalized.contains("public") || normalized.contains("mrt") || normalized.contains("bus")) {
+            return RoutingClient.TransportMode.TRANSIT;
+        }
+        if (normalized.contains("bike") || normalized.contains("cycl")) {
+            return RoutingClient.TransportMode.BICYCLING;
+        }
+        return RoutingClient.TransportMode.DRIVING;
     }
 
     private Destination geocodeScheduleDestination(TripSchedule schedule, List<String> warnings) {

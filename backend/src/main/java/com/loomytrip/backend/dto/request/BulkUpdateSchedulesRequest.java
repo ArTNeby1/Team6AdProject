@@ -21,7 +21,14 @@ public record BulkUpdateSchedulesRequest(
             /** Optional "HH:mm" (or "HH:mm:ss"). Null/blank leaves the existing start_time
              * untouched — EditPage.jsx's time input was being edited in local draft state
              * only and never reached this endpoint at all, so saved time changes never stuck. */
-            String startTime
+            String startTime,
+            /** Maps to {@code trip_schedule.is_locked} (pre-existing column, previously
+             * never read or written anywhere — see its own doc comment: "AI should avoid
+             * moving"). Null leaves the existing flag untouched. EditPage.jsx sets this true
+             * the moment the user hand-types a start_time, so a drag-and-drop reorder's
+             * auto-cascaded times (2026-08-16) skip over it instead of overwriting a time
+             * the user picked on purpose. */
+            Boolean locked
     ) {
     }
 }

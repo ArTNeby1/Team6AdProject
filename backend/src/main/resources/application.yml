@@ -47,7 +47,10 @@ loomytrip:
     default-longitude: ${MAP_DEFAULT_LNG:103.8198}
     default-zoom: ${MAP_DEFAULT_ZOOM:12}
   routing:
-    osrm-base-url: ${OSRM_BASE_URL:https://router.project-osrm.org}
+    # Google Routes API key (F-14, 2026-08-16) — driving/walking/transit/bicycling ETAs
+    # between consecutive stops. Blank (unset) degrades gracefully to a Haversine
+    # straight-line estimate per mode, see RoutingClientHttp — never fails the request.
+    google-maps-api-key: ${GOOGLE_MAPS_API_KEY:}
 
 logging:
   level:
