@@ -605,6 +605,49 @@ public class TripService {
     }
 
     /**
+     * Removes an entire day from a trip — not just its stops. Deleting {@code trip_day}
+     * cascades its {@code trip_schedule} / {@code trip_transport} rows at the DB level (see
+     * V1's {@code ON DELETE CASCADE} on both), then every later day shifts down by one so
+     * {@code day_sequence} stays contiguous 1..N and {@code trip.duration_days} shrinks to
+     * match. Product decision (2026-08-16): deleting day 3 of a 5-day trip turns old day 4/5
+     * into day 3/4 — no gap left at 3, same symmetry as the data dictionary's "insert a day
+     * in the middle" operation.
+     */
+    @Transactional
+    public TripSummaryResponse deleteDay(Long tripId, Integer daySequence) {
+        Trip trip = loadOwnedTrip(tripId);
+        if (trip.getDurationDays() <= 1) {
+            throw new ApiException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "MIN_DURATION",
+                    "A trip must have at least one day — delete the whole trip instead"
+            );
+        }
+        TripDay targetDay = tripDayRepository.findByTrip_IdAndDaySequence(tripId, daySequence)
+                .orElseThrow(() -> new ApiException(
+                        HttpStatus.NOT_FOUND, "TRIP_DAY_NOT_FOUND", "Trip day not found: " + daySequence));
+
+        tripDayRepository.delete(targetDay);
+        tripDayRepository.flush();
+
+        // Ascending order matters: each later day always moves into the slot the previous
+        // iteration (or the just-deleted day, for the first one) just vacated, so there's
+        // never a moment where two rows share (trip_id, day_sequence) — no need for the
+        // temp-offset trick used elsewhere in this file for arbitrary reorders.
+        List<TripDay> laterDays = tripDayRepository.findByTrip_IdOrderByDaySequenceAsc(tripId).stream()
+                .filter(day -> day.getDaySequence() > daySequence)
+                .toList();
+        for (TripDay day : laterDays) {
+            day.setDaySequence(day.getDaySequence() - 1);
+            tripDayRepository.saveAndFlush(day);
+        }
+
+        trip.setDurationDays(trip.getDurationDays() - 1);
+        Trip saved = tripRepository.save(trip);
+        return toSummary(saved);
+    }
+
+    /**
      * Builds pairwise driving estimates for one trip day, persists {@code trip_transport}
      * rows, and returns map/navigation data for the frontend.
      */

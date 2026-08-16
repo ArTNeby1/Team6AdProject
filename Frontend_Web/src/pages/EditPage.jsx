@@ -50,9 +50,17 @@ const EditPage = () => {
     const sourceDay = parseInt(source.droppableId.split('-')[1]);
     const destDay = parseInt(destination.droppableId.split('-')[1]);
 
+    // Every item here is the *same object reference* as in trip.locations (sortByTime only
+    // spreads the array, not each item — see the useEffect above and handleReset below).
+    // Mutating a field on one of these in place — as this function used to do — silently
+    // corrupts trip.locations too, since it's literally the same object in memory. That
+    // makes "Reset Changes" a no-op after any drag: it resets to trip.locations, which by
+    // then already matches the dragged state. Everything below must build new objects
+    // instead of assigning onto existing ones.
     const newFullList = Array.from(localLocations);
     const sourceIdx = newFullList.findIndex(l => l.id === draggableId);
-    const [movedItem] = newFullList.splice(sourceIdx, 1);
+    const [originalMovedItem] = newFullList.splice(sourceIdx, 1);
+    const movedItem = { ...originalMovedItem, day: destDay };
 
     // Requirement 2: Swap times based on slots
     // If moving within the same day or to another day, the item takes the time of the target slot.
@@ -69,7 +77,6 @@ const EditPage = () => {
     }
 
     // Insert into target day helper
-    movedItem.day = destDay;
     dayGroups[destDay].splice(destination.index, 0, movedItem);
 
     // Re-assign times for the affected day(s)
@@ -81,14 +88,16 @@ const EditPage = () => {
         const originalDayItems = localLocations.filter(l => l.day === day);
         const originalTimes = originalDayItems.map(l => l.time).sort();
 
-        dayGroups[day].forEach((item, idx) => {
+        dayGroups[day] = dayGroups[day].map((item, idx) => {
             if (originalTimes[idx]) {
-                item.time = originalTimes[idx];
-            } else {
-                // If we moved an item TO this day and it has more items than before
-                // We'll give it a sensible default if the original times are exhausted
-                if (!item.time || item.time === '待定') item.time = '09:00';
+                return { ...item, time: originalTimes[idx] };
             }
+            // If we moved an item TO this day and it has more items than before
+            // We'll give it a sensible default if the original times are exhausted
+            if (!item.time || item.time === '待定') {
+                return { ...item, time: '09:00' };
+            }
+            return item;
         });
     };
 
