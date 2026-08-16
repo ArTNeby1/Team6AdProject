@@ -90,6 +90,22 @@ jobs:
           category: eslint-web
 
       # ============================================================
+      # 单元测试（含覆盖率）
+      # ============================================================
+      # test:coverage / vite.config.js 的 coverage 配置（v8 provider）已经在
+      # package.json 里了，只是之前一直没有一步真正执行——admin 那几个 Vitest
+      # 测试文件合并进来之后，在 CI 里从没被跑过。
+      - name: 单元测试（含覆盖率）
+        run: npm run test:coverage
+
+      - name: 上传 Web 覆盖率报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-coverage-report
+          path: Frontend_Web/coverage/
+
+      # ============================================================
       # 构建
       # ============================================================
       # VITE_API_BASE_URL 是 Vite 编译时写死进 JS 包的，不是运行时读取——

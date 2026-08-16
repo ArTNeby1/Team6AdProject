@@ -128,6 +128,13 @@ jobs:
       - name: 单元测试
         run: mvn test
 
+      - name: 上传 Java 覆盖率报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: java-coverage-report
+          path: backend/target/site/jacoco/
+
       - name: 发布测试报告
         if: always()
         uses: mikepenz/action-junit-report@v4

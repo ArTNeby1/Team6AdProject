@@ -5,6 +5,11 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.owasp.dependencycheck")
+    id("jacoco")
+}
+
+jacoco {
+    toolVersion = "0.8.12"
 }
 
 // SCA：跟 backend 的 dependency-check-maven 同一个数据源/规则，NVD_API_KEY 走同一个
@@ -102,4 +107,26 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     androidTestImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+}
+
+// 只接 testDebugUnitTest（JVM 单元测试）的覆盖率，不碰 src/androidTest/ 那批插桩
+// 测试——对应的 CI job 之前就没有了，这次范围不含恢复它。
+// Compose 编译期生成的样板类（ComposableSingletons、R、BuildConfig 等）不是业务
+// 代码，混进覆盖率统计只会把数字拉得很难看，排除掉。
+tasks.register<JacocoReport>("jacocoTestReport") {
+    dependsOn("testDebugUnitTest")
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
+    val fileFilter = listOf(
+        "**/R.class", "**/R$*.class", "**/BuildConfig.*", "**/Manifest*.*",
+        "**/*Test*.*", "**/*ComposableSingletons*.*"
+    )
+    val debugTree = fileTree("${layout.buildDirectory.get()}/tmp/kotlin-classes/debug") {
+        exclude(fileFilter)
+    }
+    sourceDirectories.setFrom(files("$projectDir/src/main/java", "$projectDir/src/main/kotlin"))
+    classDirectories.setFrom(files(debugTree))
+    executionData.setFrom(fileTree(layout.buildDirectory.get()) { include("**/*.exec", "**/*.ec") })
 }

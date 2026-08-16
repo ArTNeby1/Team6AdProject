@@ -111,13 +111,22 @@ jobs:
       # 之前只跑 test_app.py（只测部署用的健康检查桩服务），app/ 目录下 5 个测试文件
       # （抽取重试健壮性、推荐防编造、行程排序、人群预测、内容推荐）从来没在 CI 里跑过。
       - name: 测试
-        run: python3 -m pytest test_app.py app/ --junit-xml=results.xml -v
+        run: python3 -m pytest test_app.py app/ --junit-xml=results.xml --cov=app --cov-report=xml:coverage.xml --cov-report=html:coverage_html -v
 
       - name: 发布测试报告
         if: always()  # 测试失败也上传
         uses: mikepenz/action-junit-report@v4
         with:
           report_paths: 'ML/results.xml'
+
+      - name: 上传 ML 覆盖率报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ml-coverage-report
+          path: |
+            ML/coverage.xml
+            ML/coverage_html/
 
       - name: 配置 AWS 凭证
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
