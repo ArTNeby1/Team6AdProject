@@ -294,7 +294,7 @@ class TripServiceTest {
         stubSummary();
 
         tripService.bulkUpdateSchedules(10L, new BulkUpdateSchedulesRequest(List.of(
-                new BulkUpdateSchedulesRequest.ScheduleUpdate(201L, 2, 1, "not-a-time")
+                new BulkUpdateSchedulesRequest.ScheduleUpdate(201L, 2, 1, "not-a-time", null)
         )));
 
         assertThat(trip.getDurationDays()).isEqualTo(2);
@@ -316,7 +316,7 @@ class TripServiceTest {
         when(tripScheduleRepository.findById(301L)).thenReturn(Optional.of(foreign));
 
         assertThatThrownBy(() -> tripService.bulkUpdateSchedules(10L, new BulkUpdateSchedulesRequest(List.of(
-                new BulkUpdateSchedulesRequest.ScheduleUpdate(301L, 1, 1, null)
+                new BulkUpdateSchedulesRequest.ScheduleUpdate(301L, 1, 1, null, null)
         ))))
                 .isInstanceOf(ApiException.class)
                 .extracting(ex -> ((ApiException) ex).getCode())
@@ -422,7 +422,7 @@ class TripServiceTest {
         when(tripPreferenceRepository.findByTrip_Id(10L)).thenReturn(Optional.empty());
         when(destinationService.ensureGeocoded(from)).thenReturn(from);
         when(destinationService.ensureGeocoded(to)).thenReturn(to);
-        when(routingClient.estimate(any(), any(), any(), any())).thenReturn(Optional.empty());
+        when(routingClient.estimate(any(), any(), any(), any(), any())).thenReturn(Optional.empty());
 
         TripRouteResponse response = tripService.estimateRoute(10L, 1);
 
@@ -449,7 +449,10 @@ class TripServiceTest {
         when(tripPreferenceRepository.findByTrip_Id(10L)).thenReturn(Optional.of(preference));
         when(destinationService.ensureGeocoded(from)).thenReturn(from);
         when(destinationService.ensureGeocoded(to)).thenReturn(to);
-        when(routingClient.estimate(any(), any(), any(), any()))
+        // estimateRoute() now calls once per TransportMode (F-14, 2026-08-16) — the trip's
+        // preferred mode only decides which one counts toward legs()/totals, every mode
+        // still gets its own trip_transport row in transports().
+        when(routingClient.estimate(any(), any(), any(), any(), any()))
                 .thenReturn(Optional.of(new RoutingClient.RouteEstimate(
                         12, new BigDecimal("3.50"), "https://maps.example/a-b")));
         when(tripTransportRepository.save(any(TripTransport.class))).thenAnswer(inv -> {
@@ -461,7 +464,12 @@ class TripServiceTest {
         TripRouteResponse response = tripService.estimateRoute(10L, 1);
 
         assertThat(response.legs()).hasSize(1);
-        assertThat(response.transports().get(0).transportType()).isEqualTo("transit");
+        assertThat(response.transports()).hasSize(RoutingClient.TransportMode.values().length);
+        assertThat(response.transports())
+                .anySatisfy(t -> {
+                    assertThat(t.transportType()).isEqualTo("transit");
+                    assertThat(t.durationMinutes()).isEqualTo(12);
+                });
         assertThat(response.totalDistanceKm()).isEqualByComparingTo("3.50");
         assertThat(response.googleMapsUrl()).contains("origin=");
     }
@@ -498,7 +506,7 @@ class TripServiceTest {
 
         assertThat(response.legs()).isEmpty();
         assertThat(response.warnings()).anyMatch(w -> w.contains("Could not geocode Unknown"));
-        verify(routingClient, never()).estimate(any(), any(), any(), any());
+        verify(routingClient, never()).estimate(any(), any(), any(), any(), any());
     }
 
     @Test

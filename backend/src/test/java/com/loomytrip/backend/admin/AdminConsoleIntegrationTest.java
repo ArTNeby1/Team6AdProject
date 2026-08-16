@@ -58,6 +58,18 @@ class AdminConsoleIntegrationTest {
 
     @BeforeEach
     void seed() {
+        // Same FK-safe cleanup order as FeatureInsightsIntegrationTest — both classes share
+        // the same @SpringBootTest H2 context/DB (Spring caches it by config signature), so
+        // a trip row left behind by whichever integration test class runs first blocks this
+        // class's own `DELETE FROM users` with a FK violation otherwise (trip.user_id).
+        jdbc.update("DELETE FROM agent_validation_log");
+        jdbc.update("DELETE FROM user_notification");
+        jdbc.update("DELETE FROM trip_transport");
+        jdbc.update("DELETE FROM trip_schedule");
+        jdbc.update("DELETE FROM trip_day");
+        jdbc.update("DELETE FROM planning_session");
+        jdbc.update("DELETE FROM trip");
+        jdbc.update("DELETE FROM destination");
         jdbc.update("DELETE FROM admin");
         jdbc.update("DELETE FROM users");
 

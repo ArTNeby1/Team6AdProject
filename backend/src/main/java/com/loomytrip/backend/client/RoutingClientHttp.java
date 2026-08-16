@@ -39,14 +39,15 @@ public class RoutingClientHttp implements RoutingClient {
     private final String apiKey;
 
     public RoutingClientHttp(
-            @Value("${loomytrip.routing.google-maps-api-key:}") String apiKey
+            @Value("${loomytrip.routing.google-maps-api-key:}") String apiKey,
+            @Value("${loomytrip.routing.google-maps-base-url:https://routes.googleapis.com}") String baseUrl
     ) {
         this.apiKey = apiKey;
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout((int) Duration.ofSeconds(5).toMillis());
         requestFactory.setReadTimeout((int) Duration.ofSeconds(15).toMillis());
         this.restClient = RestClient.builder()
-                .baseUrl("https://routes.googleapis.com")
+                .baseUrl(baseUrl)
                 .requestFactory(requestFactory)
                 .build();
     }

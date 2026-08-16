@@ -185,20 +185,16 @@ class HttpClientsTest {
     }
 
     @Test
-    void routingClient_usesOsrmPayload_andFallsBackOnFailure() {
-        server.createContext("/route/v1/driving/", exchange -> writeJson(exchange, 200, """
-                {
-                  "code": "Ok",
-                  "routes": [
-                    { "distance": 3500.0, "duration": 720.0 }
-                  ]
-                }
+    void routingClient_usesGoogleRoutesPayload_andFallsBackOnFailure() {
+        server.createContext("/directions/v2:computeRoutes", exchange -> writeJson(exchange, 200, """
+                { "routes": [ { "duration": "720s", "distanceMeters": 3500.0 } ] }
                 """));
 
-        RoutingClientHttp client = new RoutingClientHttp(baseUrl);
+        RoutingClientHttp client = new RoutingClientHttp("test-api-key", baseUrl);
         Optional<RoutingClient.RouteEstimate> estimate = client.estimate(
                 new BigDecimal("1.28"), new BigDecimal("103.85"),
-                new BigDecimal("1.29"), new BigDecimal("103.86")
+                new BigDecimal("1.29"), new BigDecimal("103.86"),
+                RoutingClient.TransportMode.DRIVING
         );
 
         assertThat(estimate).isPresent();
@@ -206,24 +202,42 @@ class HttpClientsTest {
         assertThat(estimate.get().durationMinutes()).isEqualTo(12);
         assertThat(estimate.get().googleMapLink()).contains("google.com/maps/dir");
 
-        assertThat(client.estimate(null, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE)).isEmpty();
+        assertThat(client.estimate(null, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE, RoutingClient.TransportMode.DRIVING))
+                .isEmpty();
     }
 
     @Test
-    void routingClient_fallsBackToHaversineWhenOsrmRejects() {
-        server.createContext("/route/v1/driving/", exchange -> writeJson(exchange, 200, """
-                { "code": "NoRoute", "routes": [] }
+    void routingClient_fallsBackToHaversineWhenGoogleRejects() {
+        server.createContext("/directions/v2:computeRoutes", exchange -> writeJson(exchange, 200, """
+                { "routes": [] }
                 """));
 
-        RoutingClientHttp client = new RoutingClientHttp(baseUrl);
+        RoutingClientHttp client = new RoutingClientHttp("test-api-key", baseUrl);
         Optional<RoutingClient.RouteEstimate> estimate = client.estimate(
                 new BigDecimal("1.28"), new BigDecimal("103.85"),
-                new BigDecimal("1.29"), new BigDecimal("103.86")
+                new BigDecimal("1.29"), new BigDecimal("103.86"),
+                RoutingClient.TransportMode.WALKING
         );
 
         assertThat(estimate).isPresent();
         assertThat(estimate.get().distanceKm()).isPositive();
         assertThat(estimate.get().durationMinutes()).isGreaterThanOrEqualTo(1);
+    }
+
+    @Test
+    void routingClient_skipsNetworkCall_whenApiKeyUnset() {
+        // Blank key (unconfigured local dev) should degrade straight to Haversine without
+        // ever hitting the network — no context registered on the mock server at all, so
+        // this would fail with a connection/404 error if the guard clause were removed.
+        RoutingClientHttp client = new RoutingClientHttp("", baseUrl);
+        Optional<RoutingClient.RouteEstimate> estimate = client.estimate(
+                new BigDecimal("1.28"), new BigDecimal("103.85"),
+                new BigDecimal("1.29"), new BigDecimal("103.86"),
+                RoutingClient.TransportMode.BICYCLING
+        );
+
+        assertThat(estimate).isPresent();
+        assertThat(estimate.get().distanceKm()).isPositive();
     }
 
     private static void writeJson(com.sun.net.httpserver.HttpExchange exchange, int status, String body)
