@@ -788,6 +788,19 @@ public class TripService {
             );
         }
 
+        // Redistributing across days below writes real (trip_day_id, sequence) values one
+        // schedule at a time — with the AI's new day assignment rarely matching the old one,
+        // an in-place write routinely tries to claim a (trip_day_id, sequence) pair another
+        // not-yet-moved schedule still occupies, which InnoDB rejects immediately (unique
+        // constraint checked per-statement, not deferred to commit). Same fix as
+        // shiftSequencesFrom()/bulkUpdateSchedules() elsewhere in this file: park every
+        // schedule at a temp sequence guaranteed unique (offset by its own id) first, so the
+        // real pass below never collides with anything still waiting to be moved.
+        for (TripSchedule schedule : schedules) {
+            schedule.setSequence(TEMP_SEQUENCE_OFFSET + schedule.getId().intValue());
+        }
+        tripScheduleRepository.saveAllAndFlush(schedules);
+
         List<GenerateItineraryResponse.PlannedDayResponse> responseDays = new ArrayList<>();
         java.util.Set<Long> assignedScheduleIds = new java.util.HashSet<>();
 
