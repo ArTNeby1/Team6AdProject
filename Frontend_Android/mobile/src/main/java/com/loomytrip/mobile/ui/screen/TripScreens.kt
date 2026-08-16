@@ -82,6 +82,7 @@ import com.loomytrip.mobile.data.model.TripActivity
 import com.loomytrip.mobile.data.network.CrowdHintDto
 import com.loomytrip.mobile.data.network.MapConfigDto
 import com.loomytrip.mobile.data.network.NearbyRecommendationDto
+import com.loomytrip.mobile.data.network.SuggestedAdditionDto
 import com.loomytrip.mobile.data.network.TripRouteDto
 import com.loomytrip.mobile.ui.component.LeafletTripMap
 import com.loomytrip.mobile.ui.component.hasMapCoordinates
@@ -114,6 +115,8 @@ fun RouteScreen(
     isGenerating: Boolean = false,
     generateErrorMessage: String? = null,
     generateSummary: String? = null,
+    aiWeatherSummary: String? = null,
+    suggestedAdditions: List<SuggestedAdditionDto> = emptyList(),
     isSharing: Boolean = false,
     shareErrorMessage: String? = null,
     onTripNameChange: (String) -> Unit = {},
@@ -184,6 +187,36 @@ fun RouteScreen(
         }
         startDateError?.let { error ->
             Text(error, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+        }
+        if (!aiWeatherSummary.isNullOrBlank() || suggestedAdditions.isNotEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text("AI trip notes", fontWeight = FontWeight.Bold)
+                    aiWeatherSummary?.takeIf(String::isNotBlank)?.let { summary ->
+                        Text(summary, fontSize = 13.sp)
+                    }
+                    if (suggestedAdditions.isNotEmpty()) {
+                        Text("Nearby ideas", fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                        suggestedAdditions.take(3).forEach { suggestion ->
+                            Text(
+                                buildString {
+                                    append("• ${suggestion.name}")
+                                    suggestion.distanceKm?.let { append(" · ${"%.1f".format(it)} km") }
+                                    suggestion.reason?.takeIf(String::isNotBlank)?.let { append(" — $it") }
+                                },
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                }
+            }
         }
         Card(
             modifier = Modifier

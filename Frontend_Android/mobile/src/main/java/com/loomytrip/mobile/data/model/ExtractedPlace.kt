@@ -6,5 +6,6 @@ data class ExtractedPlace(
     val category: String,
     val address: String,
     val suggestedTime: String,
-    val isIncluded: Boolean = true
+    val isIncluded: Boolean = true,
+    val suggestedDay: Int? = null
 )

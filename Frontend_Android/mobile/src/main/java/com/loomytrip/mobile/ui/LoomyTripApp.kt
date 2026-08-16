@@ -53,6 +53,7 @@ import androidx.navigation.compose.rememberNavController
 import com.loomytrip.mobile.data.model.ExtractedPlace
 import com.loomytrip.mobile.data.model.TripActivity
 import com.loomytrip.mobile.data.network.ScheduleDto
+import com.loomytrip.mobile.data.network.SuggestedAdditionDto
 import com.loomytrip.mobile.data.network.TokenStore
 import com.loomytrip.mobile.data.network.TripDto
 import com.loomytrip.mobile.data.network.CrowdHintDto
@@ -63,6 +64,8 @@ import com.loomytrip.mobile.data.network.TripRouteDto
 import com.loomytrip.mobile.data.network.UserProfileDto
 import com.loomytrip.mobile.data.repository.AiPlanningRepository
 import com.loomytrip.mobile.data.repository.AuthRepository
+import com.loomytrip.mobile.data.repository.DurationRequiredException
+import com.loomytrip.mobile.data.repository.InvalidPlanningInputException
 import com.loomytrip.mobile.data.repository.MapRepository
 import com.loomytrip.mobile.data.repository.LocalDestination
 import com.loomytrip.mobile.data.repository.LocalExploreRepository
@@ -117,7 +120,7 @@ fun LoomyTripApp() {
     val extractedPlaces = remember { mutableStateListOf<ExtractedPlace>() }
     val trips = remember { mutableStateListOf<TripDto>() }
     val tripActivities = remember { mutableStateListOf<TripActivity>() }
-    var signedInEmail by remember { mutableStateOf<String?>(null) }
+    var signedInEmail by remember { mutableStateOf(TokenStore.email) }
     var selectedMapDay by remember { mutableIntStateOf(1) }
     var selectedEditDay by remember { mutableIntStateOf(1) }
     var editorDayCount by remember { mutableIntStateOf(1) }
@@ -130,8 +133,12 @@ fun LoomyTripApp() {
     var deleteTripError by remember { mutableStateOf<String?>(null) }
     var baselineSchedules by remember { mutableStateOf<List<ScheduleDto>>(emptyList()) }
     var planningSessionId by remember { mutableStateOf<Long?>(null) }
+    var planningDurationDays by remember { mutableStateOf<Int?>(null) }
+    var showDurationDialog by remember { mutableStateOf(false) }
     var planningLoading by remember { mutableStateOf(false) }
     var planningError by remember { mutableStateOf<String?>(null) }
+    var invalidPlanningInputMessage by remember { mutableStateOf<String?>(null) }
+    var refinementText by remember { mutableStateOf("") }
     var editSaving by remember { mutableStateOf(false) }
     var editError by remember { mutableStateOf<String?>(null) }
     var tripNameUpdating by remember { mutableStateOf(false) }
@@ -162,6 +169,18 @@ fun LoomyTripApp() {
     var itinerarySharing by remember { mutableStateOf(false) }
     var itineraryShareError by remember { mutableStateOf<String?>(null) }
     var importGuideSeed by remember { mutableStateOf(DEFAULT_IMPORT_GUIDE) }
+    var confirmationInsightsTripId by remember { mutableStateOf<Long?>(null) }
+    var confirmationWeatherSummary by remember { mutableStateOf<String?>(null) }
+    val confirmationSuggestions = remember { mutableStateListOf<SuggestedAdditionDto>() }
+
+    fun applyPlanningResult(result: AiPlanningRepository.SessionResult, keepDurationWhenMissing: Boolean = false) {
+        planningSessionId = result.sessionId
+        planningDurationDays = result.durationDays
+            ?: planningDurationDays.takeIf { keepDurationWhenMissing }
+        extractedPlaces.clear()
+        extractedPlaces.addAll(result.places)
+        if (planningDurationDays == null) showDurationDialog = true
+    }
 
     fun selectTrip(tripId: Long?) {
         val trip = trips.firstOrNull { it.id == tripId } ?: trips.firstOrNull()
@@ -382,7 +401,9 @@ fun LoomyTripApp() {
     ) { padding ->
         NavHost(
             navController = navController,
-            startDestination = Destination.Login.route,
+            startDestination = remember {
+                if (TokenStore.hasSession()) Destination.Home.route else Destination.Login.route
+            },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
@@ -415,12 +436,12 @@ fun LoomyTripApp() {
                 RegisterScreen(
                     isLoading = authLoading,
                     serverError = authError,
-                    onRegister = { name, email, password ->
+                    onRegister = { name, email, password, age, gender ->
                         scope.launch {
                             authLoading = true
                             authError = null
                             try {
-                                val auth = AuthRepository.register(name, email, password)
+                                val auth = AuthRepository.register(name, email, password, age, gender)
                                 signedInEmail = auth.email
                                 navController.navigate(Destination.Home.route) {
                                     popUpTo(Destination.Login.route) { inclusive = true }
@@ -440,6 +461,11 @@ fun LoomyTripApp() {
                     onStartPlanning = {
                         importGuideSeed = DEFAULT_IMPORT_GUIDE
                         planningError = null
+                        invalidPlanningInputMessage = null
+                        planningSessionId = null
+                        planningDurationDays = null
+                        showDurationDialog = false
+                        refinementText = ""
                         navController.navigate(Destination.Import.route)
                     },
                     onExploreCity = { city ->
@@ -474,6 +500,11 @@ fun LoomyTripApp() {
                                 "Plan a one-day trip in ${city.city}. Visit ${placeNames.joinToString(", ")}."
                             }
                             planningError = null
+                            invalidPlanningInputMessage = null
+                            planningSessionId = null
+                            planningDurationDays = null
+                            showDurationDialog = false
+                            refinementText = ""
                             navController.navigate(Destination.Import.route)
                         }
                     )
@@ -486,6 +517,11 @@ fun LoomyTripApp() {
                         onPlanDestination = {
                             importGuideSeed = "Plan a one-day trip in ${destination.city} including ${destination.name}."
                             planningError = null
+                            invalidPlanningInputMessage = null
+                            planningSessionId = null
+                            planningDurationDays = null
+                            showDurationDialog = false
+                            refinementText = ""
                             navController.navigate(Destination.Import.route)
                         }
                     )
@@ -500,6 +536,8 @@ fun LoomyTripApp() {
                     isHistoryLoading = planningHistoryLoading,
                     historyErrorMessage = planningHistoryError,
                     onRefreshHistory = { scope.launch { loadPlanningHistory() } },
+                    invalidInputMessage = invalidPlanningInputMessage,
+                    onDismissInvalidInput = { invalidPlanningInputMessage = null },
                     onHistorySelected = { session ->
                         scope.launch {
                             planningHistoryLoading = true
@@ -514,9 +552,8 @@ fun LoomyTripApp() {
                                     if (resumed.places.isEmpty()) {
                                         error("This draft has no extracted places yet.")
                                     }
-                                    planningSessionId = resumed.sessionId
-                                    extractedPlaces.clear()
-                                    extractedPlaces.addAll(resumed.places)
+                                    applyPlanningResult(resumed)
+                                    refinementText = ""
                                     navController.navigate(Destination.Review.route)
                                 }
                             } catch (error: Exception) {
@@ -530,15 +567,17 @@ fun LoomyTripApp() {
                         scope.launch {
                             planningLoading = true
                             planningError = null
+                            invalidPlanningInputMessage = null
                             try {
                                 val result = AiPlanningRepository.startSession(sourceText)
                                 if (result.places.isEmpty()) {
                                     error("AI finished but did not return any places. Try adding a destination and dates.")
                                 }
-                                planningSessionId = result.sessionId
-                                extractedPlaces.clear()
-                                extractedPlaces.addAll(result.places)
+                                applyPlanningResult(result)
+                                refinementText = ""
                                 navController.navigate(Destination.Review.route)
+                            } catch (_: InvalidPlanningInputException) {
+                                invalidPlanningInputMessage = INVALID_TRAVEL_INPUT_MESSAGE
                             } catch (e: Exception) {
                                 planningError = e.userMessage("AI analysis failed. Please try again.")
                             } finally {
@@ -557,8 +596,118 @@ fun LoomyTripApp() {
                             extractedPlaces[index] = extractedPlaces[index].copy(isIncluded = included)
                         }
                     },
-                    onConfirm = {
+                    refinementText = refinementText,
+                    onRefinementTextChange = { refinementText = it },
+                    onRefine = { instruction ->
                         val sessionId = planningSessionId
+                        scope.launch {
+                            if (sessionId == null) {
+                                planningError = "Start the AI import again before adding an instruction."
+                            } else {
+                                planningLoading = true
+                                planningError = null
+                                invalidPlanningInputMessage = null
+                                try {
+                                    val updated = AiPlanningRepository.refine(sessionId, instruction)
+                                    if (updated.places.isEmpty()) {
+                                        throw InvalidPlanningInputException("No useful travel information was found.")
+                                    }
+                                    applyPlanningResult(updated, keepDurationWhenMissing = true)
+                                    refinementText = ""
+                                } catch (_: InvalidPlanningInputException) {
+                                    invalidPlanningInputMessage = INVALID_TRAVEL_INPUT_MESSAGE
+                                } catch (error: Exception) {
+                                    planningError = error.userMessage("AI could not update the extracted places.")
+                                } finally {
+                                    planningLoading = false
+                                }
+                            }
+                        }
+                    },
+                    onRenamePlace = { id, newName ->
+                        val placeId = id.toLongOrNull()
+                        if (placeId == null) {
+                            planningError = "This place could not be renamed."
+                        } else {
+                            scope.launch {
+                                planningLoading = true
+                                planningError = null
+                                try {
+                                    AiPlanningRepository.renamePlace(placeId, newName)
+                                    val index = extractedPlaces.indexOfFirst { it.id == id }
+                                    if (index >= 0) {
+                                        extractedPlaces[index] = extractedPlaces[index].copy(name = newName)
+                                    }
+                                } catch (error: Exception) {
+                                    planningError = error.userMessage("Could not rename this place.")
+                                } finally {
+                                    planningLoading = false
+                                }
+                            }
+                        }
+                    },
+                    durationDays = planningDurationDays,
+                    onDurationDaysChange = { days ->
+                        planningDurationDays = days.coerceIn(1, 30)
+                    },
+                    onAutoDistribute = {
+                        val days = planningDurationDays
+                        if (days == null) {
+                            showDurationDialog = true
+                        } else {
+                            scope.launch {
+                                planningLoading = true
+                                planningError = null
+                                try {
+                                    val distributed = AiPlanningRepository.distributePlaces(
+                                        extractedPlaces.toList(),
+                                        days
+                                    )
+                                    extractedPlaces.clear()
+                                    extractedPlaces.addAll(distributed)
+                                } catch (error: Exception) {
+                                    planningError = error.userMessage("Could not save the day split.")
+                                } finally {
+                                    planningLoading = false
+                                }
+                            }
+                        }
+                    },
+                    onDayChange = { id, day ->
+                        val placeId = id.toLongOrNull()
+                        if (placeId == null) {
+                            planningError = "This place could not be assigned to a day."
+                        } else {
+                            scope.launch {
+                                planningLoading = true
+                                planningError = null
+                                try {
+                                    AiPlanningRepository.assignDay(placeId, day)
+                                    val index = extractedPlaces.indexOfFirst { it.id == id }
+                                    if (index >= 0) {
+                                        extractedPlaces[index] = extractedPlaces[index].copy(suggestedDay = day)
+                                    }
+                                } catch (error: Exception) {
+                                    planningError = error.userMessage("Could not save this day assignment.")
+                                } finally {
+                                    planningLoading = false
+                                }
+                            }
+                        }
+                    },
+                    showDurationDialog = showDurationDialog,
+                    onDismissDurationDialog = { showDurationDialog = false },
+                    onDurationConfirmed = { days ->
+                        planningDurationDays = days
+                        showDurationDialog = false
+                    },
+                    onConfirm = confirm@{
+                        val sessionId = planningSessionId
+                        val durationDays = planningDurationDays
+                        if (durationDays == null) {
+                            showDurationDialog = true
+                            return@confirm
+                        }
                         scope.launch {
                             if (sessionId == null) {
                                 planningError = "Start the AI import again before confirming."
@@ -569,7 +718,28 @@ fun LoomyTripApp() {
                                     extractedPlaces.filterNot { it.isIncluded }.forEach { place ->
                                         place.id.toLongOrNull()?.let { AiPlanningRepository.deletePlace(it) }
                                     }
-                                    val newTripId = AiPlanningRepository.confirm(sessionId)
+                                    var selectedPlaces = extractedPlaces.filter { it.isIncluded }
+                                    if (selectedPlaces.any { it.suggestedDay !in 1..durationDays }) {
+                                        selectedPlaces = AiPlanningRepository.distributePlaces(selectedPlaces, durationDays)
+                                    }
+                                    extractedPlaces.clear()
+                                    extractedPlaces.addAll(selectedPlaces)
+
+                                    val validated = AiPlanningRepository.validatePlaces(sessionId)
+                                    extractedPlaces.clear()
+                                    extractedPlaces.addAll(validated.places)
+                                    val unresolved = validated.places
+                                        .filter { it.suggestedTime != "Located" }
+                                        .map { it.name }
+                                    if (unresolved.isNotEmpty()) {
+                                        error(
+                                            "Could not locate: ${unresolved.joinToString()}. " +
+                                                "Use clearer Singapore place names and try again."
+                                        )
+                                    }
+
+                                    val confirmation = AiPlanningRepository.confirm(sessionId, durationDays)
+                                    val newTripId = confirmation.tripId
                                     val confirmedTrip = try {
                                         TripSyncRepository.fetchTrip(newTripId)
                                     } catch (firstLoadError: Exception) {
@@ -582,12 +752,20 @@ fun LoomyTripApp() {
                                     trips.clear()
                                     trips.addAll(sortedTrips)
                                     selectTrip(confirmedTrip.id)
+                                    confirmationInsightsTripId = confirmedTrip.id
+                                    confirmationWeatherSummary = confirmation.weatherSummary
+                                    confirmationSuggestions.clear()
+                                    confirmationSuggestions.addAll(confirmation.suggestedAdditions)
                                     selectedEditDay = 1
                                     selectedMapDay = 1
                                     planningSessionId = null
+                                    planningDurationDays = null
+                                    showDurationDialog = false
                                     navController.navigate(Destination.Itinerary.route) {
                                         popUpTo(Destination.Home.route)
                                     }
+                                } catch (_: DurationRequiredException) {
+                                    showDurationDialog = true
                                 } catch (error: Exception) {
                                     planningError = error.userMessage("Could not create the itinerary.")
                                 } finally {
@@ -596,9 +774,15 @@ fun LoomyTripApp() {
                             }
                         }
                     },
-                    onImportAgain = { navController.popBackStack() },
+                    onImportAgain = {
+                        planningError = null
+                        invalidPlanningInputMessage = null
+                        navController.popBackStack()
+                    },
                     isLoading = planningLoading,
-                    errorMessage = planningError
+                    errorMessage = planningError,
+                    invalidInputMessage = invalidPlanningInputMessage,
+                    onDismissInvalidInput = { invalidPlanningInputMessage = null }
                 )
             }
             composable(Destination.Trips.route) {
@@ -611,6 +795,9 @@ fun LoomyTripApp() {
                     onRefresh = { scope.launch { loadTrips() } },
                     onStartPlanning = {
                         importGuideSeed = DEFAULT_IMPORT_GUIDE
+                        planningError = null
+                        invalidPlanningInputMessage = null
+                        refinementText = ""
                         navController.navigate(Destination.Import.route)
                     },
                     onTripSelected = { tripId ->
@@ -642,6 +829,11 @@ fun LoomyTripApp() {
                     isGenerating = itineraryGenerating,
                     generateErrorMessage = itineraryGenerateError,
                     generateSummary = itineraryGenerateSummary,
+                    aiWeatherSummary = confirmationWeatherSummary
+                        .takeIf { activeTrip?.id == confirmationInsightsTripId },
+                    suggestedAdditions = confirmationSuggestions
+                        .takeIf { activeTrip?.id == confirmationInsightsTripId }
+                        .orEmpty(),
                     isSharing = itinerarySharing,
                     shareErrorMessage = itineraryShareError,
                     onTripNameChange = { newName ->
@@ -966,12 +1158,22 @@ fun LoomyTripApp() {
                         selectedLocalDestination = null
                         planningHistory.clear()
                         planningHistoryError = null
+                        planningSessionId = null
+                        planningDurationDays = null
+                        showDurationDialog = false
+                        invalidPlanningInputMessage = null
+                        refinementText = ""
                         preferencesError = null
                         itineraryGenerateError = null
                         itineraryGenerateSummary = null
-                        TokenStore.clear()
-                        navController.navigate(Destination.Login.route) {
-                            popUpTo(navController.graph.id) { inclusive = true }
+                        confirmationInsightsTripId = null
+                        confirmationWeatherSummary = null
+                        confirmationSuggestions.clear()
+                        scope.launch {
+                            TokenStore.clear()
+                            navController.navigate(Destination.Login.route) {
+                                popUpTo(navController.graph.id) { inclusive = true }
+                            }
                         }
                     }
                 )
@@ -1084,6 +1286,10 @@ private fun ProfileValueCard(label: String, value: String, modifier: Modifier = 
         }
     }
 }
+
+private const val INVALID_TRAVEL_INPUT_MESSAGE =
+    "We couldn't find valid travel information in that text. " +
+        "Please include a destination, attraction, or itinerary detail and try again."
 
 private fun Throwable.userMessage(fallback: String): String = when (this) {
     is IOException -> "Cannot reach LoomyTrip Backend. Check the network and try again."

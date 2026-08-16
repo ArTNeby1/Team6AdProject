@@ -170,7 +170,18 @@ data class CreatePlanningSessionRequest(val title: String, val initialBrief: Str
 
 data class CreateChatMessageRequest(val role: ChatRole, val content: String)
 
-data class UpdateDraftPlaceRequest(val name: String? = null)
+data class UpdateDraftPlaceRequest(
+    val name: String? = null,
+    val suggestedDay: Int? = null,
+    val startTime: String? = null
+)
+
+data class DraftActivityDto(
+    val id: Long,
+    val title: String,
+    val suggestedDay: Int? = null,
+    val startTime: String? = null
+)
 
 data class DraftPlaceDto(
     val id: Long,
@@ -180,7 +191,10 @@ data class DraftPlaceDto(
     val longitude: Double? = null,
     val category: String? = null,
     val validationStatus: ValidationStatus? = null,
-    val note: String? = null
+    val note: String? = null,
+    val suggestedDay: Int? = null,
+    val startTime: String? = null,
+    val activities: List<DraftActivityDto> = emptyList()
 )
 
 data class PlanningSessionDetailDto(
@@ -189,7 +203,11 @@ data class PlanningSessionDetailDto(
     val initialBrief: String? = null,
     val status: String? = null,
     val confirmedTripId: Long? = null,
-    val draftPlaces: List<DraftPlaceDto> = emptyList()
+    val durationDays: Int? = null,
+    val failureCode: String? = null,
+    val failureReason: String? = null,
+    val draftPlaces: List<DraftPlaceDto> = emptyList(),
+    val updatedAt: String? = null
 )
 
 data class PlanningSessionSummaryDto(
@@ -205,5 +223,20 @@ data class ConfirmSessionResponseDto(
     val id: Long,
     val tripName: String?,
     val startDate: String?,
-    val durationDays: Int?
+    val durationDays: Int?,
+    val updatedAt: String? = null,
+    val weatherSummary: String? = null,
+    val suggestedAdditions: List<SuggestedAdditionDto> = emptyList()
+)
+
+data class ConfirmSessionRequest(val durationDays: Int)
+
+data class SuggestedAdditionDto(
+    val name: String,
+    val type: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val distanceKm: Double? = null,
+    val reason: String? = null,
+    val activities: List<String> = emptyList()
 )

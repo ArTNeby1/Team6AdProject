@@ -1,7 +1,17 @@
 package com.loomytrip.mobile.data.network
 
+import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
 import com.loomytrip.mobile.BuildConfig
+import java.io.IOException
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Response
@@ -22,12 +32,51 @@ object ApiConfig {
     fun publicTripUrl(shareToken: String): String = "${baseUrl}public/trips/$shareToken"
 }
 
+private val Context.sessionDataStore by preferencesDataStore(name = "loomytrip_session")
+
 object TokenStore {
+    private val tokenKey = stringPreferencesKey("access_token")
+    private val emailKey = stringPreferencesKey("email")
+
+    private var dataStore: DataStore<Preferences>? = null
+
     @Volatile
     var token: String? = null
+        private set
 
-    fun clear() {
+    @Volatile
+    var email: String? = null
+        private set
+
+    suspend fun initialize(context: Context) {
+        if (dataStore != null) return
+        val store = context.applicationContext.sessionDataStore
+        dataStore = store
+        val saved = store.data
+            .catch { error ->
+                if (error is IOException) emit(emptyPreferences()) else throw error
+            }
+            .first()
+        token = saved[tokenKey]
+        email = saved[emailKey]
+    }
+
+    suspend fun save(accessToken: String, signedInEmail: String) {
+        val store = checkNotNull(dataStore) { "TokenStore must be initialized before login." }
+        token = accessToken
+        email = signedInEmail
+        store.edit { preferences ->
+            preferences[tokenKey] = accessToken
+            preferences[emailKey] = signedInEmail
+        }
+    }
+
+    fun hasSession(): Boolean = !token.isNullOrBlank() && !email.isNullOrBlank()
+
+    suspend fun clear() {
         token = null
+        email = null
+        dataStore?.edit { it.clear() }
     }
 }
 
@@ -141,6 +190,9 @@ interface PlanningApi {
     @POST("planning-sessions/{id}/refine")
     suspend fun refine(@Path("id") sessionId: Long): PlanningSessionDetailDto
 
+    @POST("planning-sessions/{id}/validate-places")
+    suspend fun validatePlaces(@Path("id") sessionId: Long): PlanningSessionDetailDto
+
     @PUT("planning-sessions/draft-places/{placeId}")
     suspend fun updateDraftPlace(@Path("placeId") placeId: Long, @Body request: UpdateDraftPlaceRequest)
 
@@ -148,7 +200,10 @@ interface PlanningApi {
     suspend fun deleteDraftPlace(@Path("placeId") placeId: Long)
 
     @POST("planning-sessions/{id}/confirm")
-    suspend fun confirm(@Path("id") sessionId: Long): ConfirmSessionResponseDto
+    suspend fun confirm(
+        @Path("id") sessionId: Long,
+        @Body request: ConfirmSessionRequest
+    ): ConfirmSessionResponseDto
 }
 
 val authApi: AuthApi by lazy { retrofit.create(AuthApi::class.java) }
