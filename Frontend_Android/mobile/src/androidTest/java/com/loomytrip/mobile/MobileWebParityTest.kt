@@ -12,7 +12,10 @@ import com.loomytrip.mobile.data.model.TripActivity
 import com.loomytrip.mobile.data.network.MapConfigDto
 import com.loomytrip.mobile.data.network.TripDto
 import com.loomytrip.mobile.data.network.TripRouteDto
+import com.loomytrip.mobile.data.network.TripTransportDto
 import com.loomytrip.mobile.data.network.SuggestedAdditionDto
+import com.loomytrip.mobile.data.network.UserProfileDto
+import com.loomytrip.mobile.ui.ProfileScreen
 import com.loomytrip.mobile.ui.screen.HomeScreen
 import com.loomytrip.mobile.ui.screen.MapScreen
 import com.loomytrip.mobile.ui.screen.MapTripOption
@@ -29,13 +32,39 @@ class MobileWebParityTest {
     val composeRule = createComposeRule()
 
     @Test
+    fun profile_allowsEditingAndTripsNavigation() {
+        var tripsClicked = false
+        composeRule.setContent {
+            MaterialTheme {
+                ProfileScreen(
+                    email = "traveler@example.com",
+                    profile = UserProfileDto(1, "Traveler", "traveler@example.com", 24, "Female", null, null),
+                    tripCount = 3,
+                    isLoading = false,
+                    isSaving = false,
+                    errorMessage = null,
+                    onRetry = {},
+                    onTripsClick = { tripsClicked = true },
+                    onSaveProfile = { _, _, _ -> },
+                    onSignOut = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Trips").performClick()
+        assertTrue(tripsClicked)
+        composeRule.onNodeWithContentDescription("Edit personal information").performClick()
+        composeRule.onNodeWithText("Edit personal information").assertIsDisplayed()
+        composeRule.onNodeWithText("Email is used for sign-in and cannot be changed here.").assertIsDisplayed()
+    }
+
+    @Test
     fun viewAll_opensMyItinerariesAction() {
         var clicked = false
         composeRule.setContent {
             MaterialTheme {
                 HomeScreen(
                     onStartPlanning = {},
-                    onExploreCity = {},
                     onViewTrip = {},
                     onViewAllTrips = { clicked = true },
                     tripName = "Singapore Weekend",
@@ -178,7 +207,9 @@ class MobileWebParityTest {
     }
 
     @Test
-    fun confirmedItinerary_displaysWeatherAndSuggestedAdditions() {
+    fun confirmedItinerary_keepsAiNotesCompactAndAddsSuggestion() {
+        var addedSuggestion = ""
+        var addedDay = 0
         composeRule.setContent {
             MaterialTheme {
                 RouteScreen(
@@ -196,13 +227,60 @@ class MobileWebParityTest {
                         )
                     ),
                     onViewMap = {},
-                    onEdit = {}
+                    onEdit = {},
+                    onAddSuggestedPlace = { suggestion, day ->
+                        addedSuggestion = suggestion.name
+                        addedDay = day
+                    }
                 )
             }
         }
 
         composeRule.onNodeWithText("AI trip notes").assertIsDisplayed()
+        composeRule.onNodeWithText("Light rain is expected in the afternoon. · 1 nearby idea").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("View AI trip notes").performClick()
         composeRule.onNodeWithText("Light rain is expected in the afternoon.").assertIsDisplayed()
-        composeRule.onNodeWithText("• Marina Barrage · 1.4 km — Close to the confirmed route").assertIsDisplayed()
+        composeRule.onNodeWithText("Marina Barrage").assertIsDisplayed()
+        composeRule.onNodeWithText("1.4 km · Close to the confirmed route").assertIsDisplayed()
+        composeRule.onNodeWithText("Add to Day 1").performClick()
+        assertEquals("Marina Barrage", addedSuggestion)
+        assertEquals(1, addedDay)
+    }
+
+    @Test
+    fun itinerary_displaysFourBackendTransportOptions() {
+        composeRule.setContent {
+            MaterialTheme {
+                RouteScreen(
+                    activities = listOf(
+                        TripActivity("10", "Merlion Park", "Landmark", 1, "09:00", 60, "One Fullerton", 1.2868, 103.8545),
+                        TripActivity("20", "Gardens by the Bay", "Garden", 1, "11:00", 90, "Marina Gardens Drive", 1.2816, 103.8636)
+                    ),
+                    tripName = "Singapore Day",
+                    startDate = "2026-08-20",
+                    tripStatus = "NOT_STARTED",
+                    totalDays = 1,
+                    routeSummary = TripRouteDto(
+                        tripId = 1,
+                        day = 1,
+                        stopCount = 2,
+                        transports = listOf(
+                            TripTransportDto(1, 10, 20, transportType = "transit", distanceKm = 2.0, durationMinutes = 12, approximate = true),
+                            TripTransportDto(2, 10, 20, transportType = "driving", distanceKm = 2.0, durationMinutes = 7),
+                            TripTransportDto(3, 10, 20, transportType = "bicycling", distanceKm = 2.0, durationMinutes = 9),
+                            TripTransportDto(4, 10, 20, transportType = "walking", distanceKm = 2.0, durationMinutes = 25)
+                        )
+                    ),
+                    onViewMap = {},
+                    onEdit = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Public transport").assertIsDisplayed()
+        composeRule.onNodeWithText("Driving").assertIsDisplayed()
+        composeRule.onNodeWithText("Cycling").assertIsDisplayed()
+        composeRule.onNodeWithText("Walking").assertIsDisplayed()
+        composeRule.onNodeWithText("Approx. 12 min · 2.0 km").assertIsDisplayed()
     }
 }

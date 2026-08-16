@@ -1,6 +1,7 @@
 package com.loomytrip.backend.service;
 
 import com.loomytrip.backend.dto.request.UpdatePreferencesRequest;
+import com.loomytrip.backend.dto.request.UpdateUserProfileRequest;
 import com.loomytrip.backend.dto.response.UserProfileResponse;
 import com.loomytrip.backend.entity.User;
 import com.loomytrip.backend.exception.ApiException;
@@ -22,6 +23,19 @@ public class UserService {
     @Transactional(readOnly = true)
     public UserProfileResponse getMyProfile() {
         return toProfile(currentUser());
+    }
+
+    @Transactional
+    public UserProfileResponse updateMyProfile(UpdateUserProfileRequest request) {
+        String gender = request.gender().trim();
+        if (!gender.equals("Male") && !gender.equals("Female") && !gender.equals("Other")) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_GENDER", "Gender must be Male, Female or Other");
+        }
+        User user = currentUser();
+        user.setUsername(request.username().trim());
+        user.setAge(request.age());
+        user.setGender(gender);
+        return toProfile(userRepository.save(user));
     }
 
     /**

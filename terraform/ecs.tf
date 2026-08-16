@@ -59,14 +59,16 @@ resource "aws_ecs_task_definition" "java" {
         # ALB 默认转发到 ML（非 /api/*），Java 通过同一 DNS 调用 /extract-travel-info、/refine、/recommend
         { name = "AI_SERVICE_BASE_URL", value = "http://${aws_lb.main.dns_name}" }
       ]
-      secrets = [
+      secrets = concat([
         { name = "DB_HOST", valueFrom = "${aws_secretsmanager_secret.db.arn}:host::" },
         { name = "DB_PORT", valueFrom = "${aws_secretsmanager_secret.db.arn}:port::" },
         { name = "DB_NAME", valueFrom = "${aws_secretsmanager_secret.db.arn}:dbname::" },
         { name = "DB_USERNAME", valueFrom = "${aws_secretsmanager_secret.db.arn}:username::" },
         { name = "DB_PASSWORD", valueFrom = "${aws_secretsmanager_secret.db.arn}:password::" },
         { name = "JWT_SECRET", valueFrom = aws_secretsmanager_secret.jwt.arn }
-      ]
+      ], var.google_maps_api_key_secret_arn == "" ? [] : [
+        { name = "GOOGLE_MAPS_API_KEY", valueFrom = var.google_maps_api_key_secret_arn }
+      ])
       logConfiguration = {
         logDriver = "awslogs"
         options = {

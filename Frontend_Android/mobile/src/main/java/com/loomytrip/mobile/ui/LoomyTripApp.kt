@@ -1,6 +1,6 @@
 package com.loomytrip.mobile.ui
 
-import android.content.Intent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -13,20 +13,25 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material3.BottomAppBar
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -41,7 +46,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -115,7 +121,6 @@ private data class BottomItem(
 fun LoomyTripApp() {
     val navController = rememberNavController()
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
     val tripRepository = remember { MockTripRepository() }
     val extractedPlaces = remember { mutableStateListOf<ExtractedPlace>() }
     val trips = remember { mutableStateListOf<TripDto>() }
@@ -156,18 +161,17 @@ fun LoomyTripApp() {
     var profile by remember { mutableStateOf<UserProfileDto?>(null) }
     var profileLoading by remember { mutableStateOf(false) }
     var profileError by remember { mutableStateOf<String?>(null) }
+    var profileSaving by remember { mutableStateOf(false) }
     var selectedExploreCity by remember { mutableStateOf<ExploreCity?>(null) }
     var selectedLocalDestination by remember { mutableStateOf<LocalDestination?>(null) }
     val planningHistory = remember { mutableStateListOf<PlanningSessionSummaryDto>() }
     var planningHistoryLoading by remember { mutableStateOf(false) }
     var planningHistoryError by remember { mutableStateOf<String?>(null) }
-    var preferencesSaving by remember { mutableStateOf(false) }
-    var preferencesError by remember { mutableStateOf<String?>(null) }
     var itineraryGenerating by remember { mutableStateOf(false) }
     var itineraryGenerateError by remember { mutableStateOf<String?>(null) }
     var itineraryGenerateSummary by remember { mutableStateOf<String?>(null) }
-    var itinerarySharing by remember { mutableStateOf(false) }
-    var itineraryShareError by remember { mutableStateOf<String?>(null) }
+    var suggestionAddingName by remember { mutableStateOf<String?>(null) }
+    var suggestionAddError by remember { mutableStateOf<String?>(null) }
     var importGuideSeed by remember { mutableStateOf(DEFAULT_IMPORT_GUIDE) }
     var confirmationInsightsTripId by remember { mutableStateOf<Long?>(null) }
     var confirmationWeatherSummary by remember { mutableStateOf<String?>(null) }
@@ -186,10 +190,10 @@ fun LoomyTripApp() {
         val trip = trips.firstOrNull { it.id == tripId } ?: trips.firstOrNull()
         tripNameError = null
         startDateError = null
-        preferencesError = null
         itineraryGenerateError = null
         itineraryGenerateSummary = null
-        itineraryShareError = null
+        suggestionAddingName = null
+        suggestionAddError = null
         activeTripId = trip?.id
         editorDayCount = trip?.durationDays ?: 1
         baselineSchedules = trip?.schedules ?: emptyList()
@@ -354,11 +358,13 @@ fun LoomyTripApp() {
     val activeTrip = trips.firstOrNull { it.id == activeTripId } ?: trips.firstOrNull()
 
     LaunchedEffect(route, activeTripId, selectedMapDay, signedInEmail) {
-        if (signedInEmail != null && current == Destination.Map) {
-            nearbyPlaces.clear()
-            crowdHint = null
-            showCrowd = false
-            loadMapConfig()
+        if (signedInEmail != null && current in setOf(Destination.Map, Destination.Itinerary)) {
+            if (current == Destination.Map) {
+                nearbyPlaces.clear()
+                crowdHint = null
+                showCrowd = false
+                loadMapConfig()
+            }
             loadMapRoute(activeTripId, selectedMapDay)
         }
     }
@@ -467,10 +473,6 @@ fun LoomyTripApp() {
                         showDurationDialog = false
                         refinementText = ""
                         navController.navigate(Destination.Import.route)
-                    },
-                    onExploreCity = { city ->
-                        selectedExploreCity = city
-                        navController.navigate(Destination.Explore.route)
                     },
                     onViewTrip = {
                         navigateToRoot(if (activeTrip == null) Destination.Trips else Destination.Itinerary)
@@ -816,16 +818,16 @@ fun LoomyTripApp() {
                     startDate = activeTrip?.startDate,
                     tripStatus = activeTrip?.status,
                     totalDays = activeTrip?.durationDays ?: 1,
+                    initialDay = selectedMapDay,
                     isUpdatingTripName = tripNameUpdating,
                     tripNameError = tripNameError,
                     isUpdatingStartDate = startDateUpdating,
                     startDateError = startDateError,
                     isDeletingTrip = deletingTripId == activeTrip?.id,
                     deleteErrorMessage = deleteTripError,
-                    travelStyle = activeTrip?.travelStyle,
-                    preferTransport = activeTrip?.preferTransport,
-                    isSavingPreferences = preferencesSaving,
-                    preferencesErrorMessage = preferencesError,
+                    routeSummary = mapRoute,
+                    isRouteLoading = mapRouteLoading,
+                    routeErrorMessage = mapError,
                     isGenerating = itineraryGenerating,
                     generateErrorMessage = itineraryGenerateError,
                     generateSummary = itineraryGenerateSummary,
@@ -834,8 +836,8 @@ fun LoomyTripApp() {
                     suggestedAdditions = confirmationSuggestions
                         .takeIf { activeTrip?.id == confirmationInsightsTripId }
                         .orEmpty(),
-                    isSharing = itinerarySharing,
-                    shareErrorMessage = itineraryShareError,
+                    addingSuggestedPlace = suggestionAddingName,
+                    suggestionErrorMessage = suggestionAddError,
                     onTripNameChange = { newName ->
                         val tripId = activeTrip?.id
                         if (tripId == null) {
@@ -884,6 +886,7 @@ fun LoomyTripApp() {
                             }
                         }
                     },
+                    onDaySelected = { day -> selectedMapDay = day },
                     onViewMap = { day ->
                         selectedMapDay = day
                         navController.navigate(Destination.Map.route)
@@ -894,23 +897,25 @@ fun LoomyTripApp() {
                         editError = null
                         navController.navigate(Destination.Edit.route)
                     },
-                    onSavePreferences = { style, transport ->
+                    onAddSuggestedPlace = { suggestion, day ->
                         val tripId = activeTrip?.id
                         if (tripId == null) {
-                            preferencesError = "Select an itinerary before changing its preferences."
+                            suggestionAddError = "Select an itinerary before adding this place."
                         } else {
                             scope.launch {
-                                preferencesSaving = true
-                                preferencesError = null
+                                suggestionAddingName = suggestion.name
+                                suggestionAddError = null
                                 try {
-                                    val updated = TripSyncRepository.updatePreferences(tripId, style, transport)
+                                    val updated = TripSyncRepository.addSuggestedPlace(tripId, day, suggestion.name)
                                     val index = trips.indexOfFirst { it.id == updated.id }
-                                    if (index >= 0) trips[index] = updated
+                                    if (index >= 0) trips[index] = updated else trips.add(0, updated)
                                     selectTrip(updated.id)
+                                    selectedMapDay = day
+                                    loadMapRoute(updated.id, day)
                                 } catch (error: Exception) {
-                                    preferencesError = error.userMessage("Could not save this trip's preferences.")
+                                    suggestionAddError = error.userMessage("Could not add this place to the itinerary.")
                                 } finally {
-                                    preferencesSaving = false
+                                    suggestionAddingName = null
                                 }
                             }
                         }
@@ -939,33 +944,6 @@ fun LoomyTripApp() {
                                     itineraryGenerateError = error.userMessage("AI could not reorganize this itinerary.")
                                 } finally {
                                     itineraryGenerating = false
-                                }
-                            }
-                        }
-                    },
-                    onShare = {
-                        val tripId = activeTrip?.id
-                        if (tripId == null) {
-                            itineraryShareError = "Select an itinerary before sharing."
-                        } else {
-                            scope.launch {
-                                itinerarySharing = true
-                                itineraryShareError = null
-                                try {
-                                    val shareUrl = TripSyncRepository.createShareLink(tripId)
-                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                        type = "text/plain"
-                                        putExtra(Intent.EXTRA_SUBJECT, activeTrip?.tripName ?: "LoomyTrip itinerary")
-                                        putExtra(
-                                            Intent.EXTRA_TEXT,
-                                            "${activeTrip?.tripName ?: "LoomyTrip itinerary"}\n$shareUrl"
-                                        )
-                                    }
-                                    context.startActivity(Intent.createChooser(shareIntent, "Share itinerary"))
-                                } catch (error: Exception) {
-                                    itineraryShareError = error.userMessage("Could not create the share link.")
-                                } finally {
-                                    itinerarySharing = false
                                 }
                             }
                         }
@@ -1060,6 +1038,15 @@ fun LoomyTripApp() {
                             tripRepository.updateActivity(tripActivities.toList(), id, startTime)
                         )
                     },
+                    onDeleteDay = { day ->
+                        if (editorDayCount > 1) {
+                            replaceTripActivities(
+                                tripRepository.deleteDay(tripActivities.toList(), day)
+                            )
+                            editorDayCount -= 1
+                            selectedEditDay = day.coerceAtMost(editorDayCount)
+                        }
+                    },
                     onAddDay = {
                         editorDayCount += 1
                         selectedEditDay = editorDayCount
@@ -1135,8 +1122,27 @@ fun LoomyTripApp() {
                     profile = profile,
                     tripCount = trips.size,
                     isLoading = profileLoading,
+                    isSaving = profileSaving,
                     errorMessage = profileError,
                     onRetry = { scope.launch { loadProfile() } },
+                    onTripsClick = {
+                        navController.navigate(Destination.Trips.route) {
+                            launchSingleTop = true
+                        }
+                    },
+                    onSaveProfile = { username, age, gender ->
+                        scope.launch {
+                            profileSaving = true
+                            profileError = null
+                            try {
+                                profile = ProfileRepository.updateMyProfile(username, age, gender)
+                            } catch (error: Exception) {
+                                profileError = error.userMessage("Could not update your profile.")
+                            } finally {
+                                profileSaving = false
+                            }
+                        }
+                    },
                     onSignOut = {
                         signedInEmail = null
                         extractedPlaces.clear()
@@ -1163,9 +1169,10 @@ fun LoomyTripApp() {
                         showDurationDialog = false
                         invalidPlanningInputMessage = null
                         refinementText = ""
-                        preferencesError = null
                         itineraryGenerateError = null
                         itineraryGenerateSummary = null
+                        suggestionAddingName = null
+                        suggestionAddError = null
                         confirmationInsightsTripId = null
                         confirmationWeatherSummary = null
                         confirmationSuggestions.clear()
@@ -1183,15 +1190,19 @@ fun LoomyTripApp() {
 }
 
 @Composable
-private fun ProfileScreen(
+internal fun ProfileScreen(
     email: String,
     profile: UserProfileDto?,
     tripCount: Int,
     isLoading: Boolean,
+    isSaving: Boolean,
     errorMessage: String?,
     onRetry: () -> Unit,
+    onTripsClick: () -> Unit,
+    onSaveProfile: (String, Int, String) -> Unit,
     onSignOut: () -> Unit
 ) {
+    var showEditDialog by remember { mutableStateOf(false) }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1212,11 +1223,23 @@ private fun ProfileScreen(
                     modifier = Modifier.padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
-                    Text(
-                        profile?.username?.takeIf { it.isNotBlank() } ?: email.substringBefore('@'),
-                        fontSize = 22.sp,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            profile?.username?.takeIf { it.isNotBlank() } ?: email.substringBefore('@'),
+                            modifier = Modifier.weight(1f),
+                            fontSize = 22.sp,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                        )
+                        IconButton(
+                            onClick = { showEditDialog = true },
+                            enabled = profile != null && !isSaving
+                        ) {
+                            Icon(Icons.Default.Edit, contentDescription = "Edit personal information")
+                        }
+                    }
                     Text(profile?.email ?: email.ifBlank { "traveler@loomytrip.com" })
                     Text(
                         listOfNotNull(
@@ -1232,16 +1255,21 @@ private fun ProfileScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                ProfileValueCard("Trips", tripCount.toString(), Modifier.weight(1f))
+                ProfileValueCard(
+                    label = "Trips",
+                    value = tripCount.toString(),
+                    modifier = Modifier.weight(1f),
+                    onClick = onTripsClick
+                )
                 Card(
                     modifier = Modifier.weight(2f),
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
                     Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-                        Text("Preferences belong to each trip", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, fontSize = 12.sp)
+                        Text("Personal information", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, fontSize = 12.sp)
                         Text(
-                            "Open an itinerary to choose its style and transport.",
+                            "Use the edit button above to update your name, age and gender.",
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                             fontSize = 10.sp,
                             lineHeight = 14.sp
@@ -1262,11 +1290,32 @@ private fun ProfileScreen(
             Text("Sign out")
         }
     }
+
+    if (showEditDialog && profile != null) {
+        EditProfileDialog(
+            profile = profile,
+            isSaving = isSaving,
+            onDismiss = { if (!isSaving) showEditDialog = false },
+            onSave = { username, age, gender ->
+                showEditDialog = false
+                onSaveProfile(username, age, gender)
+            }
+        )
+    }
 }
 
 @Composable
-private fun ProfileValueCard(label: String, value: String, modifier: Modifier = Modifier) {
-    Card(modifier = modifier, shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)) {
+private fun ProfileValueCard(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit = {}
+) {
+    Card(
+        modifier = modifier
+            .clickable(onClick = onClick),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+    ) {
         Column(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -1285,6 +1334,76 @@ private fun ProfileValueCard(label: String, value: String, modifier: Modifier = 
             )
         }
     }
+}
+
+@Composable
+private fun EditProfileDialog(
+    profile: UserProfileDto,
+    isSaving: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (String, Int, String) -> Unit
+) {
+    var username by remember(profile.username) { mutableStateOf(profile.username.orEmpty()) }
+    var age by remember(profile.age) { mutableStateOf(profile.age?.toString().orEmpty()) }
+    var gender by remember(profile.gender) {
+        mutableStateOf(profile.gender?.takeIf { it in listOf("Male", "Female", "Other") } ?: "Other")
+    }
+    val parsedAge = age.toIntOrNull()
+    val isValid = username.trim().isNotEmpty() && parsedAge != null && parsedAge in 1..120
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit personal information") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = { username = it.take(64) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Name") },
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = age,
+                    onValueChange = { value -> age = value.filter(Char::isDigit).take(3) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Age") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    isError = age.isNotEmpty() && (parsedAge == null || parsedAge !in 1..120),
+                    singleLine = true
+                )
+                Text("Gender", fontWeight = androidx.compose.ui.text.font.FontWeight.Medium)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    listOf("Male", "Female", "Other").forEach { option ->
+                        FilterChip(
+                            selected = gender == option,
+                            onClick = { gender = option },
+                            label = { Text(option) }
+                        )
+                    }
+                }
+                Text(
+                    "Email is used for sign-in and cannot be changed here.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f)
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(username.trim(), requireNotNull(parsedAge), gender) },
+                enabled = isValid && !isSaving
+            ) {
+                Text(if (isSaving) "Saving…" else "Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isSaving) { Text("Cancel") }
+        }
+    )
 }
 
 private const val INVALID_TRAVEL_INPUT_MESSAGE =

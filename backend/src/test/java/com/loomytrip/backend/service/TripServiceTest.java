@@ -454,7 +454,7 @@ class TripServiceTest {
         // still gets its own trip_transport row in transports().
         when(routingClient.estimate(any(), any(), any(), any(), any()))
                 .thenReturn(Optional.of(new RoutingClient.RouteEstimate(
-                        12, new BigDecimal("3.50"), "https://maps.example/a-b")));
+                        12, new BigDecimal("3.50"), "https://maps.example/a-b", false)));
         when(tripTransportRepository.save(any(TripTransport.class))).thenAnswer(inv -> {
             TripTransport transport = inv.getArgument(0);
             transport.setId(901L);

@@ -35,7 +35,8 @@ public interface RoutingClient {
     record RouteEstimate(
             Integer durationMinutes,
             BigDecimal distanceKm,
-            String googleMapLink
+            String googleMapLink,
+            boolean approximate
     ) {
     }
 }

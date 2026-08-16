@@ -12,6 +12,7 @@ public record TripTransportResponse(
         BigDecimal distanceKm,
         Integer durationMinutes,
         String googleMapLink,
-        String routeDesc
+        String routeDesc,
+        boolean approximate
 ) {
 }

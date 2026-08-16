@@ -106,7 +106,7 @@ public class RoutingClientHttp implements RoutingClient {
             double distanceMeters = ((Number) distanceMetersValue).doubleValue();
             BigDecimal distanceKm = BigDecimal.valueOf(distanceMeters / 1000.0).setScale(2, RoundingMode.HALF_UP);
             int durationMinutes = Math.max(1, (int) Math.round(durationSeconds / 60.0));
-            return Optional.of(new RouteEstimate(durationMinutes, distanceKm, googleLink));
+            return Optional.of(new RouteEstimate(durationMinutes, distanceKm, googleLink, false));
         } catch (RestClientException | ClassCastException | NullPointerException e) {
             return Optional.of(haversineEstimate(fromLat, fromLng, toLat, toLng, mode, googleLink));
         }
@@ -155,7 +155,8 @@ public class RoutingClientHttp implements RoutingClient {
         return new RouteEstimate(
                 durationMinutes,
                 BigDecimal.valueOf(distanceKm).setScale(2, RoundingMode.HALF_UP),
-                googleLink
+                googleLink,
+                true
         );
     }
 

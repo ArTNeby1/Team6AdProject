@@ -15,6 +15,7 @@ import com.loomytrip.mobile.data.network.TripRouteDto
 import com.loomytrip.mobile.ui.screen.EditTripScreen
 import com.loomytrip.mobile.ui.screen.MapScreen
 import com.loomytrip.mobile.ui.screen.RouteScreen
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 
@@ -81,6 +82,7 @@ class SprintTwoFlowTest {
                             val index = activities.indexOfFirst { it.id == id }
                             activities[index] = activities[index].copy(startTime = startTime)
                         },
+                        onDeleteDay = {},
                         onAddDay = {},
                         onSave = { stage.intValue = 0 }
                     )
@@ -116,5 +118,36 @@ class SprintTwoFlowTest {
         composeRule.onNodeWithText("4.8 km").assertIsDisplayed()
         composeRule.onNodeWithText("22 min").assertIsDisplayed()
         composeRule.onNodeWithText("Open Google Maps").assertIsEnabled()
+    }
+
+    @Test
+    fun editTrip_canDeleteOneDayAfterConfirmation() {
+        var deletedDay = 0
+        composeRule.setContent {
+            MaterialTheme {
+                EditTripScreen(
+                    activities = listOf(
+                        TripActivity("1", "Merlion Park", "Landmark", 1, "09:00", 60, "One Fullerton", 1.2868, 103.8545),
+                        TripActivity("2", "Gardens by the Bay", "Garden", 2, "10:00", 90, "Marina Gardens Drive", 1.2816, 103.8636)
+                    ),
+                    initialDay = 1,
+                    totalDays = 2,
+                    onReorder = { _, _, _ -> },
+                    onDelete = {},
+                    onRestore = { _, _ -> },
+                    onAdd = { _, _, _ -> },
+                    onUpdateActivity = { _, _ -> },
+                    onDeleteDay = { deletedDay = it },
+                    onAddDay = {},
+                    onSave = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Delete Day 1").performClick()
+        composeRule.onNodeWithText("Delete Day 1?").assertIsDisplayed()
+        composeRule.onNodeWithText("Delete day").performClick()
+
+        assertEquals(1, deletedDay)
     }
 }

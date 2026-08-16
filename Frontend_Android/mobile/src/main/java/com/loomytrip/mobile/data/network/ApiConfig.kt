@@ -157,6 +157,9 @@ interface TripApi {
 interface UserApi {
     @GET("users/me")
     suspend fun getMyProfile(): UserProfileDto
+
+    @PUT("users/me")
+    suspend fun updateMyProfile(@Body request: UpdateUserProfileRequest): UserProfileDto
 }
 
 interface MapApi {

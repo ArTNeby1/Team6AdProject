@@ -43,10 +43,12 @@ resource "aws_iam_role_policy" "ecs_task_execution_secrets" {
       {
         Effect = "Allow"
         Action = ["secretsmanager:GetSecretValue"]
-        Resource = [
+        Resource = concat([
           aws_secretsmanager_secret.db.arn,
           aws_secretsmanager_secret.jwt.arn
-        ]
+        ], var.google_maps_api_key_secret_arn == "" ? [] : [
+          var.google_maps_api_key_secret_arn
+        ])
       }
     ]
   })

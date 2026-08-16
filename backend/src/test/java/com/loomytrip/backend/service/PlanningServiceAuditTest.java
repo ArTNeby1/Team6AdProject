@@ -29,6 +29,7 @@ import com.loomytrip.backend.repository.TripDayRepository;
 import com.loomytrip.backend.repository.TripRepository;
 import com.loomytrip.backend.repository.TripScheduleRepository;
 import com.loomytrip.backend.repository.UserRepository;
+import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -77,6 +78,7 @@ class PlanningServiceAuditTest {
         PlanningSession session = processingSession(11L, "Marina Bay Sands tomorrow");
         when(planningSessionRepository.findById(11L)).thenReturn(Optional.of(session));
         Map<String, Object> result = okExtraction("Marina Bay Sands");
+        result.put("dates", List.of("2026-09-20", "2026-09-18"));
         when(aiPlanningClient.extractTravelInfo("Marina Bay Sands tomorrow", null)).thenReturn(result);
         when(mapPlacesClient.validatePlace(eq("Marina Bay Sands"), isNull())).thenReturn(Optional.empty());
         when(draftPlaceRepository.save(any(DraftPlace.class))).thenAnswer(invocation -> {
@@ -102,6 +104,7 @@ class PlanningServiceAuditTest {
         assertThat(responseCaptor.getValue()).isSameAs(result);
         verify(notificationService).createImportNotification(session, true, null);
         assertThat(session.getStatus()).isEqualTo(PlanningSessionStatus.DRAFT_READY);
+        assertThat(session.getStartDate()).isEqualTo(LocalDate.of(2026, 9, 18));
     }
 
     @Test
@@ -175,7 +178,7 @@ class PlanningServiceAuditTest {
         when(entityMapper.toPlanningSessionDetail(eq(session), any(), any()))
                 .thenReturn(new PlanningSessionDetailResponse(
                         21L, "Trip", "brief", PlanningSessionStatus.DRAFT_READY,
-                        null, null, null, null, List.of(), null
+                        null, null, null, null, null, List.of(), null
                 ));
 
         planningService.refineWithAi(21L);

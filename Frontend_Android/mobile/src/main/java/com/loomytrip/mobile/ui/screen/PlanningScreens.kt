@@ -441,8 +441,8 @@ private fun ExtractedPlaceCard(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        "${place.category} · ${place.suggestedTime}",
+                        Text(
+                            place.category,
                         modifier = Modifier.weight(1f),
                         color = MaterialTheme.colorScheme.primary,
                         fontSize = 13.sp,

@@ -12,6 +12,7 @@ import com.loomytrip.backend.dto.request.AdminLoginRequest;
 import com.loomytrip.backend.dto.request.LoginRequest;
 import com.loomytrip.backend.dto.request.RegisterRequest;
 import com.loomytrip.backend.dto.request.UpdatePreferencesRequest;
+import com.loomytrip.backend.dto.request.UpdateUserProfileRequest;
 import com.loomytrip.backend.dto.response.AdminAuthResponse;
 import com.loomytrip.backend.dto.response.AuthResponse;
 import com.loomytrip.backend.dto.response.NotificationResponse;
@@ -187,6 +188,26 @@ class AuthAndNotificationServiceTest {
         assertThat(updated.travelStyle()).isNull();
         assertThat(updated.preferTransport()).isEqualTo("transit");
         assertThat(userService.getMyProfile().email()).isEqualTo("a@example.com");
+    }
+
+    @Test
+    void userService_updatesEditableProfileFields() {
+        UserService userService = new UserService(userRepository);
+        User user = new User();
+        user.setId(1L);
+        user.setEmail("a@example.com");
+        user.setUsername("alice");
+        authenticate("a@example.com");
+        when(userRepository.findByEmail("a@example.com")).thenReturn(Optional.of(user));
+        when(userRepository.save(user)).thenReturn(user);
+
+        UserProfileResponse updated = userService.updateMyProfile(
+                new UpdateUserProfileRequest(" Alice Tan ", 24, "Female"));
+
+        assertThat(updated.username()).isEqualTo("Alice Tan");
+        assertThat(updated.age()).isEqualTo(24);
+        assertThat(updated.gender()).isEqualTo("Female");
+        assertThat(updated.email()).isEqualTo("a@example.com");
     }
 
     @Test

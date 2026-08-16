@@ -361,7 +361,7 @@ public class PlanningService {
         ensureDraftPlacesValidated(draftPlaces);
 
         User user = currentUser();
-        LocalDate startDate = LocalDate.now();
+        LocalDate startDate = session.getStartDate() != null ? session.getStartDate() : LocalDate.now();
 
         Trip trip = new Trip();
         trip.setUser(user);
@@ -633,6 +633,29 @@ public class PlanningService {
         return null;
     }
 
+    /** ML returns every real calendar date explicitly present in the source text under
+     * {@code dates}. The earliest valid ISO date is the trip's first day. Invalid or
+     * missing values are ignored rather than replacing a date already captured earlier. */
+    private static LocalDate parseStartDate(Map<String, Object> result) {
+        Object datesValue = result.get("dates");
+        if (!(datesValue instanceof List<?> dates)) {
+            return null;
+        }
+        return dates.stream()
+                .filter(String.class::isInstance)
+                .map(String.class::cast)
+                .map(value -> {
+                    try {
+                        return LocalDate.parse(value.trim());
+                    } catch (java.time.format.DateTimeParseException ignored) {
+                        return null;
+                    }
+                })
+                .filter(java.util.Objects::nonNull)
+                .min(LocalDate::compareTo)
+                .orElse(null);
+    }
+
     /**
      * Persists an extraction result (`/extract-travel-info` or `/refine` — same JSON
      * shape) as DraftPlace/DraftActivity rows. Rejects out-of-scope destinations
@@ -666,6 +689,12 @@ public class PlanningService {
         Integer parsedDurationDays = parseDurationDays(result);
         if (parsedDurationDays != null) {
             session.setDurationDays(parsedDurationDays);
+        }
+        LocalDate parsedStartDate = parseStartDate(result);
+        if (parsedStartDate != null) {
+            session.setStartDate(parsedStartDate);
+        }
+        if (parsedDurationDays != null || parsedStartDate != null) {
             planningSessionRepository.save(session);
         }
 

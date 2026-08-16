@@ -30,6 +30,12 @@ data class UserProfileDto(
     val preferTransport: String?
 )
 
+data class UpdateUserProfileRequest(
+    val username: String,
+    val age: Int,
+    val gender: String
+)
+
 data class DestinationDto(
     val id: Long? = null,
     val name: String,
@@ -97,6 +103,7 @@ data class TripRouteDto(
     val totalDurationMinutes: Int? = null,
     val googleMapsUrl: String? = null,
     val legs: List<RouteLegDto> = emptyList(),
+    val transports: List<TripTransportDto> = emptyList(),
     val warnings: List<String> = emptyList()
 )
 
@@ -129,6 +136,20 @@ data class RouteLegDto(
     val distanceKm: Double? = null,
     val durationMinutes: Int? = null,
     val googleMapLink: String? = null
+)
+
+data class TripTransportDto(
+    val id: Long? = null,
+    val prevScheduleId: Long? = null,
+    val nextScheduleId: Long? = null,
+    val fromName: String? = null,
+    val toName: String? = null,
+    val transportType: String,
+    val distanceKm: Double? = null,
+    val durationMinutes: Int? = null,
+    val googleMapLink: String? = null,
+    val routeDesc: String? = null,
+    val approximate: Boolean = false
 )
 
 data class NearbyRecommendationDto(
@@ -204,6 +225,7 @@ data class PlanningSessionDetailDto(
     val status: String? = null,
     val confirmedTripId: Long? = null,
     val durationDays: Int? = null,
+    val startDate: String? = null,
     val failureCode: String? = null,
     val failureReason: String? = null,
     val draftPlaces: List<DraftPlaceDto> = emptyList(),

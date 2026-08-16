@@ -752,7 +752,8 @@ public class TripService {
                         estimate.distanceKm(),
                         estimate.durationMinutes(),
                         estimate.googleMapLink(),
-                        transport.getRouteDesc()
+                        transport.getRouteDesc(),
+                        estimate.approximate()
                 ));
             }
         }

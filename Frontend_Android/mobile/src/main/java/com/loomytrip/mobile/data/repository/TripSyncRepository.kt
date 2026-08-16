@@ -27,6 +27,12 @@ object TripSyncRepository {
     suspend fun updateTripName(tripId: Long, tripName: String): TripDto =
         tripApi.updateTrip(tripId, UpdateTripRequest(tripName = tripName.trim()))
 
+    suspend fun addSuggestedPlace(tripId: Long, day: Int, placeName: String): TripDto =
+        tripApi.addSchedules(
+            tripId,
+            AddSchedulesRequest(day = day, locationNames = listOf(placeName.trim()))
+        )
+
     suspend fun updatePreferences(tripId: Long, travelStyle: String, preferTransport: String): TripDto =
         tripApi.updateTrip(
             tripId,

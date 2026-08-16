@@ -12,6 +12,7 @@ interface TripRepository {
         targetIndex: Int
     ): List<TripActivity>
     fun deleteActivity(activities: List<TripActivity>, id: String): List<TripActivity>
+    fun deleteDay(activities: List<TripActivity>, day: Int): List<TripActivity>
     fun restoreActivity(
         activities: List<TripActivity>,
         activity: TripActivity,
@@ -76,6 +77,15 @@ class MockTripRepository : TripRepository {
 
     override fun deleteActivity(activities: List<TripActivity>, id: String): List<TripActivity> =
         activities.filterNot { it.id == id }
+
+    override fun deleteDay(activities: List<TripActivity>, day: Int): List<TripActivity> {
+        if (day < 1) return activities
+        return activities
+            .filterNot { it.day == day }
+            .map { activity ->
+                if (activity.day > day) activity.copy(day = activity.day - 1) else activity
+            }
+    }
 
     override fun restoreActivity(
         activities: List<TripActivity>,
