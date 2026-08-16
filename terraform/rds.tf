@@ -118,3 +118,18 @@ resource "aws_secretsmanager_secret_version" "jwt" {
   secret_id     = aws_secretsmanager_secret.jwt.id
   secret_string = random_password.jwt_secret.result
 }
+
+# Google Maps Routes API key：跟上面 db/jwt 一样存 Secrets Manager，ECS 任务里
+# 按需注入。这个不是随机生成的，是外部（Google Cloud Console）发的 key，
+# 靠 var.google_maps_api_key 传进来；version 资源加 count 判断，key 没配的时候
+# 不写空字符串版本，见 ecs.tf 里对应的 secrets 条件判断。
+resource "aws_secretsmanager_secret" "google_maps" {
+  #checkov:skip=CKV_AWS_149:同上，默认加密已经够用
+  name = "${var.project_name}/${var.environment}/google-maps-api-key"
+}
+
+resource "aws_secretsmanager_secret_version" "google_maps" {
+  count         = var.google_maps_api_key == "" ? 0 : 1
+  secret_id     = aws_secretsmanager_secret.google_maps.id
+  secret_string = var.google_maps_api_key
+}

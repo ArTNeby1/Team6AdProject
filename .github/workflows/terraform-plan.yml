@@ -104,6 +104,11 @@ jobs:
     defaults:
       run:
         working-directory: ./terraform
+    env:
+      # RoutingClientHttp（Java 后端）调 Google Routes API 用的 key，写进
+      # Secrets Manager（见 rds.tf 的 google_maps 那两个资源）。留空的话
+      # ECS 任务就不会挂 GOOGLE_MAPS_API_KEY，降级用直线距离估算。
+      TF_VAR_google_maps_api_key: ${{ secrets.GOOGLE_MAPS_ROUTES_API_KEY }}
 
     steps:
       - uses: actions/checkout@v4

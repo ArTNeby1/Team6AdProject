@@ -66,8 +66,8 @@ resource "aws_ecs_task_definition" "java" {
         { name = "DB_USERNAME", valueFrom = "${aws_secretsmanager_secret.db.arn}:username::" },
         { name = "DB_PASSWORD", valueFrom = "${aws_secretsmanager_secret.db.arn}:password::" },
         { name = "JWT_SECRET", valueFrom = aws_secretsmanager_secret.jwt.arn }
-      ], var.google_maps_api_key_secret_arn == "" ? [] : [
-        { name = "GOOGLE_MAPS_API_KEY", valueFrom = var.google_maps_api_key_secret_arn }
+        ], var.google_maps_api_key == "" ? [] : [
+        { name = "GOOGLE_MAPS_API_KEY", valueFrom = aws_secretsmanager_secret.google_maps.arn }
       ])
       logConfiguration = {
         logDriver = "awslogs"
@@ -84,7 +84,8 @@ resource "aws_ecs_task_definition" "java" {
   # 依赖 secret_version，这里显式声明，确保密码先写进 Secrets Manager
   depends_on = [
     aws_secretsmanager_secret_version.db,
-    aws_secretsmanager_secret_version.jwt
+    aws_secretsmanager_secret_version.jwt,
+    aws_secretsmanager_secret_version.google_maps
   ]
 }
 

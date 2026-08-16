@@ -54,8 +54,12 @@ variable "bedrock_region" {
   default     = "us-east-1"
 }
 
-variable "google_maps_api_key_secret_arn" {
-  description = "Secrets Manager ARN containing the Google Maps API key used by the Java Routes client"
+# Java 后端调 Google Routes API（RoutingClientHttp）用的 key。跟 db/jwt 密钥同一个
+# 模式：裸值传进来，由 Terraform 自己建 Secrets Manager secret 并写版本，不用先在
+# 控制台手动建好 secret 再把 ARN 粘过来（那种做法容易漂移、容易忘）。留空 = ECS
+# 任务不挂这个环境变量，RoutingClientHttp 会降级用直线距离估算，不会报错。
+variable "google_maps_api_key" {
+  description = "Google Maps Platform API key（需要开通 Routes API），写进 Secrets Manager"
   type        = string
   sensitive   = true
   default     = ""
