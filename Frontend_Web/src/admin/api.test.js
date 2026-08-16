@@ -15,7 +15,7 @@ describe('apiFetch', () => {
   it('attaches the admin bearer token when one is stored', async () => {
     localStorage.setItem(ADMIN_TOKEN_KEY, 'tok123');
     const fetchMock = vi.fn().mockResolvedValue(mockResponse({ body: { ok: true } }));
-    global.fetch = fetchMock;
+    globalThis.fetch = fetchMock;
 
     await apiFetch('/api/v1/admin/users');
 
@@ -27,7 +27,7 @@ describe('apiFetch', () => {
   it('omits the auth header when auth:false, and serializes the body', async () => {
     localStorage.setItem(ADMIN_TOKEN_KEY, 'tok123');
     const fetchMock = vi.fn().mockResolvedValue(mockResponse({ body: {} }));
-    global.fetch = fetchMock;
+    globalThis.fetch = fetchMock;
 
     await apiFetch('/api/v1/admin/auth/login', {
       method: 'POST',
@@ -42,13 +42,13 @@ describe('apiFetch', () => {
   });
 
   it('returns parsed JSON on a successful response', async () => {
-    global.fetch = vi.fn().mockResolvedValue(mockResponse({ body: { totalElements: 7 } }));
+    globalThis.fetch = vi.fn().mockResolvedValue(mockResponse({ body: { totalElements: 7 } }));
     const data = await apiFetch('/x');
     expect(data).toEqual({ totalElements: 7 });
   });
 
   it('throws an Error carrying status and code on a non-2xx response', async () => {
-    global.fetch = vi.fn().mockResolvedValue(
+    globalThis.fetch = vi.fn().mockResolvedValue(
       mockResponse({ ok: false, status: 401, body: { message: 'bad', code: 'INVALID_CREDENTIALS' } }),
     );
     await expect(apiFetch('/x')).rejects.toMatchObject({
