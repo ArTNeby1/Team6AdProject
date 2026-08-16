@@ -71,6 +71,7 @@ public class PlanningService {
     private final MapPlacesClient mapPlacesClient;
     private final NotificationService notificationService;
     private final ApplicationEventPublisher eventPublisher;
+    private final TripService tripService;
 
     public PlanningService(
             PlanningSessionRepository planningSessionRepository,
@@ -86,7 +87,8 @@ public class PlanningService {
             AiPlanningClient aiPlanningClient,
             MapPlacesClient mapPlacesClient,
             NotificationService notificationService,
-            ApplicationEventPublisher eventPublisher
+            ApplicationEventPublisher eventPublisher,
+            TripService tripService
     ) {
         this.planningSessionRepository = planningSessionRepository;
         this.chatMessageRepository = chatMessageRepository;
@@ -102,6 +104,7 @@ public class PlanningService {
         this.mapPlacesClient = mapPlacesClient;
         this.notificationService = notificationService;
         this.eventPublisher = eventPublisher;
+        this.tripService = tripService;
     }
 
     @Transactional(readOnly = true)
@@ -381,6 +384,20 @@ public class PlanningService {
                 schedule.setNote(buildScheduleNote(place, activitiesByPlaceId));
                 tripScheduleRepository.save(schedule);
             }
+        }
+
+        // The day split above is naive — it just cuts the draft places (in extraction/drag
+        // order) into equal-size chunks per day, with zero awareness of geography. That
+        // routinely puts day N's last stop and day N+1's first stop on opposite sides of the
+        // city. ML's /plan-itinerary (F-09, TripService.generateItinerary) already solves
+        // this properly — nearest-neighbor chain across ALL stops, then cut into day segments
+        // — so immediately re-run it here to replace the naive split with a geography-aware
+        // one. Best-effort: if the AI service is unavailable, keep the naive split rather than
+        // failing the whole confirm over a routing optimization.
+        try {
+            tripService.generateItinerary(savedTrip.getId());
+        } catch (ApiException e) {
+            // naive per-day split from above stands as the fallback
         }
 
         // 附近推荐/天气单独调一次 /recommend，只取这两块附加信息，排序结果不用
