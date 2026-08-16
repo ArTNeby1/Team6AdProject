@@ -228,9 +228,74 @@
 }
 .admin-field input:focus { outline: none; border-color: var(--jade); background: var(--surface); }
 
+/* ---------- LLM Evaluation page (S2) ---------- */
+.admin-eval-io {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.admin-eval-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 18px 20px;
+  box-shadow: var(--shadow-sm);
+}
+.admin-eval-h2 {
+  font-size: .78rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+.admin-eval-src {
+  white-space: pre-wrap;
+  font-size: .84rem;
+  line-height: 1.6;
+  color: var(--ink);
+  max-height: 300px;
+  overflow: auto;
+}
+.admin-eval-src mark { background: var(--mint); color: var(--jade-deep); border-radius: 3px; padding: 0 3px; }
+.admin-eval-json {
+  margin: 0;
+  font-size: .8rem;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--paper);
+  border-radius: 8px;
+  padding: 14px;
+  overflow: auto;
+  max-height: 300px;
+  white-space: pre-wrap;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+.admin-eval-flow { text-align: center; color: var(--muted); font-size: .85rem; letter-spacing: .04em; margin: 0 0 16px; }
+.admin-stat-value--good { color: var(--jade); }
+.admin-stat-value--warn { color: var(--amber); }
+.admin-stat-value--bad  { color: #A23A2E; }
+.admin-eval-note { font-size: .74rem; color: var(--muted); }
+.admin-eval-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-eval-chip { padding: 5px 11px; border-radius: 8px; font-size: .82rem; border: 1px solid var(--line); }
+.admin-eval-chip.is-hit  { background: var(--mint); color: var(--jade-deep); border-color: var(--jade); }
+.admin-eval-chip.is-miss { background: #FDECEA; color: #A23A2E; border-color: #F1C4BD; }
+.admin-eval-verdict {
+  margin-top: 16px;
+  background: var(--mint);
+  border: 1px solid var(--jade);
+  border-radius: 14px;
+  padding: 18px 20px;
+  font-size: .9rem;
+  line-height: 1.6;
+  color: var(--ink);
+}
+.admin-eval-verdict strong { color: var(--jade-deep); }
+
 /* ---------- Responsive ---------- */
 @media (max-width: 720px) {
   .admin-shell { grid-template-columns: 1fr; }
   .admin-sidebar { flex-direction: row; align-items: center; justify-content: space-between; }
   .admin-nav { flex-direction: row; }
+  .admin-eval-io { grid-template-columns: 1fr; }
 }
