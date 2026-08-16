@@ -70,6 +70,7 @@ public class PlanningService {
     private final AiPlanningClient aiPlanningClient;
     private final MapPlacesClient mapPlacesClient;
     private final NotificationService notificationService;
+    private final AgentValidationLogService agentValidationLogService;
     private final ApplicationEventPublisher eventPublisher;
     private final TripService tripService;
 
@@ -87,6 +88,7 @@ public class PlanningService {
             AiPlanningClient aiPlanningClient,
             MapPlacesClient mapPlacesClient,
             NotificationService notificationService,
+            AgentValidationLogService agentValidationLogService,
             ApplicationEventPublisher eventPublisher,
             TripService tripService
     ) {
@@ -103,6 +105,7 @@ public class PlanningService {
         this.aiPlanningClient = aiPlanningClient;
         this.mapPlacesClient = mapPlacesClient;
         this.notificationService = notificationService;
+        this.agentValidationLogService = agentValidationLogService;
         this.eventPublisher = eventPublisher;
         this.tripService = tripService;
     }
@@ -146,8 +149,12 @@ public class PlanningService {
         if (session == null || session.getStatus() != PlanningSessionStatus.PROCESSING) {
             return;
         }
+        Map<String, Object> requestPayload = new LinkedHashMap<>();
+        requestPayload.put("raw_content", session.getInitialBrief());
+        requestPayload.put("source_url", null);
+        Map<String, Object> result = null;
         try {
-            Map<String, Object> result = aiPlanningClient.extractTravelInfo(session.getInitialBrief(), null);
+            result = aiPlanningClient.extractTravelInfo(session.getInitialBrief(), null);
             if (outOfScopeDestination(result) != null) {
                 result = aiPlanningClient.extractTravelInfo(session.getInitialBrief(), null);
             }
@@ -160,8 +167,16 @@ public class PlanningService {
                         "AI returned no usable places from your travel notes"
                 );
             }
+            agentValidationLogService.record(session, "IMPORT", requestPayload, result, "SUCCESS");
             notificationService.createImportNotification(session, true, null);
         } catch (Exception exception) {
+            agentValidationLogService.record(
+                    session,
+                    "IMPORT",
+                    requestPayload,
+                    result == null ? Map.of("error", exception.getClass().getSimpleName()) : result,
+                    "FAILED"
+            );
             session.setStatus(PlanningSessionStatus.FAILED);
             session.setFailureCode(safeImportFailureCode(exception));
             session.setFailureReason(safeImportFailureReason(exception));
@@ -205,17 +220,34 @@ public class PlanningService {
                 .map(m -> Map.of("role", m.getRole().name(), "content", m.getContent()))
                 .toList();
 
-        Map<String, Object> result = aiPlanningClient.refineFromChat(messages, buildPreferenceText(currentUser()));
-        validateExtractionResult(result);
-        if (outOfScopeDestination(result) != null) {
-            // 同 createSession() 的理由：先重试一次，避免误判。
-            result = aiPlanningClient.refineFromChat(messages, buildPreferenceText(currentUser()));
+        String preferenceText = buildPreferenceText(currentUser());
+        Map<String, Object> requestPayload = new LinkedHashMap<>();
+        requestPayload.put("messages", messages);
+        requestPayload.put("preference_text", preferenceText);
+        Map<String, Object> result = null;
+        try {
+            result = aiPlanningClient.refineFromChat(messages, preferenceText);
             validateExtractionResult(result);
-        }
+            if (outOfScopeDestination(result) != null) {
+                // 同 createSession() 的理由：先重试一次，避免误判。
+                result = aiPlanningClient.refineFromChat(messages, preferenceText);
+                validateExtractionResult(result);
+            }
 
-        draftActivityRepository.deleteBySession_Id(sessionId);
-        draftPlaceRepository.deleteBySession_Id(sessionId);
-        persistExtraction(session, result);
+            draftActivityRepository.deleteBySession_Id(sessionId);
+            draftPlaceRepository.deleteBySession_Id(sessionId);
+            persistExtraction(session, result);
+            agentValidationLogService.record(session, "REFINE", requestPayload, result, "SUCCESS");
+        } catch (RuntimeException exception) {
+            agentValidationLogService.record(
+                    session,
+                    "REFINE",
+                    requestPayload,
+                    result == null ? Map.of("error", exception.getClass().getSimpleName()) : result,
+                    "FAILED"
+            );
+            throw exception;
+        }
 
         return loadSessionDetail(sessionId);
     }

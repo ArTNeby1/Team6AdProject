@@ -36,6 +36,7 @@ class FeatureInsightsIntegrationTest {
 
     @BeforeEach
     void seed() {
+        jdbc.update("DELETE FROM agent_validation_log");
         jdbc.update("DELETE FROM user_notification");
         jdbc.update("DELETE FROM trip_transport");
         jdbc.update("DELETE FROM trip_schedule");
@@ -164,6 +165,24 @@ class FeatureInsightsIntegrationTest {
         mockMvc.perform(get("/api/v1/admin/analytics/overview?from=2024-01-01&to=2026-01-01")
                         .header("Authorization", bearer(adminToken)))
                 .andExpect(status().isBadRequest());
+
+        jdbc.update(
+                "INSERT INTO agent_validation_log "
+                        + "(user_id, operation, request_payload, response_payload, outcome, created_at) "
+                        + "VALUES (?, ?, ?, ?, ?, ?)",
+                travelerId,
+                "IMPORT",
+                "{\"raw_content\":\"Singapore trip\"}",
+                "{\"status\":\"OK\",\"places\":[]}",
+                "SUCCESS",
+                Timestamp.from(Instant.now())
+        );
+        mockMvc.perform(get("/api/v1/admin/agent-validations").header("Authorization", bearer(adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].operation").value("IMPORT"))
+                .andExpect(jsonPath("$.content[0].requestPayload").value("{\"raw_content\":\"Singapore trip\"}"));
+        mockMvc.perform(get("/api/v1/admin/agent-validations").header("Authorization", bearer(travelerToken)))
+                .andExpect(status().isForbidden());
     }
 
     @Test
