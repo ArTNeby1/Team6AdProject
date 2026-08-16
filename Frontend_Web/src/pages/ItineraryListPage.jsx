@@ -34,7 +34,7 @@ const ItineraryListPage = () => {
     if (window.confirm('Are you sure you want to delete this itinerary? This action cannot be undone.')) {
       try {
         await deleteTrip(id);
-      } catch (err) {
+      } catch {
         alert('Failed to delete trip. Please try again.');
       }
     }
@@ -78,15 +78,11 @@ const ItineraryListPage = () => {
               <div key={trip.id} className="itinerary-card-active" onClick={() => handleTripClick(trip.id)}>
                 <div className="itinerary-icon-lg" style={{
                   overflow: 'hidden',
-                  background: trip.coverImage ? 'none' : 'linear-gradient(135deg, var(--jade), var(--jade-deep))'
+                  background: 'linear-gradient(135deg, var(--jade), var(--jade-deep))'
                 }}>
-                  {trip.coverImage ? (
-                    <img src={trip.coverImage} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    String(trip.shortName || 'T').split(' ').map((word, i) => (
-                      <div key={i}>{word}</div>
-                    ))
-                  )}
+                  {String(trip.shortName || 'T').split(' ').map((word, i) => (
+                    <div key={i}>{word}</div>
+                  ))}
                 </div>
                 <div className="itinerary-content">
                   <h3>{trip.title}</h3>
@@ -112,12 +108,8 @@ const ItineraryListPage = () => {
             <h2 className="itinerary-section-title">Upcoming</h2>
             {upcomingTrips.map(trip => (
               <div key={trip.id} className="itinerary-card-simple" onClick={() => handleTripClick(trip.id)}>
-                <div className="itinerary-icon-sm" style={{ overflow: 'hidden', background: trip.coverImage ? 'none' : 'var(--mint)' }}>
-                  {trip.coverImage ? (
-                    <img src={trip.coverImage} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    trip.shortName
-                  )}
+                <div className="itinerary-icon-sm" style={{ overflow: 'hidden', background: 'var(--mint)' }}>
+                  {trip.shortName}
                 </div>
                 <div className="itinerary-info">
                   <h3>{trip.title}</h3>
@@ -140,18 +132,19 @@ const ItineraryListPage = () => {
             <h2 className="itinerary-section-title finished">Finished</h2>
             {finishedTrips.map(trip => (
               <div key={trip.id} className="itinerary-card-simple" onClick={() => handleTripClick(trip.id)}>
-                <div className="itinerary-icon-sm finished" style={{ overflow: 'hidden', background: trip.coverImage ? 'none' : 'var(--line-soft)' }}>
-                  {trip.coverImage ? (
-                    <img src={trip.coverImage} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    trip.shortName
-                  )}
+                <div className="itinerary-icon-sm finished" style={{ overflow: 'hidden', background: 'var(--line-soft)' }}>
+                  {trip.shortName}
                 </div>
                 <div className="itinerary-info">
                   <h3>{trip.title}</h3>
                   <p>{trip.date}</p>
                 </div>
                 <div className="itinerary-date-right">{trip.date}</div>
+                <button
+                  className="delete-trip-btn sm"
+                  onClick={(e) => handleDeleteTrip(e, trip.id)}
+                  title="Delete Itinerary"
+                >🗑️</button>
               </div>
             ))}
           </div>

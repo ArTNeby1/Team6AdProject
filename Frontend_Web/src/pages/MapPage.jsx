@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import { useTrip } from '../context/TripContext';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import 'leaflet.heat'; // 🟢 Import Leaflet Heat plugin
@@ -23,6 +24,11 @@ const RecenterMap = ({ center, zoom }) => {
     }
   }, [center, zoom, map]);
   return null;
+};
+
+RecenterMap.propTypes = {
+  center: PropTypes.arrayOf(PropTypes.number),
+  zoom: PropTypes.number,
 };
 
 // Component to render the Heatmap around a specific point
@@ -70,6 +76,12 @@ const HeatmapLayer = ({ center, level, visible }) => {
   return null;
 };
 
+HeatmapLayer.propTypes = {
+  center: PropTypes.arrayOf(PropTypes.number),
+  level: PropTypes.string,
+  visible: PropTypes.bool,
+};
+
 // Custom Marker Icon with Number
 const createCustomIcon = (number) => {
   return new L.DivIcon({
@@ -99,6 +111,10 @@ const MapClickHandler = ({ onMapClick }) => {
     },
   });
   return null;
+};
+
+MapClickHandler.propTypes = {
+  onMapClick: PropTypes.func.isRequired,
 };
 
 const MapPage = () => {
@@ -247,14 +263,6 @@ const MapPage = () => {
     }
   };
 
-  const getHeatmapColor = (level) => {
-    switch (level?.toUpperCase()) {
-      case 'HIGH': return 'rgba(211, 47, 47, 0.2)';
-      case 'MODERATE': return 'rgba(240, 160, 56, 0.15)';
-      default: return 'rgba(14, 158, 142, 0.1)';
-    }
-  };
-
   return (
     <div className="map-page">
       <header className="page-header map-header-layout" style={{marginBottom: '32px'}}>
@@ -272,8 +280,8 @@ const MapPage = () => {
                 className={`trip-select-btn ${activeTripId === t.id ? 'active' : ''}`}
                 onClick={() => setActiveTripId(t.id)}
               >
-                <div className="trip-dot" style={{ background: t.coverImage ? `url(${t.coverImage}) center/cover` : 'var(--jade)' }}>
-                  {!t.coverImage && t.shortName}
+                <div className="trip-dot" style={{ background: 'var(--jade)' }}>
+                  {t.shortName}
                 </div>
                 <span className="trip-name-text">{t.title}</span>
               </button>

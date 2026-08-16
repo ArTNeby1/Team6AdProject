@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useTrip } from '../context/TripContext';
 import { mapApi } from '../services/api';
@@ -16,7 +16,6 @@ const ItineraryDetailPage = () => {
     addLocationsToTripDay,
     updateTripTitle,
     updateTripDate,
-    updateTripCover,
     loadingTrips,
   } = useTrip();
 
@@ -25,10 +24,7 @@ const ItineraryDetailPage = () => {
   const [selectedDay, setSelectedDay] = useState(1);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitleValue, setEditTitleValue] = useState('');
-  const [showImageModal, setShowImageModal] = useState(false);
   const [routeStats, setRouteStats] = useState({ distance: 0, time: 0, transports: [] });
-
-  const dateInputRef = useRef(null);
 
   // F-18: nearby/similar place suggestions from the AI /recommend agent, handed off from
   // ImportPage's confirm step via navigation state. Backend doesn't persist these, so a
@@ -76,8 +72,6 @@ const ItineraryDetailPage = () => {
     }
     setAiSummary(null);
   };
-
-  const fileInputRef = useRef(null);
 
   useEffect(() => {
     if (id) setActiveTripId(id);
@@ -132,32 +126,7 @@ const ItineraryDetailPage = () => {
     });
   };
 
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        updateTripCover(trip.id, reader.result);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const triggerFileUpload = (e) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    fileInputRef.current.click();
-  };
-
   const dayLocations = trip.locations.filter(loc => loc.day === selectedDay);
-
-  const handleDateClick = () => {
-    if (dateInputRef.current && typeof dateInputRef.current.showPicker === 'function') {
-      dateInputRef.current.showPicker();
-    }
-  };
 
   return (
     <div className="route-page">
@@ -223,36 +192,22 @@ const ItineraryDetailPage = () => {
 
         <div className="header-actions" style={{display: 'flex', gap: '12px', alignItems: 'center', height: 'fit-content', marginTop: 'auto'}}>
           {/* START DATE MODIFIER MOVED HERE */}
-          <div className="trip-date-modifier" style={{ cursor: 'default' }}>
+          <div className="trip-date-modifier" style={{ cursor: trip.status !== 'FINISHED' ? 'pointer' : 'default' }}>
             <span className="label">Start Time:</span>
             <span className="date-val">{trip.date}</span>
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <span
-                className="cal-icon"
-                style={{ cursor: 'pointer', fontSize: '18px' }}
-              >
-                📅
-              </span>
-              {trip.status !== 'FINISHED' && (
-                <input
-                  type="date"
-                  min={new Date().toISOString().split('T')[0]}
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      updateTripDate(trip.id, e.target.value);
-                    }
-                  }}
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    opacity: 0,
-                    cursor: 'pointer',
-                    zIndex: 20
-                  }}
-                  title="Click to change start date"
-                />
-              )}
-            </div>
+            <span className="cal-icon">📅</span>
+            {trip.status !== 'FINISHED' && (
+              <input
+                type="date"
+                min={new Date().toISOString().split('T')[0]}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    updateTripDate(trip.id, e.target.value);
+                  }
+                }}
+                title="Click to change start date"
+              />
+            )}
           </div>
 
           {trip.status !== 'FINISHED' ? (
@@ -271,38 +226,6 @@ const ItineraryDetailPage = () => {
 
       <div className="route-grid">
         <div className="itinerary-sidebar">
-          {/* TRIP COVER IMAGE */}
-          <div className="trip-cover-container">
-            {trip.coverImage ? (
-              <img
-                src={trip.coverImage}
-                alt="Trip Cover"
-                className="trip-cover-img"
-                onClick={() => setShowImageModal(true)}
-                style={{ cursor: 'zoom-in' }}
-              />
-            ) : (
-              <div className="trip-cover-empty" onClick={triggerFileUpload}>
-                <span style={{ fontSize: '32px' }}>🖼️</span>
-                <span>Click to upload cover photo</span>
-              </div>
-            )}
-
-            {/* HIDDEN FILE INPUT */}
-            <input
-              type="file"
-              ref={fileInputRef}
-              style={{ display: 'none' }}
-              accept="image/*"
-              onChange={handleFileChange}
-            />
-
-            {/* PENCIL OVERLAY - Always allow changing cover photo even for finished trips */}
-            <div className="edit-cover-btn" onClick={triggerFileUpload} title="Change cover photo">
-              ✏️
-            </div>
-          </div>
-
           <div className="info-card">
             <button
               className="btn-primary"
@@ -439,9 +362,6 @@ const ItineraryDetailPage = () => {
                             <h3>{item.name}</h3>
                             <p>Duration {item.duration || '1.5'}h · Activity</p>
                           </div>
-                          <div className="tl-actions">
-                            <button onClick={() => navigate(`/attraction/${encodeURIComponent(item.name)}`)}>View Details</button>
-                          </div>
                         </div>
                       </div>
                     </div>
@@ -475,11 +395,65 @@ const ItineraryDetailPage = () => {
                             const sorted = [...legTransports].sort(
                               (a, b) => modeOrder.indexOf(a.transportType) - modeOrder.indexOf(b.transportType)
                             );
-                            return sorted.map(transport => (
-                              <span key={transport.id}>
-                                {iconMap[transport.transportType] || '🚕'} {transport.durationMinutes} min {transport.transportType}
-                              </span>
-                            ));
+                            const btnBaseStyle = {
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              padding: '6px 12px',
+                              borderRadius: '999px',
+                              fontSize: '13px',
+                              fontWeight: 600,
+                              lineHeight: 1,
+                              whiteSpace: 'nowrap'
+                            };
+                            return sorted.map(transport => {
+                              const label = (
+                                <>
+                                  <span>{iconMap[transport.transportType] || '🚕'}</span>
+                                  <span>{transport.durationMinutes} min {transport.transportType}</span>
+                                </>
+                              );
+                              return transport.googleMapLink ? (
+                                <a
+                                  key={transport.id}
+                                  href={transport.googleMapLink}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  title={`Open ${transport.transportType} route in Google Maps`}
+                                  style={{
+                                    ...btnBaseStyle,
+                                    color: 'var(--jade-deep)',
+                                    background: 'var(--mint)',
+                                    border: '1px solid transparent',
+                                    textDecoration: 'none',
+                                    cursor: 'pointer',
+                                    transition: 'background 0.15s ease, border-color 0.15s ease'
+                                  }}
+                                  onMouseEnter={e => {
+                                    e.currentTarget.style.background = 'var(--jade)';
+                                    e.currentTarget.style.color = '#fff';
+                                  }}
+                                  onMouseLeave={e => {
+                                    e.currentTarget.style.background = 'var(--mint)';
+                                    e.currentTarget.style.color = 'var(--jade-deep)';
+                                  }}
+                                >
+                                  {label}
+                                  <span aria-hidden="true" style={{ fontSize: '11px', opacity: 0.75 }}>↗</span>
+                                </a>
+                              ) : (
+                                <span
+                                  key={transport.id}
+                                  style={{
+                                    ...btnBaseStyle,
+                                    color: 'var(--muted)',
+                                    background: 'var(--line-soft)'
+                                  }}
+                                >
+                                  {label}
+                                </span>
+                              );
+                            });
                           })()}
                         </div>
                       </div>
@@ -546,12 +520,6 @@ const ItineraryDetailPage = () => {
         </div>
       )}
 
-      {/* IMAGE ENLARGE MODAL */}
-      {showImageModal && (
-        <div className="image-modal-overlay" onClick={() => setShowImageModal(false)}>
-          <img src={trip.coverImage} alt="Enlarged view" className="image-modal-content" />
-        </div>
-      )}
     </div>
   );
 };

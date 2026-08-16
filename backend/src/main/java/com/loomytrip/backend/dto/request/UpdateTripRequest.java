@@ -5,9 +5,8 @@ import java.time.LocalDate;
 
 /**
  * Partial update — only non-null fields are applied. {@code @JsonIgnoreProperties} so
- * fields the frontend already sends but the backend doesn't support yet (e.g.
- * {@code coverImage} — no column for it, see ML/docs handoff notes) are silently dropped
- * instead of failing the whole request.
+ * unknown fields the frontend might still send are silently dropped instead of failing
+ * the whole request, rather than requiring both sides to redeploy in lockstep.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record UpdateTripRequest(
