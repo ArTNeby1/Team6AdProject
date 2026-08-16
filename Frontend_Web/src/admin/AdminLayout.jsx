@@ -7,6 +7,7 @@ import { useAdminAuth } from './AdminAuthContext';
 const NAV = [
   { to: '/admin', end: true, label: 'Dashboard', icon: '▚' },
   { to: '/admin/users', end: false, label: 'Users', icon: '☰' },
+  { to: '/admin/eval', end: false, label: 'LLM Evaluation', icon: '◈' },
 ];
 
 export default function AdminLayout() {
