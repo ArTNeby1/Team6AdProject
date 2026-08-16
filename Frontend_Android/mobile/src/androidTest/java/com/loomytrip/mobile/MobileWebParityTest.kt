@@ -12,6 +12,7 @@ import com.loomytrip.mobile.data.model.TripActivity
 import com.loomytrip.mobile.data.network.MapConfigDto
 import com.loomytrip.mobile.data.network.TripDto
 import com.loomytrip.mobile.data.network.TripRouteDto
+import com.loomytrip.mobile.data.network.SuggestedAdditionDto
 import com.loomytrip.mobile.ui.screen.HomeScreen
 import com.loomytrip.mobile.ui.screen.MapScreen
 import com.loomytrip.mobile.ui.screen.MapTripOption
@@ -174,5 +175,34 @@ class MobileWebParityTest {
 
         composeRule.onNodeWithText("Start date: 2026-07-01").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Change start date").assertIsNotEnabled()
+    }
+
+    @Test
+    fun confirmedItinerary_displaysWeatherAndSuggestedAdditions() {
+        composeRule.setContent {
+            MaterialTheme {
+                RouteScreen(
+                    activities = emptyList(),
+                    tripName = "Singapore Highlights",
+                    startDate = "2026-08-20",
+                    tripStatus = "NOT_STARTED",
+                    totalDays = 2,
+                    aiWeatherSummary = "Light rain is expected in the afternoon.",
+                    suggestedAdditions = listOf(
+                        SuggestedAdditionDto(
+                            name = "Marina Barrage",
+                            distanceKm = 1.4,
+                            reason = "Close to the confirmed route"
+                        )
+                    ),
+                    onViewMap = {},
+                    onEdit = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("AI trip notes").assertIsDisplayed()
+        composeRule.onNodeWithText("Light rain is expected in the afternoon.").assertIsDisplayed()
+        composeRule.onNodeWithText("• Marina Barrage · 1.4 km — Close to the confirmed route").assertIsDisplayed()
     }
 }

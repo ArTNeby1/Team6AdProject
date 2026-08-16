@@ -1,6 +1,7 @@
 package com.loomytrip.mobile.ui.screen
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,10 +17,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -49,7 +53,9 @@ fun ImportGuideScreen(
     isHistoryLoading: Boolean = false,
     historyErrorMessage: String? = null,
     onRefreshHistory: () -> Unit = {},
-    onHistorySelected: (PlanningSessionSummaryDto) -> Unit = {}
+    onHistorySelected: (PlanningSessionSummaryDto) -> Unit = {},
+    invalidInputMessage: String? = null,
+    onDismissInvalidInput: () -> Unit = {}
 ) {
     var guide by remember(initialGuide) {
         mutableStateOf(initialGuide)
@@ -164,6 +170,10 @@ fun ImportGuideScreen(
             Text(if (isLoading) "Analyzing…" else "Start Parsing", fontWeight = FontWeight.Bold)
         }
     }
+
+    invalidInputMessage?.let {
+        InvalidTravelInputDialog(message = it, onDismiss = onDismissInvalidInput)
+    }
 }
 
 @Composable
@@ -226,7 +236,20 @@ fun ReviewExtractedScreen(
     onConfirm: () -> Unit,
     onImportAgain: () -> Unit,
     isLoading: Boolean = false,
-    errorMessage: String? = null
+    errorMessage: String? = null,
+    refinementText: String = "",
+    onRefinementTextChange: (String) -> Unit = {},
+    onRefine: (String) -> Unit = {},
+    onRenamePlace: (String, String) -> Unit = { _, _ -> },
+    durationDays: Int? = null,
+    onDurationDaysChange: (Int) -> Unit = {},
+    onAutoDistribute: () -> Unit = {},
+    onDayChange: (String, Int) -> Unit = { _, _ -> },
+    showDurationDialog: Boolean = false,
+    onDismissDurationDialog: () -> Unit = {},
+    onDurationConfirmed: (Int) -> Unit = {},
+    invalidInputMessage: String? = null,
+    onDismissInvalidInput: () -> Unit = {}
 ) {
     val includedCount = places.count { it.isIncluded }
 
@@ -241,6 +264,33 @@ fun ReviewExtractedScreen(
             "$includedCount of ${places.size} places selected. Remove anything that should not enter the itinerary.",
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f)
         )
+        TripDurationCard(
+            durationDays = durationDays,
+            onDurationDaysChange = onDurationDaysChange,
+            onAutoDistribute = onAutoDistribute,
+            isLoading = isLoading,
+            hasPlaces = places.isNotEmpty()
+        )
+        OutlinedTextField(
+            value = refinementText,
+            onValueChange = onRefinementTextChange,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Add another instruction") },
+            placeholder = { Text("For example: add Jewel Changi Airport and remove museums") },
+            minLines = 2,
+            maxLines = 3,
+            enabled = !isLoading,
+            shape = RoundedCornerShape(16.dp)
+        )
+        OutlinedButton(
+            onClick = { onRefine(refinementText.trim()) },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = refinementText.isNotBlank() && !isLoading
+        ) {
+            Icon(Icons.Default.AutoAwesome, contentDescription = null)
+            Spacer(Modifier.size(7.dp))
+            Text(if (isLoading) "Updating places…" else "Update places with AI")
+        }
         LazyColumn(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -248,7 +298,11 @@ fun ReviewExtractedScreen(
             items(places, key = { it.id }) { place ->
                 ExtractedPlaceCard(
                     place = place,
-                    onIncludedChange = { onIncludedChange(place.id, it) }
+                    onIncludedChange = { onIncludedChange(place.id, it) },
+                    onRename = { onRenamePlace(place.id, it) },
+                    durationDays = durationDays,
+                    onDayChange = { onDayChange(place.id, it) },
+                    enabled = !isLoading
                 )
             }
         }
@@ -270,13 +324,83 @@ fun ReviewExtractedScreen(
             Text("Edit source text")
         }
     }
+
+    invalidInputMessage?.let {
+        InvalidTravelInputDialog(message = it, onDismiss = onDismissInvalidInput)
+    }
+
+    if (showDurationDialog) {
+        TripDurationDialog(
+            initialDays = durationDays ?: 1,
+            onDismiss = onDismissDurationDialog,
+            onConfirm = onDurationConfirmed
+        )
+    }
+}
+
+@Composable
+private fun TripDurationCard(
+    durationDays: Int?,
+    onDurationDaysChange: (Int) -> Unit,
+    onAutoDistribute: () -> Unit,
+    isLoading: Boolean,
+    hasPlaces: Boolean
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("Trip duration", fontWeight = FontWeight.SemiBold)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = { onDurationDaysChange((durationDays ?: 2) - 1) },
+                    enabled = !isLoading && (durationDays ?: 1) > 1
+                ) { Text("−") }
+                Text(
+                    durationDays?.let { "$it day${if (it == 1) "" else "s"}" } ?: "Choose days",
+                    modifier = Modifier.weight(1f),
+                    fontWeight = FontWeight.Bold
+                )
+                OutlinedButton(
+                    onClick = { onDurationDaysChange((durationDays ?: 0) + 1) },
+                    enabled = !isLoading && (durationDays ?: 0) < 30
+                ) { Text("+") }
+                TextButton(
+                    onClick = onAutoDistribute,
+                    enabled = !isLoading && hasPlaces && durationDays != null
+                ) { Text("Auto-distribute") }
+            }
+            Text(
+                "Assign each place to a day before generating the itinerary.",
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                fontSize = 12.sp
+            )
+        }
+    }
 }
 
 @Composable
 private fun ExtractedPlaceCard(
     place: ExtractedPlace,
-    onIncludedChange: (Boolean) -> Unit
+    onIncludedChange: (Boolean) -> Unit,
+    onRename: (String) -> Unit,
+    durationDays: Int?,
+    onDayChange: (Int) -> Unit,
+    enabled: Boolean
 ) {
+    var editedName by remember(place.id, place.name) { mutableStateOf(place.name) }
+    var dayMenuExpanded by remember(place.id) { mutableStateOf(false) }
+    val trimmedName = editedName.trim()
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
@@ -305,13 +429,59 @@ private fun ExtractedPlaceCard(
                     .padding(horizontal = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(3.dp)
             ) {
-                Text(place.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                Text(
-                    "${place.category} · ${place.suggestedTime}",
-                    color = MaterialTheme.colorScheme.primary,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold
+                OutlinedTextField(
+                    value = editedName,
+                    onValueChange = { editedName = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Place name") },
+                    singleLine = true,
+                    enabled = enabled
                 )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "${place.category} · ${place.suggestedTime}",
+                        modifier = Modifier.weight(1f),
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    TextButton(
+                        onClick = { onRename(trimmedName) },
+                        enabled = enabled && trimmedName.isNotEmpty() && trimmedName != place.name
+                    ) {
+                        Text("Save name")
+                    }
+                }
+                Box {
+                    OutlinedButton(
+                        onClick = { dayMenuExpanded = true },
+                        enabled = enabled && place.isIncluded && durationDays != null
+                    ) {
+                        Text(
+                            place.suggestedDay
+                                ?.takeIf { day -> durationDays != null && day in 1..durationDays }
+                                ?.let { "Day $it" }
+                                ?: "Choose day"
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = dayMenuExpanded,
+                        onDismissRequest = { dayMenuExpanded = false }
+                    ) {
+                        (1..(durationDays ?: 1)).forEach { day ->
+                            DropdownMenuItem(
+                                text = { Text("Day $day") },
+                                onClick = {
+                                    dayMenuExpanded = false
+                                    onDayChange(day)
+                                }
+                            )
+                        }
+                    }
+                }
                 Text(
                     place.address,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
@@ -321,8 +491,58 @@ private fun ExtractedPlaceCard(
             }
             Checkbox(
                 checked = place.isIncluded,
-                onCheckedChange = onIncludedChange
+                onCheckedChange = onIncludedChange,
+                enabled = enabled
             )
         }
     }
+}
+
+@Composable
+private fun TripDurationDialog(
+    initialDays: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit
+) {
+    var days by remember(initialDays) { mutableStateOf(initialDays.coerceIn(1, 30)) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("How many days is this trip?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("The AI could not detect a trip length. Choose one so the places can be split across days.")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    OutlinedButton(onClick = { days = (days - 1).coerceAtLeast(1) }, enabled = days > 1) {
+                        Text("−")
+                    }
+                    Text("$days day${if (days == 1) "" else "s"}", fontWeight = FontWeight.Bold)
+                    OutlinedButton(onClick = { days = (days + 1).coerceAtMost(30) }, enabled = days < 30) {
+                        Text("+")
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(days) }) { Text("Use $days days") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Not now") }
+        }
+    )
+}
+
+@Composable
+private fun InvalidTravelInputDialog(message: String, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("No travel information found") },
+        text = { Text(message) },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Edit my input") }
+        }
+    )
 }
