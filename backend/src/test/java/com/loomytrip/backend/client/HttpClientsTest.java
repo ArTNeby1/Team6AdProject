@@ -8,6 +8,8 @@ import java.io.OutputStream;
 import java.math.BigDecimal;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -204,6 +206,33 @@ class HttpClientsTest {
 
         assertThat(client.estimate(null, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE, RoutingClient.TransportMode.DRIVING))
                 .isEmpty();
+    }
+
+    @Test
+    void routingClient_sendsCorrectGoogleMode_andTrafficPreferenceOnlyForDriving() throws IOException {
+        List<String> requestBodies = Collections.synchronizedList(new ArrayList<>());
+        server.createContext("/directions/v2:computeRoutes", exchange -> {
+            requestBodies.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            writeJson(exchange, 200, """
+                    { "routes": [ { "duration": "60s", "distanceMeters": 100.0 } ] }
+                    """);
+        });
+        RoutingClientHttp client = new RoutingClientHttp("test-api-key", baseUrl);
+
+        for (RoutingClient.TransportMode mode : RoutingClient.TransportMode.values()) {
+            client.estimate(
+                    new BigDecimal("1.28"), new BigDecimal("103.85"),
+                    new BigDecimal("1.29"), new BigDecimal("103.86"),
+                    mode
+            );
+        }
+
+        assertThat(requestBodies).hasSize(4);
+        assertThat(requestBodies.get(0))
+                .contains("\"travelMode\":\"DRIVE\"", "\"routingPreference\":\"TRAFFIC_AWARE\"");
+        assertThat(requestBodies.get(1)).contains("\"travelMode\":\"WALK\"").doesNotContain("routingPreference");
+        assertThat(requestBodies.get(2)).contains("\"travelMode\":\"TRANSIT\"").doesNotContain("routingPreference");
+        assertThat(requestBodies.get(3)).contains("\"travelMode\":\"BICYCLE\"").doesNotContain("routingPreference");
     }
 
     @Test
