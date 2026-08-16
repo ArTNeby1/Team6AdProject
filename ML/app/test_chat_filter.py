@@ -125,7 +125,7 @@ def test_default_provider_delegates_to_local_model():
 
 if __name__ == "__main__":
     test_empty_messages_returns_empty_string()
-    test_blank_messages_return_empty_string()
+    test_blank_user_content_returns_empty_string()
     test_mock_provider_concatenates_user_messages_only()
     test_bedrock_provider_delegates_to_bedrock_client()
     test_bedrock_provider_respects_explicit_model_id()
