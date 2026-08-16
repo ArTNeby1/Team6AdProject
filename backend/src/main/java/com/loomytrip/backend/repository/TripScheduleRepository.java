@@ -19,4 +19,16 @@ public interface TripScheduleRepository extends JpaRepository<TripSchedule, Long
             where day.trip.id in :tripIds
             """)
     List<TripSchedule> findAnalyticsSchedulesByTripIds(Set<Long> tripIds);
+
+    /**
+     * Every destination name the user has ever scheduled, across all of their trips
+     * (not just the current one) — used to keep the AI recommender from re-suggesting
+     * a place the traveler has already planned/visited on a different trip.
+     */
+    @Query("""
+            select distinct lower(schedule.destination.name)
+            from TripSchedule schedule
+            where schedule.tripDay.trip.user.id = :userId
+            """)
+    Set<String> findVisitedDestinationNamesByUserId(Long userId);
 }

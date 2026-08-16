@@ -11,7 +11,12 @@ const mapDraftPlaces = (draftPlaces) =>
     status: p.validationStatus === 'VALID' ? 'ok' : 'warn',
     label: p.validationStatus === 'VALID' ? 'Located' : 'Check Location',
     activities: p.activities || [],
-    day: p.activities?.find((activity) => activity.suggestedDay != null)?.suggestedDay ?? null,
+    // Place-level suggestedDay wins (matches PlanningService.resolveSuggestedDay's own
+    // precedence) — only fall back to an activity's suggestedDay for places extracted
+    // before that column existed. Reading only the activity side here used to mean a
+    // place with zero activities (the common case — basic extraction doesn't attach any)
+    // always looked un-split even after persistPlaceDay had written the place-level field.
+    day: p.suggestedDay ?? p.activities?.find((activity) => activity.suggestedDay != null)?.suggestedDay ?? null,
   }));
 
 const ImportPage = () => {
@@ -40,12 +45,14 @@ const ImportPage = () => {
   const [isImporting, setIsImporting] = useState(false);
   const [importError, setImportError] = useState("");
 
+  // Writes the place-level suggestedDay — PlanningService.resolveSuggestedDay() checks this
+  // before ever looking at an activity's suggestedDay, so this is what actually needs to be
+  // set for confirm() to honor the split. (Previously this only wrote activity.suggestedDay,
+  // which silently did nothing for any place with zero activities — the normal case for a
+  // basic-extraction place, so the "automatic day split" never actually persisted and every
+  // place landed on day 1 at confirm regardless of what the review screen showed.)
   const persistPlaceDay = async (place, day) => {
-    await Promise.all(
-      place.activities.map((activity) =>
-        api.put(`/planning-sessions/draft-activities/${activity.id}`, { suggestedDay: day })
-      )
-    );
+    await api.put(`/planning-sessions/draft-places/${place.id}`, { suggestedDay: day });
   };
 
   const distributePlacesAcrossDays = async (places, days) => {
@@ -55,11 +62,7 @@ const ImportPage = () => {
       ...place,
       day: Math.min(days, Math.floor((index * days) / places.length) + 1),
     }));
-    await Promise.all(
-      assignments
-        .filter((place) => place.activities.length > 0)
-        .map((place) => persistPlaceDay(place, place.day))
-    );
+    await Promise.all(assignments.map((place) => persistPlaceDay(place, place.day)));
     return assignments;
   };
 

@@ -339,16 +339,36 @@ public class TripService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "TRIP_DAY_NOT_FOUND", "Trip day not found"));
 
         List<TripSchedule> existing = tripScheduleRepository.findByTripDay_IdOrderBySequenceAsc(tripDay.getId());
-        int nextSequence = existing.size() + 1;
+
+        // A single AI-recommended place (e.g. "near Chinatown") carries the coordinates it
+        // was recommended from — when present, slot the new stop in right after whichever
+        // existing stop is geographically closest, instead of always appending at the end.
+        TripSchedule nearestAnchor = request.locationNames().size() == 1
+                ? findNearestSchedule(existing, request.nearLatitude(), request.nearLongitude())
+                : null;
+
+        int nextSequence;
+        if (nearestAnchor != null) {
+            nextSequence = nearestAnchor.getSequence() + 1;
+            shiftSequencesFrom(existing, nextSequence, request.locationNames().size());
+        } else {
+            nextSequence = existing.size() + 1;
+        }
+
         // 这一天目前是空的（day2、day3... 第一次加地点时都会走到这，不只是 day1）——
         // 第一站的时间固定锚定在 09:00，不管 AI 查天气后建议的 time_of_day 是什么。
         // 之前的写法只是把 09:00 当 cursor 的初始值，AI 一旦查到下雨、建议把这一站挪
         // 到下午/傍晚，nextStartTime() 会直接采纳，第一站就不是 09:00 了——这不是这里
         // 要的效果：每天第一站的默认时间是产品定死的规则，不该被天气建议覆盖。
         boolean isFirstStopOfDay = existing.isEmpty();
-        LocalTime cursor = isFirstStopOfDay || existing.get(existing.size() - 1).getStartTime() == null
-                ? LocalTime.of(9, 0)
-                : existing.get(existing.size() - 1).getStartTime().plusMinutes(DEFAULT_VISIT_SLOT_MINUTES);
+        LocalTime cursor;
+        if (nearestAnchor != null && nearestAnchor.getStartTime() != null) {
+            cursor = nearestAnchor.getStartTime().plusMinutes(DEFAULT_VISIT_SLOT_MINUTES);
+        } else {
+            cursor = isFirstStopOfDay || existing.get(existing.size() - 1).getStartTime() == null
+                    ? LocalTime.of(9, 0)
+                    : existing.get(existing.size() - 1).getStartTime().plusMinutes(DEFAULT_VISIT_SLOT_MINUTES);
+        }
 
         List<Map<String, Object>> aiPlaces = request.locationNames().stream()
                 .map(name -> {
@@ -383,6 +403,15 @@ public class TripService {
                 tripScheduleRepository.save(schedule);
                 cursor = cursor.plusMinutes(DEFAULT_VISIT_SLOT_MINUTES);
             }
+            // Inserting mid-day (nearestAnchor != null) only made room in `sequence` —
+            // the stops that got pushed back still carry whatever start_time they had
+            // *before* the insertion, which can now land at/before the new stop(s) we
+            // just gave that same slot. Close any such overlap by pushing those original
+            // times forward too, so the list stays both correctly ordered (sequence) and
+            // chronologically sane (start_time).
+            if (nearestAnchor != null) {
+                cascadeShiftOverlappingTimes(existing, nextSequence, cursor);
+            }
         } else {
             // AI service unavailable/degenerate — still add the stops so the import doesn't
             // fail outright, just without AI-determined ordering/timing.
@@ -398,6 +427,100 @@ public class TripService {
         }
 
         return toSummary(trip);
+    }
+
+    /**
+     * Closest existing stop in the day to (lat, lng), or {@code null} when no anchor point
+     * was given or none of the day's stops have coordinates yet. Used by {@link #addSchedules}
+     * to slot a recommended place next to the stop it was actually recommended for being
+     * near, rather than always appending to the end of the day.
+     */
+    private TripSchedule findNearestSchedule(List<TripSchedule> existing, BigDecimal lat, BigDecimal lng) {
+        if (lat == null || lng == null) {
+            return null;
+        }
+        TripSchedule nearest = null;
+        double bestDistanceKm = Double.MAX_VALUE;
+        for (TripSchedule schedule : existing) {
+            Destination destination = schedule.getDestination();
+            if (destination.getLatitude() == null || destination.getLongitude() == null) {
+                continue;
+            }
+            double distanceKm = haversineKm(
+                    lat.doubleValue(), lng.doubleValue(),
+                    destination.getLatitude().doubleValue(), destination.getLongitude().doubleValue());
+            if (distanceKm < bestDistanceKm) {
+                bestDistanceKm = distanceKm;
+                nearest = schedule;
+            }
+        }
+        return nearest;
+    }
+
+    private static double haversineKm(double lat1, double lng1, double lat2, double lng2) {
+        double earthRadiusKm = 6371.0;
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLng = Math.toRadians(lng2 - lng1);
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+                * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    /**
+     * Makes room to insert {@code count} new stops starting at {@code fromSequenceInclusive}
+     * by pushing every existing stop from that point on back by {@code count}. Two-pass temp
+     * offset, same trick as {@link #bulkUpdateSchedules} — shifting sequences directly can
+     * collide with the (trip_day_id, sequence) unique constraint mid-transaction.
+     */
+    private void shiftSequencesFrom(List<TripSchedule> existing, int fromSequenceInclusive, int count) {
+        List<TripSchedule> toShift = existing.stream()
+                .filter(schedule -> schedule.getSequence() >= fromSequenceInclusive)
+                .toList();
+        if (toShift.isEmpty()) {
+            return;
+        }
+        Map<Long, Integer> originalSequence = toShift.stream()
+                .collect(Collectors.toMap(TripSchedule::getId, TripSchedule::getSequence));
+        for (TripSchedule schedule : toShift) {
+            schedule.setSequence(TEMP_SEQUENCE_OFFSET + schedule.getId().intValue());
+        }
+        tripScheduleRepository.saveAllAndFlush(toShift);
+        for (TripSchedule schedule : toShift) {
+            schedule.setSequence(originalSequence.get(schedule.getId()) + count);
+        }
+        tripScheduleRepository.saveAllAndFlush(toShift);
+    }
+
+    /**
+     * After a mid-day insertion, pushes forward the start_time of whichever pushed-back
+     * stops (sequence &gt;= {@code fromSequenceInclusive}, in {@code existing}'s order) now
+     * overlap the newly inserted stop(s). Stops that already start at/after
+     * {@code earliestAllowed} — and everything after them, since times were built as a
+     * monotonically increasing chain — are left untouched. Stops with no start_time at all
+     * (AI-unavailable fallback never sets one) are skipped rather than treated as "starts at
+     * midnight".
+     */
+    private void cascadeShiftOverlappingTimes(List<TripSchedule> existing, int fromSequenceInclusive, LocalTime earliestAllowed) {
+        LocalTime floor = earliestAllowed;
+        List<TripSchedule> toUpdate = new ArrayList<>();
+        for (TripSchedule schedule : existing) {
+            if (schedule.getSequence() < fromSequenceInclusive) {
+                continue;
+            }
+            if (schedule.getStartTime() == null) {
+                continue;
+            }
+            if (!schedule.getStartTime().isBefore(floor)) {
+                break;
+            }
+            schedule.setStartTime(floor);
+            toUpdate.add(schedule);
+            floor = floor.plusMinutes(DEFAULT_VISIT_SLOT_MINUTES);
+        }
+        if (!toUpdate.isEmpty()) {
+            tripScheduleRepository.saveAll(toUpdate);
+        }
     }
 
     /**
