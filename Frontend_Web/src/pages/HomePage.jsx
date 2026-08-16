@@ -83,7 +83,7 @@ const HomePage = () => {
               <div
                 className="dest-img"
                 style={{
-                  backgroundImage: `linear-gradient(rgba(0,0,0,0),rgba(0,0,0,0.7)), url(${activeTrip.coverImage || 'https://images.unsplash.com/photo-1528181304800-2f1738b9cdc1?w=600&h=400&fit=crop'})`
+                  backgroundImage: 'linear-gradient(135deg, var(--jade), var(--jade-deep))'
                 }}
               >
                 <h3>{activeTrip.title}</h3>

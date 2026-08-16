@@ -127,7 +127,7 @@ const ImportPage = () => {
     setResults(prev => prev.map(item => item.id === id ? { ...item, name: newName } : item));
     try {
       await api.put(`/planning-sessions/draft-places/${id}`, { name: newName });
-    } catch (e) {
+    } catch {
       console.error("Sync failed");
     }
   };
@@ -136,7 +136,7 @@ const ImportPage = () => {
     setResults(prev => prev.filter(item => item.id !== id));
     try {
       await api.delete(`/planning-sessions/draft-places/${id}`);
-    } catch (e) {
+    } catch {
       console.error("Delete failed");
     }
   };

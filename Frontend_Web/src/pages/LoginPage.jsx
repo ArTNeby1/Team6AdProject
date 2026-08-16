@@ -73,7 +73,7 @@ const LoginPage = () => {
           </form>
 
           <div className="auth-footer">
-            Don't have an account? <Link to="/register">Register Now</Link>
+            Don&apos;t have an account? <Link to="/register">Register Now</Link>
           </div>
 
           <div className="auth-hint">

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import api from '../services/api';
 
 const AuthContext = createContext();
@@ -20,11 +21,8 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     try {
       const response = await api.post('/auth/login', { email, password });
-      const { accessToken, userId, email: userEmail } = response.data;
-
-      // Mock username as it's not in the DB schema
-      const mockUsername = userEmail.split('@')[0];
-      const userData = { id: userId, username: mockUsername, email: userEmail };
+      const { accessToken, userId, username, email: userEmail, travelStyle, preferTransport } = response.data;
+      const userData = { id: userId, username: username || userEmail.split('@')[0], email: userEmail, travelStyle, preferTransport };
 
       localStorage.setItem('loomytrip_token', accessToken);
       localStorage.setItem('loomytrip_user', JSON.stringify(userData));
@@ -72,6 +70,16 @@ export const AuthProvider = ({ children }) => {
     return updatedUser;
   };
 
+  // Persists to `users.username` / `users.age` / `users.gender` via PUT /users/me/profile.
+  // Errors are NOT swallowed here — ProfilePage needs to know a save actually failed.
+  const updateProfile = async (username, age, gender) => {
+    const response = await api.put('/users/me/profile', { username, age, gender });
+    const updatedUser = { ...user, username: response.data.username, age: response.data.age, gender: response.data.gender };
+    setUser(updatedUser);
+    localStorage.setItem('loomytrip_user', JSON.stringify(updatedUser));
+    return updatedUser;
+  };
+
   const logout = () => {
     setUser(null);
     localStorage.removeItem('loomytrip_token');
@@ -79,8 +87,12 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, updatePreferences, loading }}>
+    <AuthContext.Provider value={{ user, login, register, logout, updatePreferences, updateProfile, loading }}>
       {!loading && children}
     </AuthContext.Provider>
   );
+};
+
+AuthProvider.propTypes = {
+  children: PropTypes.node.isRequired,
 };

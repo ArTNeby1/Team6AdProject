@@ -1,6 +1,7 @@
 package com.loomytrip.backend.service;
 
 import com.loomytrip.backend.dto.request.UpdatePreferencesRequest;
+import com.loomytrip.backend.dto.request.UpdateProfileRequest;
 import com.loomytrip.backend.dto.response.UserProfileResponse;
 import com.loomytrip.backend.entity.User;
 import com.loomytrip.backend.exception.ApiException;
@@ -38,6 +39,34 @@ public class UserService {
         }
         if (request.preferTransport() != null) {
             user.setPreferTransport(request.preferTransport().isBlank() ? null : request.preferTransport());
+        }
+        return toProfile(userRepository.save(user));
+    }
+
+    /**
+     * Editable identity fields (username/age/gender) — distinct from
+     * {@link #updatePreferences} which only ever touched travel_style/prefer_transport.
+     * Email and password are intentionally untouched here: no verification flow exists yet
+     * to safely change either.
+     */
+    @Transactional
+    public UserProfileResponse updateProfile(UpdateProfileRequest request) {
+        User user = currentUser();
+        if (request.username() != null) {
+            String trimmed = request.username().trim();
+            if (trimmed.isEmpty()) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_USERNAME", "Username cannot be blank");
+            }
+            user.setUsername(trimmed);
+        }
+        if (request.age() != null) {
+            if (request.age() < 0 || request.age() > 150) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_AGE", "Age must be between 0 and 150");
+            }
+            user.setAge(request.age());
+        }
+        if (request.gender() != null) {
+            user.setGender(request.gender().isBlank() ? null : request.gender().trim());
         }
         return toProfile(userRepository.save(user));
     }

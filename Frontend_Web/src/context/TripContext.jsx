@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import api from '../services/api';
 import { useAuth } from './AuthContext';
 
@@ -36,7 +37,6 @@ export const TripProvider = ({ children }) => {
         progress: t.status === 'FINISHED' ? 1 : (t.status === 'ACTIVE' ? 0.5 : 0),
         shortName: t.tripName.substring(0, 2).toUpperCase(),
         dayCount: t.durationDays || 1,
-        coverImage: t.coverImage,
         locations: t.schedules ? t.schedules.map(s => ({
           id: s.id.toString(),
           name: s.destination.name,
@@ -141,15 +141,6 @@ export const TripProvider = ({ children }) => {
     } catch (error) {
       console.error('Failed to update date:', error);
       alert('Failed to update start date');
-    }
-  };
-
-  const updateTripCover = async (tripId, imageUrl) => {
-    try {
-      await api.put(`/trips/${tripId}`, { coverImage: imageUrl });
-      setTrips(prev => prev.map(t => t.id === tripId ? { ...t, coverImage: imageUrl } : t));
-    } catch (error) {
-      console.error('Failed to update cover:', error);
     }
   };
 
@@ -303,7 +294,6 @@ export const TripProvider = ({ children }) => {
       updateTripTitle,
       updateTripDate,
       addLocationsToTripDay,
-      updateTripCover,
       fetchAttractionData,
       loading,
       loadingTrips: loading,
@@ -317,4 +307,8 @@ export const TripProvider = ({ children }) => {
       {children}
     </TripContext.Provider>
   );
+};
+
+TripProvider.propTypes = {
+  children: PropTypes.node.isRequired,
 };

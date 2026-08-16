@@ -226,10 +226,10 @@ public class TripService {
     }
 
     /**
-     * Partial update (🟠 gap closed): {@code status}/{@code coverImage} still need a schema
-     * decision (no columns for them yet). {@code travelStyle}/{@code preferTransport} were
-     * write-only until now — `trip_preference` got a row on create but nothing ever read it
-     * back (no field on TripSummaryResponse), so it could never actually display.
+     * Partial update (🟠 gap closed): {@code status} still needs a schema decision (no column
+     * for it yet). {@code travelStyle}/{@code preferTransport} were write-only until now —
+     * `trip_preference` got a row on create but nothing ever read it back (no field on
+     * TripSummaryResponse), so it could never actually display.
      */
     @Transactional
     public TripSummaryResponse updateTrip(Long tripId, UpdateTripRequest request) {
