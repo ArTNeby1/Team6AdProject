@@ -40,8 +40,18 @@ def test_blank_user_content_returns_empty_string():
     # messages 为空列表时才会命中（见 test_empty_messages_returns_empty_string）。
     # 这里测的是 mock 分支自己的行为：拼接完 user 的内容后再 strip()，
     # 全是空白的 user 消息拼完还是空字符串。
-    messages = [{"role": "user", "content": "   "}]
-    expect("mock 模式下 user 内容全是空白时返回空字符串", filter_chat_noise(messages) == "")
+    # 局部覆盖 FILTER_PROVIDER（而不是只靠文件顶部的 os.environ.setdefault）——
+    # 那句 setdefault 只在 chat_filter 模块第一次被 import 时生效一次，如果这个
+    # session 里有别的文件先一步 import 了 main/orchestrator（拖带 import
+    # chat_filter）却没设 FILTER_PROVIDER=mock，这个模块级值就会被缓存成
+    # "bedrock" 且再也改不回来，导致这里意外发起真实的 Bedrock 调用。
+    original = chat_filter.FILTER_PROVIDER
+    chat_filter.FILTER_PROVIDER = "mock"
+    try:
+        messages = [{"role": "user", "content": "   "}]
+        expect("mock 模式下 user 内容全是空白时返回空字符串", filter_chat_noise(messages) == "")
+    finally:
+        chat_filter.FILTER_PROVIDER = original
 
 
 def test_mock_provider_concatenates_user_messages_only():
