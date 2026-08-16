@@ -8,13 +8,17 @@ import com.loomytrip.backend.entity.Destination;
 import com.loomytrip.backend.entity.User;
 import com.loomytrip.backend.exception.ApiException;
 import com.loomytrip.backend.repository.DestinationRepository;
+import com.loomytrip.backend.repository.TripScheduleRepository;
 import com.loomytrip.backend.repository.UserRepository;
 import com.loomytrip.backend.util.SecurityUtils;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,17 +31,20 @@ public class RecommendationService {
 
     private final DestinationRepository destinationRepository;
     private final UserRepository userRepository;
+    private final TripScheduleRepository tripScheduleRepository;
     private final AiPlanningClient aiPlanningClient;
     private final DestinationService destinationService;
 
     public RecommendationService(
             DestinationRepository destinationRepository,
             UserRepository userRepository,
+            TripScheduleRepository tripScheduleRepository,
             AiPlanningClient aiPlanningClient,
             DestinationService destinationService
     ) {
         this.destinationRepository = destinationRepository;
         this.userRepository = userRepository;
+        this.tripScheduleRepository = tripScheduleRepository;
         this.aiPlanningClient = aiPlanningClient;
         this.destinationService = destinationService;
     }
@@ -124,10 +131,23 @@ public class RecommendationService {
             return fallbackFromDatabase(excludeDestinationId);
         }
 
+        // Same reasoning as PlanningService.confirmSession(): the AI only knows about the
+        // single anchor place passed in above, not everywhere else the user has already
+        // planned to go, so re-filter against the traveler's full trip history here too.
+        Set<String> visitedNames = currentVisitedNames();
         List<RecommendationItemResponse> items = result.suggestedAdditions().stream()
+                .filter(s -> !visitedNames.contains(s.name().trim().toLowerCase(Locale.ROOT)))
                 .map(this::toItem)
                 .toList();
         return new RecommendationResponse(items);
+    }
+
+    private Set<String> currentVisitedNames() {
+        User user = userRepository.findByEmail(SecurityUtils.currentUserEmail()).orElse(null);
+        if (user == null) {
+            return Collections.emptySet();
+        }
+        return tripScheduleRepository.findVisitedDestinationNamesByUserId(user.getId());
     }
 
     private RecommendationItemResponse toItem(AiRecommendResult.SuggestedAddition suggestion) {

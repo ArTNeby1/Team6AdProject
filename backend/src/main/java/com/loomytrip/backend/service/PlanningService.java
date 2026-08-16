@@ -244,23 +244,24 @@ public class PlanningService {
             if (match.isEmpty()) {
                 place.setValidationStatus(ValidationStatus.INVALID);
                 draftPlaceRepository.save(place);
-                continue;
+            } else {
+                MapPlacesClient.PlaceMatch placeMatch = match.get();
+                place.setAddress(placeMatch.address());
+                place.setLatitude(placeMatch.latitude());
+                place.setLongitude(placeMatch.longitude());
+                place.setValidationStatus(ValidationStatus.VALID);
+                place.setDestination(destinationService.findOrCreateByName(
+                        place.getName(),
+                        place.getCategory(),
+                        placeMatch.latitude(),
+                        placeMatch.longitude()
+                ));
+                draftPlaceRepository.save(place);
             }
 
-            MapPlacesClient.PlaceMatch placeMatch = match.get();
-            place.setAddress(placeMatch.address());
-            place.setLatitude(placeMatch.latitude());
-            place.setLongitude(placeMatch.longitude());
-            place.setValidationStatus(ValidationStatus.VALID);
-            place.setDestination(destinationService.findOrCreateByName(
-                    place.getName(),
-                    place.getCategory(),
-                    placeMatch.latitude(),
-                    placeMatch.longitude()
-            ));
-            draftPlaceRepository.save(place);
-
-            // Keep a small gap between public geocoder calls (Photon / OSM etiquette).
+            // Keep a small gap between public geocoder calls (Photon / OSM etiquette). Throttle
+            // after every lookup — including failed ones — so one bad response doesn't fire the
+            // rest of the batch back-to-back.
             try {
                 Thread.sleep(400L);
             } catch (InterruptedException e) {
@@ -386,7 +387,13 @@ public class PlanningService {
         // （行程结构已经交给用户自己拖拽好的 suggested_day/start_time）。
         AiRecommendResult recommendResult = aiPlanningClient.recommend(places, startDate.toString(), buildPreferenceText(user));
         String weatherSummary = recommendResult.weatherSummary();
+        // ML only excludes places already in *this* trip's place list. It has no idea what
+        // the traveler already scheduled on OTHER trips (e.g. already been to Sentosa last
+        // time), so re-check suggestions here against every destination the user has ever
+        // put on any of their trips before handing them to the frontend.
+        java.util.Set<String> visitedNames = tripScheduleRepository.findVisitedDestinationNamesByUserId(user.getId());
         List<SuggestedAdditionResponse> suggestions = recommendResult.suggestedAdditions().stream()
+                .filter(s -> !visitedNames.contains(s.name().trim().toLowerCase(java.util.Locale.ROOT)))
                 .map(s -> new SuggestedAdditionResponse(
                         s.name(), s.type(), s.lat(), s.lng(), s.distanceKm(), s.reason(), s.activities()
                 ))
@@ -648,6 +655,16 @@ public class PlanningService {
 
             DraftPlace savedPlace = draftPlaceRepository.save(draftPlace);
             savedPlaces++;
+
+            // Same Nominatim throttle as validateDraftPlaces — extraction geocodes every place
+            // in one burst, and firing them back-to-back trips the public instance's rate limit,
+            // leaving later places UNVALIDATED even though they're real, findable landmarks.
+            try {
+                Thread.sleep(1100L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
 
             Object activitiesValue = place.get("activities");
             if (activitiesValue instanceof List<?> activities) {

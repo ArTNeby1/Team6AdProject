@@ -135,13 +135,19 @@ export const TripProvider = ({ children }) => {
     }
   };
 
-  const addLocationsToTripDay = async (tripId, day, locationNames) => {
+  const addLocationsToTripDay = async (tripId, day, locationNames, nearCoords) => {
     if (!locationNames || locationNames.length === 0) return;
     try {
-      // Backend expects 'day' and 'locationNames' (matching AddTripScheduleRequest)
+      // Backend expects 'day' and 'locationNames' (matching AddTripScheduleRequest).
+      // nearCoords ({lat, lng}) is optional and only honored for a single-location add —
+      // it tells the backend to insert the new stop next to whichever existing stop is
+      // geographically closest, instead of always appending at the end of the day (used
+      // for "+ Add" on an AI-recommended nearby place, so it lands next to the place it
+      // was actually recommended for being near).
       await api.post(`/trips/${tripId}/schedules`, {
         day: parseInt(day),
-        locationNames: locationNames
+        locationNames: locationNames,
+        ...(nearCoords ? { nearLatitude: nearCoords.lat, nearLongitude: nearCoords.lng } : {})
       });
       await fetchTrips();
     } catch (error) {

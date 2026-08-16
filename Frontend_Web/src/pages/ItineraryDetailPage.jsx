@@ -41,7 +41,13 @@ const ItineraryDetailPage = () => {
     if (!trip) return;
     setAddingSuggestion(suggestion.name);
     try {
-      await addLocationsToTripDay(trip.id, selectedDay, [suggestion.name]);
+      // Pass the suggestion's own coordinates so the backend can insert it next to
+      // whichever existing stop it was actually recommended for being near (e.g. next to
+      // Chinatown), instead of tacking it onto the end of the day.
+      const nearCoords = suggestion.latitude != null && suggestion.longitude != null
+        ? { lat: suggestion.latitude, lng: suggestion.longitude }
+        : null;
+      await addLocationsToTripDay(trip.id, selectedDay, [suggestion.name], nearCoords);
       setSuggestions(prev => prev.filter(s => s.name !== suggestion.name));
     } catch {
       alert('Failed to add place. Please try again.');
