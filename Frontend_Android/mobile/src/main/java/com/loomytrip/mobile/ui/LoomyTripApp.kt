@@ -311,6 +311,7 @@ fun LoomyTripApp() {
     val backStackEntry = navController.currentBackStackEntryAsState().value
     val route = backStackEntry?.destination?.route ?: Destination.Login.route
     val current = Destination.entries.firstOrNull { it.route == route } ?: Destination.Login
+    val previousRoute = navController.previousBackStackEntry?.destination?.route
     val authDestinations = setOf(Destination.Login, Destination.Register)
     val bottomDestinations = setOf(
         Destination.Home,
@@ -320,6 +321,8 @@ fun LoomyTripApp() {
     )
     val showAppChrome = current !in authDestinations
     val showBottomBar = current in bottomDestinations
+    val shouldShowBackButton = current !in bottomDestinations ||
+        (current == Destination.Trips && previousRoute == Destination.Profile.route)
     val bottomItems = listOf(
         BottomItem(Destination.Home, Icons.Default.Home),
         BottomItem(Destination.Trips, Icons.Default.Route),
@@ -376,7 +379,7 @@ fun LoomyTripApp() {
                 TopAppBar(
                     title = { Text(if (current == Destination.Home) "LoomyTrip" else current.label) },
                     navigationIcon = {
-                        if (current !in bottomDestinations) {
+                        if (shouldShowBackButton) {
                             IconButton(onClick = { navController.popBackStack() }) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                             }
