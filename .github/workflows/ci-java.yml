@@ -206,6 +206,29 @@ jobs:
           cache-to: type=gha,mode=max
 
       # ============================================================
+      # 镜像扫描：Trivy 扫刚推上去的镜像，只报告不拦截（跟 SCA/SAST 那几步同一个尺度）。
+      # ECR 的 scan_on_push 只是被动扫描，这一步给 Code Scanning 一份带 HIGH/CRITICAL
+      # 严重度过滤、真正跑在流水线里的镜像扫描结果。
+      # ============================================================
+      - name: Trivy 镜像扫描
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:latest
+          format: sarif
+          output: trivy-results.sarif
+          severity: HIGH,CRITICAL
+
+      - name: 上传 Trivy SARIF 到 Security 标签页
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-image-java
+
+      # ============================================================
       # 触发 ECS 部署：让服务拉刚推上去的 :latest 镜像
       # ============================================================
       - name: 部署到 ECS
