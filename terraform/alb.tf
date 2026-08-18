@@ -6,14 +6,16 @@
 # ============================================================
 
 resource "aws_lb" "main" {
-  name               = "${var.project_name}-${var.environment}"
-  internal           = false
-  load_balancer_type = "application"
-  security_groups    = [aws_security_group.alb.id]
-  subnets            = aws_subnet.public[*].id
+  name                       = "${var.project_name}-${var.environment}"
+  internal                   = false
+  load_balancer_type         = "application"
+  security_groups            = [aws_security_group.alb.id]
+  subnets                    = aws_subnet.public[*].id
+  drop_invalid_header_fields = true
 }
 
 resource "aws_lb_target_group" "java" {
+  #checkov:skip=CKV_AWS_378:ALB 现在还没有自定义域名/ACM 证书（见文件顶部说明），整条链路
   name        = "${var.project_name}-java-${var.environment}"
   port        = 8080
   protocol    = "HTTP"
@@ -31,6 +33,7 @@ resource "aws_lb_target_group" "java" {
 }
 
 resource "aws_lb_target_group" "ml" {
+  #checkov:skip=CKV_AWS_378:没有域名/ACM 证书之前只能走 HTTP
   name        = "${var.project_name}-ml-${var.environment}"
   port        = 8000
   protocol    = "HTTP"
@@ -48,6 +51,7 @@ resource "aws_lb_target_group" "ml" {
 }
 
 resource "aws_lb_listener" "http" {
+  #checkov:skip=CKV_AWS_2:没有域名/ACM 证书，暂时只能走 HTTP
   load_balancer_arn = aws_lb.main.arn
   port              = 80
   protocol          = "HTTP"

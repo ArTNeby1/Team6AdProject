@@ -7,6 +7,7 @@ import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
@@ -55,19 +56,105 @@ public class AiPlanningClientHttp implements AiPlanningClient {
                     .retrieve()
                     .body(Map.class);
         } catch (RestClientException e) {
-            return unavailableResponse("AI_SERVICE_UNAVAILABLE");
+            return mapExtractionError(e);
         }
     }
 
     @Override
-    public Map<String, Object> generateDailyItinerary(Long tripId, List<Long> confirmedPlaceIds) {
-        // 行程生成（F-09）还没在 Python 侧实现——目前 orchestrator.py 只有
-        // 抽取 + 推荐两个 agent，没有按天排程的第三个 agent，先保留 stub 行为。
-        return Map.of(
-                "status", "STUB",
-                "tripId", tripId,
-                "days", List.of()
-        );
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> refineFromChat(List<Map<String, String>> messages, String preferenceText) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("messages", messages);
+        body.put("preference_text", preferenceText);
+
+        try {
+            return restClient.post()
+                    .uri("/refine")
+                    .body(body)
+                    .retrieve()
+                    .body(Map.class);
+        } catch (RestClientException e) {
+            return mapExtractionError(e);
+        }
+    }
+
+    /**
+     * Both `/extract-travel-info` and `/refine` share the same failure shape (see
+     * ML/app/main.py `_extraction_response`): a 422 with a {@code NO_USEFUL_CONTENT:}-
+     * prefixed body means the user's text had nothing travel-related in it — a 4xx input
+     * problem, not the AI service being down. Everything else (real 5xx, timeout, ML not
+     * running at all) degrades to the generic unavailable stub, same as before. Callers
+     * (PlanningService) branch on {@code status} to turn NO_USEFUL_CONTENT into a proper
+     * "please describe your trip" error instead of silently creating an empty session.
+     */
+    private Map<String, Object> mapExtractionError(RestClientException e) {
+        if (e instanceof HttpClientErrorException httpError
+                && httpError.getStatusCode().value() == 422) {
+            String body = httpError.getResponseBodyAsString();
+            int prefixIndex = body.indexOf("NO_USEFUL_CONTENT:");
+            if (prefixIndex >= 0) {
+                String message = body.substring(prefixIndex + "NO_USEFUL_CONTENT:".length()).trim();
+                // FastAPI wraps our detail string in {"detail": "..."} JSON — strip the
+                // trailing `"}` so callers get the plain message, not raw JSON escaping.
+                message = message.replaceAll("\"\\s*}\\s*$", "").trim();
+                return Map.of("status", "NO_USEFUL_CONTENT", "message", message, "places", List.of());
+            }
+        }
+        return unavailableResponse("AI_SERVICE_UNAVAILABLE");
+    }
+
+    @Override
+    public AiRecommendResult recommend(
+            List<Map<String, Object>> places,
+            String date,
+            String preferenceText,
+            String mode,
+            Integer topN,
+            Double maxDistanceKm,
+            String destination
+    ) {
+        if (places == null || places.isEmpty()) {
+            return new AiRecommendResult("UNAVAILABLE", null, List.of(), List.of());
+        }
+        Map<String, Object> body = new HashMap<>();
+        body.put("places", places);
+        body.put("date", date);
+        body.put("preference_text", preferenceText);
+        body.put("mode", mode != null ? mode : "hybrid");
+        body.put("top_n", topN != null ? topN : 3);
+        body.put("max_distance_km", maxDistanceKm);
+        body.put("destination", destination != null ? destination : "Singapore");
+
+        try {
+            return restClient.post()
+                    .uri("/recommend")
+                    .body(body)
+                    .retrieve()
+                    .body(AiRecommendResult.class);
+        } catch (RestClientException e) {
+            return new AiRecommendResult("AI_SERVICE_UNAVAILABLE", null, List.of(), List.of());
+        }
+    }
+
+    @Override
+    public AiPlanItineraryResult planItinerary(List<Map<String, Object>> places, String startDate, int numDays) {
+        if (places == null || places.isEmpty()) {
+            return new AiPlanItineraryResult("UNAVAILABLE", List.of());
+        }
+        Map<String, Object> body = new HashMap<>();
+        body.put("places", places);
+        body.put("start_date", startDate);
+        body.put("num_days", numDays);
+
+        try {
+            return restClient.post()
+                    .uri("/plan-itinerary")
+                    .body(body)
+                    .retrieve()
+                    .body(AiPlanItineraryResult.class);
+        } catch (RestClientException e) {
+            return new AiPlanItineraryResult("AI_SERVICE_UNAVAILABLE", List.of());
+        }
     }
 
     private Map<String, Object> unavailableResponse(String status) {

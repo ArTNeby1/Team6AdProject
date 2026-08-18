@@ -37,6 +37,15 @@ public class Trip {
     @Column(name = "duration_days", nullable = false)
     private Integer durationDays;
 
+    @Column(name = "is_favorite", nullable = false)
+    private boolean favorite;
+
+    /** Null until the owner first shares this trip (see TripService#shareTrip) — a public,
+     * unguessable token that lets {@code GET /api/v1/public/trips/{token}} return a
+     * read-only view of this trip without authentication. */
+    @Column(name = "share_token", unique = true)
+    private String shareToken;
+
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private Instant createdAt;
 

@@ -11,7 +11,38 @@
 # 再补。
 
 resource "aws_s3_bucket" "frontend_web" {
+  #checkov:skip=CKV2_AWS_6:公开静态网站托管，锁死会直接把网站锁没
+  #checkov:skip=CKV_AWS_145:非用户数据，SSE-S3 够用，KMS 性价比不高
+  #checkov:skip=CKV_AWS_144:内容每次 CI 都会重新生成，不需要跨区域复制
   bucket = "${var.project_name}-frontend-web-${var.environment}"
+}
+
+# 版本控制：这个桶每次部署都是 aws s3 sync --delete 整体覆盖，开了版本控制之后
+# 万一某次发布出问题，能直接从 S3 控制台/CLI 回滚到上一个版本
+resource "aws_s3_bucket_versioning" "frontend_web_versioning" {
+  bucket = aws_s3_bucket.frontend_web.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+# 生命周期：只清理被覆盖后的旧版本，当前（最新）版本不设过期——那是线上正在跑的网站，
+# 不能被自动删掉。30 天足够回滚窗口，避免旧版本一直堆积占用存储。
+resource "aws_s3_bucket_lifecycle_configuration" "frontend_web_lifecycle" {
+  bucket = aws_s3_bucket.frontend_web.id
+
+  rule {
+    id     = "expire-old-versions"
+    status = "Enabled"
+
+    noncurrent_version_expiration {
+      noncurrent_days = 30
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "frontend_web_encryption" {
@@ -37,6 +68,8 @@ resource "aws_s3_bucket_website_configuration" "frontend_web" {
 
 # 只关闭"公开访问"里跟 bucket policy 相关的两项，ACL 相关的两项保持开启
 resource "aws_s3_bucket_public_access_block" "frontend_web_public_access" {
+  #checkov:skip=CKV_AWS_54:公开静态网站托管，跟 CKV2_AWS_6 同一个根因
+  #checkov:skip=CKV_AWS_56:同上
   bucket                  = aws_s3_bucket.frontend_web.id
   block_public_acls       = true
   ignore_public_acls      = true

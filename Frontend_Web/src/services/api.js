@@ -1,9 +1,12 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:8080/api/v1';
+// Backend dev server runs on 8091 (8080 was occupied — see .env / application-dev.yml).
+// Read from VITE_API_BASE_URL so this doesn't silently drift again if the port changes.
+const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8091'}/api/v1`;
 
 const api = axios.create({
   baseURL: API_BASE_URL,
+  timeout: 60000, // 🟢 Increased to 60s to wait for local AI Llama3 processing
   headers: {
     'Content-Type': 'application/json',
   },
@@ -34,5 +37,12 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+export const mapApi = {
+  getConfig: () => api.get('/map/config'),
+  getRoute: (tripId, day) => api.get(`/trips/${tripId}/route?day=${day}`),
+  getNearby: (lat, lng) => api.get(`/map/nearby?lat=${lat}&lng=${lng}`),
+  getCrowdHint: (date) => api.get(`/map/crowd${date ? `?date=${date}` : ''}`),
+};
 
 export default api;

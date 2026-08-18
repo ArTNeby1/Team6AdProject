@@ -17,9 +17,11 @@ from local_llm_client import call_local_model
 
 # 这一步走本地 Ollama 还是 Bedrock，独立于抽取阶段的 EXTRACT_PROVIDER——
 # 三段各自能单独选，参考 main.py/orchestrator.py 里 EXTRACT_PROVIDER 的说明。
-# 默认还是 "ollama"：这步任务简单（判断相关/不相关），本地小模型够用，没必要
-# 默认就占用 Bedrock 调用额度/费用，想切的话显式设 FILTER_PROVIDER=bedrock。
-FILTER_PROVIDER = os.environ.get("FILTER_PROVIDER", "ollama")
+# 2026-08-11 起固定默认 "bedrock"，不是临时试验：跟 EXTRACT_PROVIDER/
+# RECOMMEND_PROVIDER 用同一个 Nova Lite 模型、同一份 AWS 凭证，本机验证过能
+# 正常过滤寒暄/保留行程相关内容，且比本地 Ollama CPU 推理快得多。
+# 想临时切回本地调试就显式设 FILTER_PROVIDER=ollama，不是常规路径。
+FILTER_PROVIDER = os.environ.get("FILTER_PROVIDER", "bedrock")
 
 # 过滤这一步默认用哪个模型，独立于抽取阶段的 EXTRACT_MODEL，
 # 体现"多个模型分工"：这步任务简单（判断相关/不相关），可以配一个更轻量的模型，
@@ -32,11 +34,15 @@ SYSTEM_PROMPT = """You clean up a travel-planning chat transcript before it is
 handed to a downstream extraction step.
 
 Given the conversation below, output ONLY the parts that are relevant to trip
-planning: destinations, dates, places, activities, preferences. Drop greetings,
-small talk, thanks, and anything unrelated to the trip. Keep the surviving
-content as plain text in the original language, roughly in chronological
-order. Do not summarize, invent, or add anything that wasn't said. If nothing
-relevant survives, output an empty string.
+planning: destinations, dates, how long the trip lasts, places, activities,
+preferences. Drop greetings, small talk, thanks, and anything unrelated to the
+trip. Keep the surviving content as plain text in the original language, roughly
+in chronological order. Do not summarize, invent, or add anything that wasn't
+said. If nothing relevant survives, output an empty string.
+
+Trip length is easy to lose because it is often a very short message on its own
+— a bare "3 days", "3", or "let's make it a week" answering a question about how
+long the trip is. Always keep those, verbatim.
 
 Do not output JSON, markdown, or commentary — just the cleaned plain text.
 """

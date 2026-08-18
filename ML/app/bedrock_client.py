@@ -11,8 +11,14 @@ main.py 其它代码（parse_and_validate / call_with_retry）不用改。
 2. 本机 ~/.aws/credentials 配置好有权限调用 bedrock-runtime 的 access key。
 3. Bedrock 控制台 Model access 页面里，MODEL_ID 对应的模型要显示
    "Access granted"。
+
+可选环境变量（本地开发一个都不用设，全部有默认值）：
+    BEDROCK_REGION           默认 us-east-1，Model access 在哪个 region 批的就填哪个
+    BEDROCK_MODEL_ID         默认 amazon.nova-lite-v1:0
+    BEDROCK_ASSUME_ROLE_ARN  跨账号调用时才设，见下方 ASSUME_ROLE_ARN 的说明
 """
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -21,9 +27,18 @@ import boto3
 SCHEMA_DIR = Path(__file__).resolve().parent.parent / "schema"
 sys.path.insert(0, str(SCHEMA_DIR))
 
-REGION = "us-east-1"
+# 默认 us-east-1：Nova Lite 的 Model access 是在这个 region 批下来的。
+# 部署环境在 ap-southeast-1，跨 region 调用没问题，但 Model access 是
+# 按「账号 + region」分别开通的，所以这里不能跟着部署 region 走。
+REGION = os.environ.get("BEDROCK_REGION", "us-east-1")
 # 占位模型，权限批下来是哪个就换成哪个的真实 model_id
-MODEL_ID = "amazon.nova-lite-v1:0"
+MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "amazon.nova-lite-v1:0")
+
+# 跨账号调用 Bedrock 用（本地开发不用设，留空就是直接用当前凭证）。
+# 背景：部署环境（ECS）在 A 账号，但 Bedrock 的 Model access 和账单在 B 账号。
+# 设成 B 账号里那个信任 ECS task role 的角色 ARN，容器就会先 AssumeRole
+# 再调 Bedrock —— 不需要把任何长期 access key 存进 A 账号。
+ASSUME_ROLE_ARN = os.environ.get("BEDROCK_ASSUME_ROLE_ARN")
 
 SCHEMA_PATH = SCHEMA_DIR / "trip_schema.json"
 
@@ -32,6 +47,11 @@ Read the travel blog text and output ONLY a single JSON object that matches
 this JSON Schema exactly. Do not include markdown code fences, explanations,
 or any text other than the JSON object itself.
 
+If the text contains no real destination, place, or attraction at all (e.g. it
+is greetings, small talk, complaints, or content unrelated to travel), output
+"places": [] and "destination": "". Do NOT invent a place or destination just
+to make the output non-empty.
+
 JSON Schema:
 {schema}
 """
@@ -39,10 +59,50 @@ JSON Schema:
 _client = None  # 懒加载：import 这个文件时不强制要求本机已经配好 AWS 凭证
 
 
+def _assume_role_session(role_arn: str) -> boto3.Session:
+    """
+    返回一个「会自动续期」的跨账号 Session。
+
+    为什么不能简单地 sts.assume_role() 一次就完事：AssumeRole 拿到的是临时凭证
+    （默认 1 小时过期），而 ECS 上的容器是一跑好几天的。一次性 assume 的话
+    本地测试和刚部署那会儿都正常，过了一小时之后所有 Bedrock 调用会突然开始
+    报 ExpiredToken —— 属于那种上线当天看着好好的、半夜才炸的问题。
+
+    这里用 botocore 的 DeferredRefreshableCredentials：凭证快过期时它会自动
+    重新 AssumeRole，调用方什么都不用管。
+    """
+    from botocore.credentials import (
+        AssumeRoleCredentialFetcher,
+        DeferredRefreshableCredentials,
+    )
+    from botocore.session import get_session
+
+    base_session = get_session()
+    fetcher = AssumeRoleCredentialFetcher(
+        client_creator=base_session.create_client,
+        source_credentials=base_session.get_credentials(),
+        role_arn=role_arn,
+        extra_args={"RoleSessionName": "loomytrip-ml"},
+    )
+    refreshable_session = get_session()
+    # botocore 没有公开 API 能塞自定义 credential provider，社区通用做法就是
+    # 直接赋值 _credentials（boto3 文档的 cross-account 示例也是这么写的）。
+    refreshable_session._credentials = DeferredRefreshableCredentials(
+        method="assume-role",
+        refresh_using=fetcher.fetch_credentials,
+    )
+    return boto3.Session(botocore_session=refreshable_session)
+
+
 def _get_client():
     global _client
     if _client is None:
-        _client = boto3.client("bedrock-runtime", region_name=REGION)
+        if ASSUME_ROLE_ARN:
+            _client = _assume_role_session(ASSUME_ROLE_ARN).client(
+                "bedrock-runtime", region_name=REGION
+            )
+        else:
+            _client = boto3.client("bedrock-runtime", region_name=REGION)
     return _client
 
 

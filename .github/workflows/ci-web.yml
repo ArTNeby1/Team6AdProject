@@ -18,6 +18,7 @@ concurrency:
 permissions:
   id-token: write
   contents: read
+  security-events: write # 上传 SARIF 到 Security 标签页要用
 
 jobs:
   build:
@@ -71,10 +72,47 @@ jobs:
           name: web-sast-report
           path: Frontend_Web/sast-report.json
 
+      # ESLint 的 --format 一次只能出一种格式，JSON 报告已经用来传 artifact 了，
+      # 这里单独再跑一次换成 SARIF 格式给 Code Scanning 用。formatter 不是项目
+      # 依赖，--no-save 装到 node_modules 里就行，不用进 package-lock.json。
+      - name: 生成 SARIF 报告
+        run: |
+          npm install --no-save @microsoft/eslint-formatter-sarif
+          npx eslint . --format @microsoft/eslint-formatter-sarif --output-file sast-report.sarif || true
+        continue-on-error: true
+
+      - name: 上传 SAST SARIF 到 Security 标签页
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: Frontend_Web/sast-report.sarif
+          category: eslint-web
+
+      # ============================================================
+      # 单元测试（含覆盖率）
+      # ============================================================
+      # test:coverage / vite.config.js 的 coverage 配置（v8 provider）已经在
+      # package.json 里了，只是之前一直没有一步真正执行——admin 那几个 Vitest
+      # 测试文件合并进来之后，在 CI 里从没被跑过。
+      - name: 单元测试（含覆盖率）
+        run: npm run test:coverage
+
+      - name: 上传 Web 覆盖率报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-coverage-report
+          path: Frontend_Web/coverage/
+
       # ============================================================
       # 构建
       # ============================================================
+      # VITE_API_BASE_URL 是 Vite 编译时写死进 JS 包的，不是运行时读取——
+      # 不设的话会回退成 src/services/api.js 里的 localhost:8080，线上用户的
+      # 浏览器请求会打到访问者自己的电脑，注册/登录这类请求直接失败且无提示。
       - name: 构建项目
+        env:
+          VITE_API_BASE_URL: http://ad-project-dev-593875640.ap-southeast-1.elb.amazonaws.com
         run: npm run build
 
       - name: 上传构建产物

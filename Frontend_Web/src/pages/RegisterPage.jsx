@@ -8,8 +8,8 @@ const RegisterPage = () => {
   const [password, setPassword] = useState('');
   const [age, setAge] = useState('');
   const [gender, setGender] = useState('Male');
-  const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
   const { register } = useAuth();
   const navigate = useNavigate();
@@ -17,17 +17,13 @@ const RegisterPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters');
-      return;
-    }
     setIsSubmitting(true);
 
     try {
-      await register(username, email, password, parseInt(age, 10), gender);
+      await register(username, email, password, parseInt(age), gender);
       navigate('/');
     } catch (err) {
-      setError(err.message || 'Registration failed');
+      setError(err.message);
     } finally {
       setIsSubmitting(false);
     }
@@ -43,6 +39,8 @@ const RegisterPage = () => {
           </div>
 
           <form onSubmit={handleSubmit} className="auth-form">
+            {error && <div className="auth-error">{error}</div>}
+
             <div className="form-group">
               <label>Username</label>
               <input
@@ -100,14 +98,9 @@ const RegisterPage = () => {
                 placeholder="At least 8 characters"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                minLength={8}
                 required
               />
             </div>
-
-            {error && (
-              <p style={{ color: '#b42318', marginBottom: '12px' }}>{error}</p>
-            )}
 
             <button
               type="submit"

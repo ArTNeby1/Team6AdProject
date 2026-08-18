@@ -4,12 +4,102 @@
 三个人照这份文件各自动手写代码，不用再互相猜格式。
 
 > **状态（2026-08-08 更新）**：**AI 服务这一侧的接口全部实现完毕、测试通过**
-> —— 解析、天气、按天气/距离排顺序、推荐都能真实跑起来，不是设计稿。
+> —— 解析、天气、按天气/距离排顺序、推荐、**按天拆分行程（F-09，第 5.5 节新增）**
+> 都能真实跑起来，不是设计稿。
 >
 > 现在整条链路卡在后端：AI 抽出来的地点**还没有任何代码把它写进数据库**，
 > 所以前端页面拿不到数据。要做什么见第 6 节「后端要做的」，🔴 那四条是硬阻塞。
 >
 > 后端本机不用装 Ollama 也能联调 —— 见第 4 节的 **mock 模式**。
+>
+> **⭐ 2026-08-13 更新（后端前端都要看）**：补上了 F-09 最后一块缺的拼图 ——
+> `/extract-travel-info` 和 `/refine` 的返回体新增 **`duration_days`**（整趟玩几天，
+> 文本没说就是 `null`）。在这之前抽取结果里没有任何"天数"信息，后端**无论怎么写
+> 都造不出 `/plan-itinerary` 要的 `num_days`，F-09 是条断头路。现在这条路通了，
+> 具体怎么用见第 5.5 节的「`num_days` 从哪来」。AI 侧到此 F-09 全部就绪，
+> 剩下的纯粹是后端把 `AiPlanningClientHttp.generateDailyItinerary()` 那个 STUB
+> 换成真调用 + 加一个 Controller 端点（第 6 节第 8 条）。
+>
+> 同一天核对出的另一件事，**不是 AI 侧能修的**：F-32 顺序优化（最近邻 + 2-opt）
+> 现在在线上**完全没有生效**。原因是 `MapPlacesClientStub` 永远返回空，
+> `DraftPlace` 的 lat/lng 一直是 `null`，传到 `/recommend` 的地点全都没坐标，
+> 而没坐标就没法算距离 —— `_order_by_proximity()` 里 2-opt 那段根本进不去
+> （这是有意的降级，见第 5 节降级行为表，不是 bug）。**后端把地理编码接上，
+> F-32 和 F-18 的 nearby 部分立刻就有效果，AI 侧一行都不用改。**
+
+> **⭐ 2026-08-14 更新（前端后端都要看，有一处不兼容改动）**
+>
+> 做的是"没说玩几天就问用户"这条产品逻辑的 AI 侧部分。三件事：
+>
+> 1. **新增 `needs_duration_input`（布尔，恒定存在）**，`/extract-travel-info` 和
+>    `/refine` 的返回体里。`true` = 文本没说天数，**前端弹窗问用户**；`false` = 天数
+>    已经有了，直接排。等价于 `duration_days == null`，但把"该怎么办"写死在 AI 侧，
+>    省得三端各自解释一个 null（见第 4 节字段表）。
+> 2. **🔴 不兼容改动：`/plan-itinerary` 的 `num_days` 变成必填**，原来漏传会默认
+>    按 1 天排并返回 200。现在漏传返回 400，`detail` 以 `NUM_DAYS_REQUIRED:` 开头。
+>    **后端 `AiPlanningClientHttp.planItinerary()` 一直是显式传值的，所以实际调用
+>    行为不变**，这条只挡"忘了接"的情况。
+> 3. `chat_filter` 的降噪 prompt 加了"trip length 经常是一条很短的独立消息（光一个
+>    `3 days` 甚至光一个 `3`），必须原样保留" —— 弹窗答案如果是走 `/refine` 回来的，
+>    以前会被当寒暄过滤掉。
+>
+> 另外 **mock 模式的 `duration_days` 现在看输入文本**（以前恒定返回 2，等于弹窗那条
+> 分支在 mock 下永远测不到）：输入里有 "3 days"/"3天"/"Day 1..Day 3" 就返回对应天数，
+> 没有就返回 `null`。前后端不装模型就能把两条分支都联调完，见第 4 节 mock 模式。
+>
+> 自测脚本：`python ML/app/test_duration_flow.py`（不需要 AWS/Ollama，16 条全绿）。
+>
+> ⚠️ 上面 2026-08-13 那条里"后端 `generateDailyItinerary()` 还是 STUB"已经过时了 ——
+> 后端在 `origin/main` 上已经接好了真调用（`planItinerary()` + `POST /trips/{id}/generate`）。
+> 但**前端还没有任何地方调那个端点**，且 `confirmSession()` 仍写死 `setDurationDays(1)`，
+> 这两条是这个功能端到端跑通剩下的缺口，都在 AI 侧之外。
+
+> **⭐ 2026-08-15 更新（前端后端都要看，AI 侧已完成，需要后端+前端接上）**
+>
+> 新功能：用户输入全是废话/找不到任何景点或有用信息时，不该被当成"AI 服务挂了"
+> （以前是 502 + 一句模型校验错误的英文原文），而应该清楚地告诉用户"你这段话没有
+> 可用的旅行信息，请重新输入"。AI 侧做的三件事：
+>
+> 1. `trip_models.places` 放开成允许空数组（以前 `min_length=1` 逼模型没内容也要编
+>    一个地方，或者校验失败白白重试 3 次）。模型现在能在文本真的没有目的地/地点时
+>    诚实地一次性返回 `"places": []`，不用重试，也不用编。
+> 2. `/extract-travel-info` 和 `/refine` 在这种情况下返回 **HTTP 422**（不是 502），
+>    `detail` 以稳定前缀 **`NO_USEFUL_CONTENT:`** 开头 —— 后端可以直接按前缀分支，
+>    不用解析整句话，跟 `/plan-itinerary` 的 `NUM_DAYS_REQUIRED:` 是同一套约定。
+>    覆盖两种情况：多轮聊天场景下 `chat_filter` 把整段对话滤成空文本；单次粗略路线
+>    场景下文本非空但模型抽不出任何目的地/地点。502 继续留给真正的服务/模型故障，
+>    两者不再共用一个状态码。
+> 3. **后端要做的**：`AiPlanningClient` 调 `/extract-travel-info` / `/refine` 时，
+>    识别 HTTP 422 + `detail` 前缀 `NO_USEFUL_CONTENT:`，转成一个后端自己的错误响应
+>    （不要当成 500/502 级别的系统异常去处理/告警），把"用户没有输入有效信息，
+>    请重新输入"这个语义传给前端。**前端要做的**：拿到这个响应后，不要显示成
+>    "系统错误"，直接提示用户"没有识别到有效的旅行信息，请输入景点、目的地或
+>    行程相关内容"，让用户在原输入框重新填写，不要清空已有的其它会话状态。
+>
+> 自测脚本：`python ML/app/test_no_useful_content.py`（不需要 AWS/Ollama，11 条全绿）。
+
+> **⭐ 2026-08-15 更新（前端要看，`suggested_additions` 多了一种条目，字段不变）**
+>
+> 新功能：用户提到"夜市"这种**笼统类别**而不是具体地点名时（比如 `places` 里
+> 有一条 `name: "night market"` / `"夜市"`），`/recommend` 会自动把它换成
+> 1~2 个真实存在的具体夜市候选，**拼进已有的 `suggested_additions` 数组**，
+> 不是新字段、不是新接口——前端已经把 `suggested_additions` 当"推荐加入，用户
+> 勾选"的一块 UI，夜市候选跟景点候选混在同一个列表里，**不需要为夜市另做区分
+> 处理**，`type: "market"` 是唯一的区别（要单独显示分类图标可以按这个字段分）。
+> 触发条件很朴素：地点名精确匹配一份手工词表（"night market"/"夜市"/
+> "market"/"pasar malam" 等），不是语义理解——用户如果直接说了具体夜市的名字
+> （比如 "Bugis Street Market"），不会被当成笼统类别，走正常流程。
+> 目前只接了夜市这一个类别，数据集里对应两条真实候选（Chinatown Street
+> Market / Bugis Street Market，手工核实的真实地址坐标，来源不是官方
+> data.gov.sg 数据集，见 `ML/app/vague_place.py` 顶部说明）。
+> 代码：`ML/app/vague_place.py`，接在 `orchestrator.run_recommendation()`
+> 里。自测：`python ML/app/test_vague_place.py`（不需要 AWS/Ollama，10 条全绿）。
+
+> **S3 进度（2026-08-08）**：接口层没变化（后端联调还是卡点），但补齐了 S2/S3
+> 的几项欠账，都是独立于后端进度、可以先做的：F-18 补了 grounding 逻辑的自动化
+> 测试、F-32 顺序优化加了 2-opt、F-33 人流预测原型（季节性代理信号，还没接
+> 生产链路）、把 S0 的人工模型评估形式化成了脚本。完整数字见
+> `docs/model_evaluation.md`。
 
 ---
 
@@ -40,11 +130,20 @@
     ▼  ⚠️ 后端在这里补经纬度（MapPlacesClient 地理编码）
     │
 ┌─────────────────────────────┐
-│ 接口二  POST /recommend  ✅ │  agent：查天气 + 算距离 + 排顺序 + 推荐
+│ 接口二  POST /recommend  ✅ │  agent：查天气 + 算距离 + 排顺序 + 推荐（单天）
 └─────────────────────────────┘
     │
     ▼  后端存进数据库
+
+    行程超过一天时，另外调：
+┌──────────────────────────────────┐
+│ 接口三  POST /plan-itinerary  ✅ │  按天拆分（F-09），见第 5.5 节
+└──────────────────────────────────┘
 ```
+
+接口二和接口三**都要求地点已经有经纬度**，所以后端地理编码那一步对两者都是前提。
+两个接口互相独立，可以只调其中一个：单天行程调接口二就够了，多天行程调接口三
+（要推荐再补调接口二）。
 
 **中间那一步是硬性依赖**：接口二要按距离排顺序，所以调它之前地点必须已经有
 `lat`/`lng`。接口一返回的 `coords` 是 `null`（模型不许编坐标），后端必须先地理编码。
@@ -147,31 +246,36 @@
 | ----------------- | -------------------------------------- | ------------------------------------------- | ----------------------------------- |
 | `search_places` | 从 107 个真实新加坡景点里找相似的      | `singapore_attractions.csv`               | ✅ `content_recommender.py` |
 | `get_distance`  | 算两个地点之间的直线距离               | 经纬度做 haversine 计算，纯数学不调 API     | ✅ `geo.py`（2026-08-08 完成） |
-| `group_by_area` | 把邻近的地点归到一组，避免来回横跨全岛 | 同上                                        | ⬜ 没单独做，见下 |
+| `group_by_area` | 把邻近的地点归到一组，避免来回横跨全岛 | 同上                                        | ✅ `itinerary_planner.py` 的 `_split_into_days()`（2026-08-08 补做，见下） |
 | `get_weather`   | 查当天/未来时段的天气预报              | data.gov.sg 的 NEA 天气接口（免费、免密钥） | ✅ `weather.py`（2026-08-08 完成） |
 | `plan_stops`    | 按天气+距离把地点排出顺序              | 上面三个工具的结果                          | ✅ `itinerary_planner.py` |
 
-**`group_by_area` 为什么没单独做**：本来想做"先按区域分组再推荐"，实际做的时候发现
-用距离直接参与打分就够了 —— `content_recommender.py` 里 `hybrid` 模式把相似度乘上
-一个就近系数（距离 5km 打对折），效果上等于"优先推荐同一片区域的地点"，
-不需要再单独做一次聚类。真要做按天分组行程时可能还得补回来，先记在这。
+**`group_by_area` 的来龙去脉**：一开始**没单独做** —— 做推荐时发现用距离直接参与打分
+就够了（`content_recommender.py` 的 `hybrid` 模式把相似度乘上一个就近系数，距离 5km
+打对折），效果上等于"优先推荐同一片区域的地点"，不用再单独聚类。当时记了一句
+"真要做按天分组行程时可能还得补回来"。**2026-08-08 做 F-09 时确实补回来了** ——
+按天分行程绕不开"哪些地点算同一片"，实现在 `_split_into_days()`（先串线路再切段，
+不是聚类，理由见第 5.5 节）。
 
-**一次性准备工作（不是运行时工具）**：✅ **已完成** —— 107 个地点都打上了"室内/室外"标记，
-存在 CSV 的 `indoor_outdoor` 列（56 室外 / 51 室内）。脚本是 `ML/scripts/label_indoor_outdoor.py`，
-先用关键词规则判（覆盖 85/107 = 79%），剩下 22 条交给 LLM。
+**一次性准备工作（不是运行时工具）**：✅ **已完成** —— 107 个地点都打上了"室内/室外/mixed"标记，
+存在 CSV 的 `indoor_outdoor` 列（57 室外 / 49 室内 / 3 mixed，2026-08-17 更新）。脚本是
+`ML/scripts/label_indoor_outdoor.py`，先用关键词规则判（85/107 = 79%，未人工核对），
+剩下 22 条原本交给 LLM，**2026-08-17 已逐条人工复核改正**（8 条被纠正，包括"小印度"从
+indoor 改成 outdoor；`indoor_outdoor_source` 列相应改成 `manual`）。
 
 **没有这个标记，天气数据是废的** —— 知道下午下雨但不知道哪些地方是室内的，agent 没法据此做决定。
 
-⚠️ **准确度要如实说**：这是启发式分类，不是人工核对过的。规则那部分可靠（Museum→室内、
-Park→室外这种通名很稳），LLM 那 22 条会有错（比如把"小印度"这种街区判成室内）。
-答辩被问就说"79% 靠规则，剩下靠模型，没有人工逐条核对，存在误分类"。
+⚠️ **准确度要如实说**：LLM 判的那 22 条已人工复核，可信；**规则判的 85 条仍然没有人工逐条核对
+过**（Museum→室内、Park→室外这种通名很稳，但没有系统性验证过）。答辩被问就说"79% 靠规则、
+没有人工核对，剩下 21% 原来靠模型、现已人工复核并改正"。
 
-### Agent 能做的四件事
+### Agent 能做的五件事
 
 1. **按天气排顺序** —— 下午有雨 → 户外景点排上午，室内的排下午
 2. **按地理位置排顺序** —— 邻近的排一起，不要圣淘沙 → 樟宜 → 圣淘沙来回跑
 3. **补充推荐** —— 用户只说了 2 个地点，一天还有空，从数据集里推荐附近的
-4. **提示冲突** —— "这两个地点相隔 45 分钟车程，一个下午安排得比较紧"
+4. **按天拆分行程（F-09）** —— 多天的行程，把同一片区域的地点排进同一天
+5. **提示冲突** —— "这两个地点相隔 45 分钟车程，一个下午安排得比较紧" ⬜ 还没做
 
 ### 关于距离：跟后端的分工
 
@@ -213,7 +317,16 @@ Google 的 transit 模式还能给真实地铁/公交时间。
 >
 > `/recommend` 返回的地点、坐标、距离**还是真的**（来自 107 条真实数据集，
 > 纯 TF-IDF 算的不需要模型），只有推荐理由 `reason` 换成 `[MOCK]` 开头的模板句。
-> `/extract-travel-info` 则返回固定的两条假数据，不看输入内容。
+> `/extract-travel-info` 返回的**地点**是固定的两条假数据，不看输入内容 ——
+> **但 `duration_days` 会真的看输入文本**（2026-08-14 改的），这样"没说天数就弹窗
+> 问用户"那条分支在 mock 下也测得到：
+>
+> | 你传的 `raw_content` | `duration_days` | `needs_duration_input` |
+> |---|---|---|
+> | `"a 3-day trip in Singapore"` | `3` | `false` |
+> | `"我想去新加坡玩5天"` | `5` | `false` |
+> | `"Day 1: Gardens. Day 2: Sentosa."` | `2` | `false` |
+> | `"I want to see Gardens by the Bay"` | `null` | **`true`** |
 >
 > 调通之后把这三个环境变量去掉就切回真实模型。
 
@@ -248,6 +361,8 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
   "status": "OK",
   "destination": "Singapore",
   "dates": [],
+  "duration_days": null,
+  "needs_duration_input": true,
   "places": [
     { "name": "Gardens by the Bay", "type": "attraction", "coords": null, "activities": ["take photos"] },
     { "name": "National Museum of Singapore", "type": "attraction", "coords": null, "activities": ["see the exhibition"] }
@@ -264,8 +379,44 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | `destination` | **前端不用展示**。它的作用是范围校验：这个 app 只做新加坡，如果用户说"我想去曼谷"，这里会是 `"Bangkok"`，后端据此拒绝并提示用户。 |
 | `dates`       | 文本里明确写了日期才有，没写就是空数组`[]` —— 不让模型编年份。                                                                        |
+| `duration_days` | **⭐ 2026-08-13 新增，后端做 F-09 要用这个**。整趟行程一共几天，取值 1~30。文本明确说了才有（"a 3-day trip"、或正文本身是 Day 1 / Day 2 / Day 3 这种结构），**没说就是 `null`，不让模型猜**。这是 `/plan-itinerary` 的 `num_days` 的**唯一来源** —— 只有抽取这一步看得到原始文本，后端拿到的是结构化 JSON，这里不给就永远造不出来。⚠️ 不要自己从 `dates` 反推：`["2026-08-09","2026-08-11"]` 到底是"9号到11号玩3天"还是"9号和11号各去一次"，从数组本身分辨不出来。 |
+| `needs_duration_input` | **⭐ 2026-08-14 新增，前端弹窗就看这个字段**。布尔值，**恒定存在**（不是"缺天数时才有"，可以无脑读）。`true` = 文本里没说玩几天，**必须先弹窗问用户**，拿到答案再排行程；`false` = 天数已经有了，直接用 `duration_days` 当 `num_days`。它恒等于 `duration_days == null`，单独给一个字段是为了把"这时候该怎么办"这条规则定死在 AI 侧，省得三端各自解释一个 null。 |
 | `coords`      | **永远是 `null`**，是故意的。模型禁止编坐标，真实经纬度由后端 `MapPlacesClient` 查地图 API 补上。                               |
 | `type`        | 枚举：`attraction` / `restaurant` / `hotel` / `market` / `other`                                                                |
+
+### 出错：无有效信息（⭐ 2026-08-15 新增）
+
+用户输入没有任何可提取的旅行信息（全是寒暄/废话/无关内容，一个景点都找不到）时，
+`/extract-travel-info` 和 `/refine` 不会返回上面那个 `status: "OK"` 的结构，而是：
+
+```
+HTTP 422
+{ "detail": "NO_USEFUL_CONTENT: no extractable content (empty after noise filtering)" }
+```
+
+| 情况 | `detail` 前缀 |
+|---|---|
+| 用户输入没有可提取的旅行信息（废话/无关内容） | `NO_USEFUL_CONTENT:`（**422**） |
+| AI 服务/模型真的出故障（格式错误重试 3 次仍失败、Bedrock 调用异常等） | 无固定前缀（**502**） |
+
+⚠️ 跟 `/plan-itinerary` 的 `NUM_DAYS_REQUIRED:` 一样，前缀码稳定，**按前缀分支，
+不要解析整句话**（后面那句英文说明可能会改）。
+
+**触发这条分支的两种输入**（AI 侧行为，都已用 mock 验证过，见
+`ML/app/test_no_useful_content.py`）：
+
+| 输入方式 | 具体情况 | 例子 |
+|---|---|---|
+| `/refine`（多轮聊天） | 整段对话过完 `chat_filter` 降噪后变成空文本 | 全是"你好""哈哈""谢谢"这类寒暄 |
+| `/extract-travel-info`（单次粗略路线） | 文本本身非空，但模型诚实地抽不出任何目的地/地点 | "今天天气真好啊，心情也不错" |
+
+**后端需要做的**：捕获 422 + `NO_USEFUL_CONTENT:` 前缀，转成后端自己的错误响应
+（语义上是"客户端输入问题"，不是系统异常，不要按 5xx 那套告警/重试逻辑处理），
+把这个语义传给前端。
+
+**前端需要做的**：收到这个信号后，提示用户"没有识别到有效的旅行信息，请输入
+景点、目的地或行程相关内容"，让用户在原来的输入框重新填写；不要当成系统错误
+弹窗、也不要清空用户已经确认过的其它会话状态。
 
 ---
 
@@ -417,6 +568,166 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 
 ---
 
+## 5.5 第二层接口三：按天排行程（F-09）✅ 已实现（2026-08-08）
+
+**`POST /plan-itinerary`**
+
+**跟 `/recommend` 的分工（很容易混，这里说死）：**
+
+| 接口 | 管什么 | 做推荐吗 |
+|---|---|---|
+| `/recommend` | **一天**之内怎么排（`ordered_stops`）+ 推荐新地点 | ✅ 做 |
+| `/plan-itinerary` | **多天**怎么分：第 1 天去哪片区、第 2 天去哪片区 | ❌ 不做，要推荐就另调 `/recommend` |
+
+两个接口各管一件事，不绑死 —— 跟当初把 `/extract` 和 `/recommend` 拆开是同一个理由。
+
+**怎么分天**：先把所有地点用最近邻串成一条线路，再按天平均切段。所以同一片区域的
+地点会落在同一天，不会一天里横跨全岛。每一天内部照样走"下雨排室内、同时段按距离
+串线路"那套单天逻辑（直接复用 `plan_ordered_stops()`）。
+
+> **为什么不用 KMeans 聚类**（答辩大概率会问）：① 聚类不保证每天地点数均衡，
+> 真实数据容易分出"第一天 8 个、第二天 1 个"；② KMeans 有随机初始化，同样的输入
+> 可能给出不同分组，演示不稳定。切段是确定性的，且每天数量相差不超过 1。
+> 代价：切口正好落在两个挨得很近的点之间时，它们会被分到不同天 —— 不是最优分组。
+
+**代码**：[`ML/app/itinerary_planner.py`] `plan_multi_day_itinerary()`
+
+### 请求
+
+```json
+{
+  "start_date": "2026-08-09",
+  "num_days": 3,
+  "places": [
+    { "name": "Gardens by the Bay", "type": "attraction", "lat": 1.2816, "lng": 103.8636, "activities": ["photos"] },
+    { "name": "Jewel Changi Airport", "type": "attraction", "lat": 1.3601, "lng": 103.9895, "activities": ["waterfall"] }
+  ]
+}
+```
+
+| 字段 | 必填 | 说明 |
+|---|---|---|
+| `places` | 是 | 用户确认后的地点，**形状跟 `/recommend` 完全一样**，后端不用另写 DTO。带 `lat`/`lng` 才能按区域分天 |
+| `start_date` | 否 | 第 1 天的日期。传了才查天气；不传就只按距离分，`date`/`weather_summary` 全是 `null` |
+| `num_days` | **是** | 排几天，1~30。**2026-08-14 起没有默认值了**（原来漏传会默认 1），漏传直接 400。**从哪来见下面这段** |
+
+#### ⭐ `num_days` 从哪来（2026-08-14 更新，后端接 F-09 前必读）
+
+以前这里是个断头路：抽取结果里根本没有"玩几天"这个信息，后端无论怎么写都造不出
+`num_days`。**2026-08-13 在抽取那一侧补上了 `duration_days`**，**2026-08-14 又补上
+了 `needs_duration_input`**（见第 4 节字段表），现在这条路完整了。
+
+**完整流程（三端各做哪一段）：**
+
+```
+用户输入文本
+   ↓  后端调 /extract-travel-info
+duration_days = 3, needs_duration_input = false   →  后端直接用 3 当 num_days
+duration_days = null, needs_duration_input = true →  前端弹窗问"玩几天？"
+                                                     用户答 3 → 后端拿 3 当 num_days
+   ↓  后端调 /plan-itinerary（num_days 必填）
+按天排好的行程
+```
+
+⚠️ **AI 侧的原则是「不猜」**，跟 `coords` 永远返回 `null`、`dates` 不编年份是同一条：
+天数说不清就明说说不清，交给用户回答，绝不用一个看起来合理的默认值蒙混过去。所以：
+
+- **不要自己从 `dates` 反推天数** —— `["2026-08-09","2026-08-11"]` 到底是"9号到11号
+  玩3天"还是"9号和11号各去一次"，从数组本身分辨不出来，猜错了整个行程的天数就是错的
+- **不要在 `needs_duration_input == true` 时偷偷按 1 天排** —— 用户会拿到一个
+  他没要求的 1 天行程，而且没有任何地方会报错，只能靠肉眼发现
+
+下面这张表的每一行，2026-08-14 都拿**真实 Bedrock（Nova Lite）** 实跑验证过，
+不是照着 prompt 推测的行为：
+
+| 用户输入 | `duration_days` | `needs_duration_input` | 该怎么做 |
+|---|---|---|---|
+| "A 3-day Singapore trip..." | `3` | `false` | 直接 `num_days=3` |
+| "We are spending **five** days..."（英文数字） | `5` | `false` | 直接 `num_days=5` |
+| "**A week** in Singapore" | `7` | `false` | 直接 `num_days=7` |
+| 正文是 Day 1 / Day 2 / Day 3 结构 | `3` | `false` | 直接 `num_days=3` |
+| "from 2026-08-09 **to** 2026-08-11"（连续区间） | `3` | `false` | 直接 `num_days=3` |
+| "I want to visit Gardens by the Bay" | `null` | `true` | **前端弹窗问用户**，答案当 `num_days` |
+| "I want to visit **5 places**: ..." | `null` | `true` | 地点数**没有**被误当成天数 |
+| "a **200-day** trip"（超出 1~30） | `null` | `true` | 见下方「天数超范围」 |
+
+⚠️ 注意倒数第二行和第三行的区别：模型确实分得清"5 个地点"和"玩 5 天"，
+但"9号**到**11号"这种连续区间它会算成 3 天 —— 这跟"不要从 `dates` 数组反推"
+不冲突，那条禁的是**你们**拿到结构化 JSON 之后自己反推（那时区间信息已经丢了），
+而模型是在原文里直接读到"to"这个词的。
+
+**天数超范围（1~30）时会怎样**（2026-08-14 改）：降级成 `null` +
+`needs_duration_input: true`，**其余字段照常返回**，跟"没说天数"走同一条路
+（前端弹窗问用户）。
+以前是抛 schema 校验错误 -> 重试 3 次 -> 整条请求 **502**，连 `destination`
+和 `places` 一起丢掉 —— 而重试在这里注定救不回来：模型没抽错，是原文就写着 200，
+再问几次答案还是 200。用户看到的是"AI 挂了"，而不是"这个天数不支持"。
+日志里会打一行 `[duration] unusable duration_days=...`，联调时按这个关键字搜。
+
+**用户在弹窗里答完之后**，把天数交给后端有两种走法，选一种就行（AI 侧两种都支持）：
+
+1. **推荐**：前端直接把数字随 `/plan-itinerary` 的 `num_days` 传下去，不用再过 AI。
+   最省一次模型调用，也最不容易出错。
+2. 如果你们的弹窗是走多轮聊天的（把用户的回答 append 成一条 `chat_message` 再调
+   `/refine`）：也能用。`chat_filter` 的 prompt 在 2026-08-14 特意加了一条"trip length
+   经常是一条很短的独立消息（光一个 `3 days` 甚至光一个 `3`），必须原样保留"，
+   否则这种短消息会被当成寒暄过滤掉，`/refine` 出来的 `duration_days` 还是 `null`。
+
+**漏传 `num_days` 会怎样**：`/plan-itinerary` 返回 `400`，`detail` 以
+`NUM_DAYS_REQUIRED:` 开头（前缀码稳定，可以直接按前缀分支，不用解析整句话）。
+这是故意的 —— 天数是这个接口唯一说不清就没法算的参数，宁可吵也不要静默排错天数。
+
+另外注意 `PlanningService.confirmSession()` 现在写死了 `trip.setDurationDays(1)`，
+接 F-09 时这里也要跟着改成真实天数，否则库里存的还是单天行程。
+
+### 返回（下面是真实跑出来的，不是设计稿）
+
+```json
+{
+  "status": "OK",
+  "days": [
+    {
+      "day": 1,
+      "date": "2026-08-09",
+      "weather_summary": "No rain expected, good for outdoor stops",
+      "stops": [
+        { "name": "Gardens by the Bay", "type": "attraction", "lat": 1.2816, "lng": 103.8636,
+          "activities": ["photos"], "order": 1, "time_of_day": null, "is_outdoor": true,
+          "reason": "Starting point of the route." },
+        { "name": "Marina Barrage", "type": "attraction", "lat": 1.2807, "lng": 103.8713,
+          "activities": ["kite"], "order": 2, "time_of_day": null, "is_outdoor": true,
+          "reason": "About 0.9km from the previous stop, kept next to shorten the route." }
+      ]
+    },
+    { "day": 2, "date": "2026-08-10", "weather_summary": "Partly cloudy and warm", "stops": [] }
+  ]
+}
+```
+
+`stops` 里每一条的字段跟 `/recommend` 的 `ordered_stops` **一模一样**，前端那块 UI 可以直接复用。
+
+### 前端/后端要注意的降级行为
+
+| 情况 | 行为 |
+|---|---|
+| `days` 的长度 | **永远等于 `num_days`** —— 地点比天数少时，多出来的那天是 `"stops": []` 而不是被删掉，前端可以提示"这天还没安排" |
+| 每天的 `order` | **从 1 重新开始**，不是全程连续编号 |
+| 第 5 天及以后 | 官方天气只给未来 4 天，之后 `weather_summary` 是 `null`，那几天只按距离排 |
+| 没传 `start_date` | 所有 `date` / `weather_summary` / `time_of_day` 都是 `null`，纯按距离分天 |
+| 地点没有 `lat`/`lng` | 排在线路最末尾，会落到最后几天，**不会被丢掉** |
+
+### 出错
+
+| 情况 | 状态码 |
+|---|---|
+| `places` 为空 / `start_date` 格式不是 `YYYY-MM-DD` | **400** |
+| `num_days` 不在 1~30（Pydantic 拦下的） | **422** |
+| 其它内部失败 | **502** |
+
+⚠️ 参数传错是 **4xx 不是 502** —— 免得后端把"我传错了"误当成"AI 服务挂了"去排查。
+
+---
+
 ## 6. 三方分工
 
 ### 我（AI）要做的 —— ✅ 全部完成（2026-08-08）
@@ -426,13 +737,18 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 3. ✅ 天气工具 `weather.py`（data.gov.sg 的 NEA 官方接口，免费免密钥）
 4. ✅ 107 个地点的室内/室外标记，已写回 CSV 的 `indoor_outdoor` 列
 5. ✅ 组装成 agent：查天气 → 算距离 → 排顺序（`ordered_stops`）→ 推荐（`suggested_additions`）
+6. ✅ **F-09 按天拆分行程 `POST /plan-itinerary`**（2026-08-08 补做，见第 5.5 节）
 
-**测试**：31 项全过（推荐器 12、健壮性 5、行程排序 14）。
-排序那 14 项用注入的假天气测的 —— 新加坡不是天天下雨，靠真实接口测不到下雨分支。
+**测试**：83 项全过（推荐器 12、健壮性 9、行程排序 46、天数流程 16）。
+排序那些用注入的假天气测的 —— 新加坡不是天天下雨，靠真实接口测不到下雨分支。
+接口本身也起服务实跑过（mock 模式），包括 400/422 的参数校验分支。
 
 **还没做的**（不阻塞演示，记录在案）：
 - 用后端 Google API 的真实车程替换直线距离（等 `travel_matrix` 传进来，接口格式已经预留好）
-- 室内/室外标记没有人工逐条核对，LLM 判的那 22 条有错（见第 8 节）
+- 室内/室外标记：LLM 判的那 22 条已人工复核改正（2026-08-17），规则判的 85 条（79%）
+  仍未人工核对（见第 8 节）
+- 分天用的是"先串线路再切段"，不是最优分组；切口落在两个近点之间时它们会被分到不同天
+- 冲突提示（"这两个地点相隔 45 分钟车程"）还没做
 
 ### 后端要做的
 
@@ -464,6 +780,21 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 7. **`AiPlanningClient` 再加一个传聊天记录的方法**才能用 `/refine`（多轮对话完善），
    现在的 `extractTravelInfo(String, String)` 只能传一段文字。建议：
    `refineFromChat(List<ChatMessage> messages, String preferenceText)`
+
+8. **`generateDailyItinerary()` 现在可以真接了** —— `AiPlanningClientHttp.java:102` 那个
+   写死返回 `"status":"STUB"` 的方法，注释写的是"Python 侧还没实现按天排程"，
+   **这条注释已经过期了：2026-08-08 起就实现了**，改成真的 POST `/plan-itinerary`
+   就行（见第 5.5 节）。目前全后端对这个方法**零调用点**，还需要加一个 Controller
+   端点才能让前端调到。
+
+   注意现在的签名 `generateDailyItinerary(Long tripId, List<Long> confirmedPlaceIds)`
+   传的是**地点 ID**，但 Python 侧不认识你们的 ID，需要后端把 ID 查成带
+   `name`/`lat`/`lng` 的地点对象再传。建议签名改成：
+   ```java
+   Map<String, Object> generateDailyItinerary(List<PlaceDto> confirmedPlaces, String startDate, int numDays);
+   ```
+   `PlaceDto` 跟调 `/recommend` 用的是同一个，不用另写。
+   `numDays` 从 `duration_days` 来，见第 5.5 节的「`num_days` 从哪来」。
 
 **需要三方一起定**
 
@@ -587,6 +918,9 @@ uvicorn main:app --reload --app-dir ML/app --port 8001
 
 ## 9. 明确不做（v1 范围外）
 
-- 按天排行程（第一天去哪、第二天去哪）—— 组长的例子是单天场景，先不做
 - 具体到几点几分的排程 —— 数据集没有营业时间，排出来是编的
 - 餐厅、酒店推荐 —— 数据集里没有这类数据
+
+> ~~按天排行程（第一天去哪、第二天去哪）~~ —— **2026-08-08 已实现**，见第 5.5 节
+> `POST /plan-itinerary`。原来按组长的单天例子定的范围，后来对照 backlog 发现
+> F-09 本身就是"按天划分的行程"，属于 Must，所以补上了。

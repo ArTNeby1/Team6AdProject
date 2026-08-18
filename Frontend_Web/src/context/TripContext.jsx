@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import api from '../services/api';
 import { useAuth } from './AuthContext';
 
@@ -11,6 +12,7 @@ export const TripProvider = ({ children }) => {
   const [trips, setTrips] = useState([]);
   const [activeTripId, setActiveTripId] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (user) {
@@ -23,46 +25,83 @@ export const TripProvider = ({ children }) => {
 
   const fetchTrips = async () => {
     setLoading(true);
+    setError(null);
     try {
       const response = await api.get('/trips');
+      // Normalize data from backend to frontend state
       const mappedTrips = response.data.map(t => ({
         id: t.id.toString(),
         title: t.tripName,
         date: t.startDate || 'TBD',
         status: t.status || 'NOT_STARTED',
-        progress: 0,
+        progress: t.status === 'FINISHED' ? 1 : (t.status === 'ACTIVE' ? 0.5 : 0),
         shortName: t.tripName.substring(0, 2).toUpperCase(),
         dayCount: t.durationDays || 1,
-        coverImage: t.coverImage,
         locations: t.schedules ? t.schedules.map(s => ({
           id: s.id.toString(),
           name: s.destination.name,
           day: s.tripDay?.daySequence || 1,
-          time: s.startTime || '09:00',
+          // Backend serializes LocalTime as "HH:mm:ss" — trim to "HH:mm" for display/editing
+          // (EditPage.jsx's time input expects that shape too).
+          time: s.startTime ? s.startTime.slice(0, 5) : '09:00',
           activityType: s.activityType || 'Visit',
           duration: s.plannedDurationMinutes ? (s.plannedDurationMinutes / 60).toFixed(1) : '1.5',
           transport: '🚕 TBD',
-          lat: s.destination.latitude,
-          lng: s.destination.longitude
+          lat: s.destination.latitude || 0,
+          lng: s.destination.longitude || 0,
+          // trip_schedule.is_locked (2026-08-16): true once the user hand-types a start
+          // time on EditPage.jsx — a drag-and-drop reorder's auto-cascaded times skip
+          // locked stops instead of overwriting a time picked on purpose.
+          timeLocked: !!s.locked
         })) : []
       }));
+
       setTrips(mappedTrips);
       if (mappedTrips.length > 0 && !activeTripId) {
         setActiveTripId(mappedTrips[0].id);
       }
-    } catch (error) {
-      console.error('Failed to fetch trips:', error);
+    } catch (err) {
+      console.error('Failed to fetch trips:', err);
+      setError(err.message || 'Failed to load trips');
     } finally {
       setLoading(false);
     }
   };
 
   const getActiveTrip = () => trips.find(t => t.id === activeTripId) || trips[0];
+  const getTripById = (id) => trips.find(t => t.id === id?.toString());
+
+  const deleteTrip = async (tripId) => {
+    try {
+      await api.delete(`/trips/${tripId}`);
+      setTrips(prev => prev.filter(t => t.id !== tripId));
+      if (activeTripId === tripId) {
+        setActiveTripId(null);
+      }
+    } catch (err) {
+      console.error('Failed to delete trip:', err);
+      throw err;
+    }
+  };
+
+  // Deletes a whole day (not just its stops) — backend shifts every later day down by one
+  // and shrinks trip.duration_days to match (DELETE /trips/{id}/days/{daySequence}), so a
+  // full refetch is needed rather than a local splice: every day after the deleted one has
+  // a new daySequence, and EditPage.jsx's day-section rendering keys off that field.
+  const deleteDay = async (tripId, daySequence) => {
+    try {
+      await api.delete(`/trips/${tripId}/days/${daySequence}`);
+      await fetchTrips();
+    } catch (error) {
+      console.error('Failed to delete day:', error);
+      throw error;
+    }
+  };
 
   const createNewTrip = async (locationNames, preferences = {}) => {
     try {
       const response = await api.post('/trips', {
-        tripName: 'New Trip',
+        tripName: 'Newly Imported Trip',
         startDate: new Date().toISOString().split('T')[0],
         durationDays: 1,
         travelStyle: preferences.travelStyle,
@@ -93,20 +132,31 @@ export const TripProvider = ({ children }) => {
     }
   };
 
-  const updateTripCover = async (tripId, imageUrl) => {
+  const updateTripDate = async (tripId, newDate) => {
     try {
-      await api.put(`/trips/${tripId}`, { coverImage: imageUrl });
-      setTrips(prev => prev.map(t => t.id === tripId ? { ...t, coverImage: imageUrl } : t));
+      await api.put(`/trips/${tripId}`, { startDate: newDate });
+      // We trigger a full refresh to let the backend/context re-derive the status
+      // (Active vs Upcoming) based on the new date.
+      await fetchTrips();
     } catch (error) {
-      console.error('Failed to update cover:', error);
+      console.error('Failed to update date:', error);
+      alert('Failed to update start date');
     }
   };
 
-  const addLocationsToTripDay = async (tripId, day, locationNames) => {
+  const addLocationsToTripDay = async (tripId, day, locationNames, nearCoords) => {
+    if (!locationNames || locationNames.length === 0) return;
     try {
+      // Backend expects 'day' and 'locationNames' (matching AddTripScheduleRequest).
+      // nearCoords ({lat, lng}) is optional and only honored for a single-location add —
+      // it tells the backend to insert the new stop next to whichever existing stop is
+      // geographically closest, instead of always appending at the end of the day (used
+      // for "+ Add" on an AI-recommended nearby place, so it lands next to the place it
+      // was actually recommended for being near).
       await api.post(`/trips/${tripId}/schedules`, {
         day: parseInt(day),
-        locationNames
+        locationNames: locationNames,
+        ...(nearCoords ? { nearLatitude: nearCoords.lat, nearLongitude: nearCoords.lng } : {})
       });
       await fetchTrips();
     } catch (error) {
@@ -116,24 +166,94 @@ export const TripProvider = ({ children }) => {
 
   const saveTripEdits = async (tripId, newLocations, newDayCount) => {
     try {
-      // In a full sync, you might call multiple endpoints or a bulk update
-      // For now, updating the metadata
+      setLoading(true);
       await api.put(`/trips/${tripId}`, { durationDays: newDayCount });
 
-      // Ideally, a specialized bulk schedule update endpoint would be called here
-      // await api.put(`/trips/${tripId}/schedules/bulk`, { schedules: newLocations });
+      // EditPage.jsx's "Delete" only drops the item from local draft state — the schedule
+      // still exists in the DB until we explicitly delete it here. bulkUpdateSchedules only
+      // reorders/moves schedules whose ids are IN the request, it was never told to remove
+      // ones that are missing, so deleted locations kept reappearing after Save.
+      const originalTrip = trips.find(t => t.id === tripId);
+      const newIds = new Set(newLocations.map(loc => loc.id?.toString()));
+      const removedIds = (originalTrip?.locations || [])
+        .map(loc => loc.id?.toString())
+        .filter(id => id && !newIds.has(id) && !id.startsWith('manual-'));
+      for (const id of removedIds) {
+        await api.delete(`/trips/${tripId}/schedules/${id}`);
+      }
+
+      // "Add attraction manually" (EditPage.jsx handleManualAdd) only ever created a local
+      // draft item with a temp "manual-<timestamp>" id — it was never actually POSTed to the
+      // backend, so it silently vanished on the next fetch even though Save looked successful.
+      // Create each one now via the existing add-schedules endpoint (grouped by day, in the
+      // order they appear locally — handleManualAdd always appends, so this matches), then
+      // splice the real created schedule back in place of its temp entry so the reorder/time
+      // pass below can pick it up like any other schedule.
+      const manualItems = newLocations.filter(loc => loc.id?.toString().startsWith('manual-'));
+      let resolvedLocations = newLocations;
+      if (manualItems.length > 0) {
+        const manualByDay = {};
+        manualItems.forEach((loc) => (manualByDay[loc.day] ||= []).push(loc));
+
+        const createdByTempId = {};
+        for (const [day, locs] of Object.entries(manualByDay)) {
+          const response = await api.post(`/trips/${tripId}/schedules`, {
+            day: parseInt(day, 10),
+            locationNames: locs.map((loc) => loc.name),
+          });
+          // addSchedules appends in locationNames order, so the last N schedules for this
+          // day (N = locs.length) are the ones we just created, in the same order.
+          const daySchedules = (response.data.schedules || [])
+            .filter((s) => s.tripDay?.daySequence === parseInt(day, 10));
+          const created = daySchedules.slice(-locs.length);
+          locs.forEach((loc, idx) => {
+            if (created[idx]) createdByTempId[loc.id] = created[idx].id.toString();
+          });
+        }
+
+        resolvedLocations = newLocations.map((loc) =>
+          createdByTempId[loc.id] ? { ...loc, id: createdByTempId[loc.id] } : loc
+        );
+      }
+
+      // Reassign sequence per day, in array order, so drag-and-drop reordering from
+      // EditPage.jsx actually survives a refresh instead of only updating durationDays.
+      // startTime: EditPage.jsx's time input only ever updated local draft state — nothing
+      // sent it to the backend, so an edited time always reverted on the next fetch even
+      // though Save otherwise "succeeded" (the reorder/durationDays part did go through).
+      const scheduleByDay = {};
+      resolvedLocations
+        .filter(loc => !loc.id?.toString().startsWith('manual-'))
+        .forEach((loc) => {
+          (scheduleByDay[loc.day] ||= []).push(loc);
+        });
+      const schedules = Object.entries(scheduleByDay).flatMap(([day, locs]) =>
+        locs.map((loc, idx) => ({
+          id: parseInt(loc.id, 10),
+          day: parseInt(day, 10),
+          sequence: idx + 1,
+          startTime: loc.time || null,
+          locked: !!loc.timeLocked
+        }))
+      );
+      if (schedules.length > 0) {
+        await api.put(`/trips/${tripId}/schedules/bulk`, { schedules });
+      }
 
       await fetchTrips();
     } catch (error) {
       console.error('Failed to save edits:', error);
+      throw error;
+    } finally {
+      setLoading(false);
     }
   };
 
   const addDayToTrip = async (tripId) => {
     const trip = trips.find(t => t.id === tripId);
     if (!trip) return;
-    const newDayCount = trip.dayCount + 1;
     try {
+      const newDayCount = trip.dayCount + 1;
       await api.put(`/trips/${tripId}`, { durationDays: newDayCount });
       await fetchTrips();
     } catch (error) {
@@ -144,11 +264,20 @@ export const TripProvider = ({ children }) => {
   const fetchAttractionData = async (name) => {
     try {
       const response = await api.get(`/destinations?q=${encodeURIComponent(name)}`);
-      return response.data[0]; // Return the first match
+      return response.data[0];
     } catch (error) {
-      console.error('Failed to fetch attraction:', error);
+      console.error('Failed to fetch destination info:', error);
       return null;
     }
+  };
+
+  const removeLocationFromActive = (id) => {
+    setTrips(prev => prev.map(trip => {
+      if (trip.id === activeTripId) {
+        return { ...trip, locations: trip.locations.filter(l => l.id !== id) };
+      }
+      return trip;
+    }));
   };
 
   return (
@@ -157,17 +286,29 @@ export const TripProvider = ({ children }) => {
       activeTripId,
       setActiveTripId,
       getActiveTrip,
+      getTripById,
       addDayToTrip,
+      deleteDay,
+      saveTripEdits,
       createNewTrip,
       updateTripTitle,
+      updateTripDate,
       addLocationsToTripDay,
-      updateTripCover,
       fetchAttractionData,
-      saveTripEdits,
       loading,
-      fetchTrips
+      loadingTrips: loading,
+      fetchTrips,
+      refreshTrips: fetchTrips,
+      error,
+      tripsError: error,
+      removeLocationFromActive,
+      deleteTrip
     }}>
       {children}
     </TripContext.Provider>
   );
+};
+
+TripProvider.propTypes = {
+  children: PropTypes.node.isRequired,
 };

@@ -7,16 +7,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -24,59 +20,43 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private data class DestinationPreview(
+data class ExploreCity(
     val city: String,
     val detail: String,
+    val description: String,
+    val latitude: Double,
+    val longitude: Double,
+    val imageUrl: String,
     val colors: List<Color>
 )
 
-private val destinationPreviews = listOf(
-    DestinationPreview(
-        city = "Chiang Mai",
-        detail = "Temples & markets",
-        colors = listOf(Color(0xFF48785E), Color(0xFFB8C7A3))
-    ),
-    DestinationPreview(
-        city = "Kyoto",
-        detail = "Culture & gardens",
-        colors = listOf(Color(0xFF9A574A), Color(0xFFE5B58D))
-    ),
-    DestinationPreview(
-        city = "Bali",
-        detail = "Coast & wellness",
-        colors = listOf(Color(0xFF34777C), Color(0xFF92C6B8))
-    )
-)
-
 @Composable
-fun HomeScreen(onStartPlanning: () -> Unit) {
-    var searchQuery by remember { mutableStateOf("") }
-
+fun HomeScreen(
+    onStartPlanning: () -> Unit,
+    onViewTrip: () -> Unit,
+    onViewAllTrips: () -> Unit,
+    tripName: String?,
+    tripDayCount: Int,
+    tripStopCount: Int
+) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -107,62 +87,30 @@ fun HomeScreen(onStartPlanning: () -> Unit) {
             }
         }
 
-        item {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                leadingIcon = {
-                    Icon(Icons.Default.Search, contentDescription = null)
-                },
-                placeholder = { Text("Search destinations or trips") },
-                shape = RoundedCornerShape(18.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    unfocusedBorderColor = Color.Transparent,
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                    focusedContainerColor = MaterialTheme.colorScheme.surface
-                )
-            )
-        }
-
         item { AiPlannerCard(onStartPlanning) }
 
         item {
-            SectionHeader(title = "My trips", action = "View all")
+            SectionHeader(title = "My trips", action = "View all", onAction = onViewAllTrips)
         }
 
         item {
-            CurrentTripCard(onClick = onStartPlanning)
-        }
-
-        item {
-            SectionHeader(title = "Explore next", action = "See more")
-        }
-
-        item {
-            val filtered = destinationPreviews.filter {
-                searchQuery.isBlank() || it.city.contains(searchQuery, ignoreCase = true)
-            }
-            if (filtered.isEmpty()) {
-                Text(
-                    text = "No matching destinations yet.",
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+            if (tripName != null) {
+                CurrentTripCard(
+                    tripName = tripName,
+                    dayCount = tripDayCount,
+                    stopCount = tripStopCount,
+                    onClick = onViewTrip
                 )
             } else {
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(filtered) { destination ->
-                        DestinationCard(destination, onClick = onStartPlanning)
-                    }
-                }
+                Text(
+                    text = "No saved trips yet. Import a guide to start one.",
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+                )
             }
         }
+
     }
 }
-
 @Composable
 private fun AiPlannerCard(onStartPlanning: () -> Unit) {
     Card(
@@ -231,24 +179,32 @@ private fun AiPlannerCard(onStartPlanning: () -> Unit) {
 }
 
 @Composable
-private fun SectionHeader(title: String, action: String) {
+private fun SectionHeader(
+    title: String,
+    action: String? = null,
+    onAction: (() -> Unit)? = null
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Text(
-            text = action,
-            color = MaterialTheme.colorScheme.primary,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold
-        )
+        if (action != null && onAction != null) {
+            TextButton(onClick = onAction) {
+                Text(
+                    text = action,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun CurrentTripCard(onClick: () -> Unit) {
+private fun CurrentTripCard(tripName: String, dayCount: Int, stopCount: Int, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -284,7 +240,7 @@ private fun CurrentTripCard(onClick: () -> Unit) {
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text("Chiang Mai", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text(tripName, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         Icons.Default.CalendarMonth,
@@ -294,24 +250,9 @@ private fun CurrentTripCard(onClick: () -> Unit) {
                     )
                     Spacer(Modifier.width(5.dp))
                     Text(
-                        "3 days · 4 saved stops",
+                        "$dayCount ${if (dayCount == 1) "day" else "days"} · $stopCount saved stops",
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
                         fontSize = 13.sp
-                    )
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(7.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.secondary)
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        "Draft itinerary",
-                        color = MaterialTheme.colorScheme.secondary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
                     )
                 }
             }
@@ -319,49 +260,6 @@ private fun CurrentTripCard(onClick: () -> Unit) {
                 Icons.AutoMirrored.Filled.ArrowForward,
                 contentDescription = "Open trip",
                 tint = MaterialTheme.colorScheme.primary
-            )
-        }
-    }
-}
-
-@Composable
-private fun DestinationCard(destination: DestinationPreview, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier
-            .width(168.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(1.5f)
-                .background(Brush.linearGradient(destination.colors)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Default.LocationOn,
-                contentDescription = null,
-                tint = Color.White.copy(alpha = 0.9f),
-                modifier = Modifier.size(32.dp)
-            )
-        }
-        Column(Modifier.padding(13.dp)) {
-            Text(
-                text = destination.city,
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = destination.detail,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                fontSize = 12.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
             )
         }
     }

@@ -15,7 +15,9 @@ from content_recommender import _load_dataset, recommend_from_dataset  # noqa: E
 
 
 def expect(name, condition):
+    # 原本只打印，接进 CI 的 pytest 后补 assert，不然条件为假 pytest 也会显示通过。
     print(f"[{'PASS' if condition else 'FAIL'}] {name}")
+    assert condition, name
 
 
 def test_dataset_loaded():

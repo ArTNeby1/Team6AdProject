@@ -59,6 +59,10 @@ CRITICAL RULES:
    Only leave it empty when the text says nothing about what they do there.
 4. The input may be in Chinese or English. Keep place names in their original language.
 5. Never invent coordinates. Always output "coords": null.
+6. If the text contains no real destination, place, or attraction at all (e.g. it
+   is greetings, small talk, complaints, or content unrelated to travel), output
+   "places": [] and "destination": "". Do NOT invent a place or destination just
+   to make the output non-empty.
 
 JSON Schema:
 {schema}

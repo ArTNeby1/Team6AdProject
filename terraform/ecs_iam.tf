@@ -45,7 +45,8 @@ resource "aws_iam_role_policy" "ecs_task_execution_secrets" {
         Action = ["secretsmanager:GetSecretValue"]
         Resource = [
           aws_secretsmanager_secret.db.arn,
-          aws_secretsmanager_secret.jwt.arn
+          aws_secretsmanager_secret.jwt.arn,
+          aws_secretsmanager_secret.google_maps.arn
         ]
       }
     ]
@@ -87,6 +88,28 @@ resource "aws_iam_role_policy" "ecs_task_ml_bedrock" {
         # Foundation model 不属于某个账号，ARN 里没有 account id；
         # 先放开到所有 region/模型，等选定具体模型了再收紧到具体 model ARN。
         Resource = "arn:aws:bedrock:*::foundation-model/*"
+      }
+    ]
+  })
+}
+
+# 跨账号调 Bedrock：实际的 InvokeModel 权限来自 483528439116 账号里那个角色，
+# 这里只需要允许本账号的 ML task role 去 AssumeRole。上面那条同账号的
+# bedrock-invoke 保留着不删 —— 万一以后本账号自己开通了 Model access，
+# 把 bedrock_assume_role_arn 置空就能直接切回同账号调用，不用改 IAM。
+resource "aws_iam_role_policy" "ecs_task_ml_assume_bedrock" {
+  count = var.bedrock_assume_role_arn == "" ? 0 : 1
+
+  name = "assume-cross-account-bedrock"
+  role = aws_iam_role.ecs_task_ml.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "sts:AssumeRole"
+        Resource = var.bedrock_assume_role_arn
       }
     ]
   })

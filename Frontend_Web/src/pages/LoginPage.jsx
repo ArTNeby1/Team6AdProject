@@ -73,12 +73,12 @@ const LoginPage = () => {
           </form>
 
           <div className="auth-footer">
-            Don't have an account? <Link to="/register">Register Now</Link>
+            Don&apos;t have an account? <Link to="/register">Register Now</Link>
           </div>
 
           <div className="auth-hint">
-             <p>Use an account registered via the Register page.</p>
-             <p>Password must be at least 8 characters.</p>
+             <p>Demo Account: 1260892734@qq.com</p>
+             <p>Demo Password: 123456</p>
           </div>
         </div>
       </div>

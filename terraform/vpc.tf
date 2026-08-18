@@ -58,3 +58,9 @@ resource "aws_route_table_association" "public" {
   subnet_id      = aws_subnet.public[count.index].id
   route_table_id = aws_route_table.public.id
 }
+
+# VPC 创建时 AWS 自动带一个 default 安全组，出厂设置是组内互相全放行，
+# Checkov CKV2_AWS_12 要求把它收口成不放行任何流量，接管过来清空 ingress/egress。
+resource "aws_default_security_group" "default" {
+  vpc_id = aws_vpc.main.id
+}

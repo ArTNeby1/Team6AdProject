@@ -24,6 +24,13 @@ from pydantic import BaseModel, Field
 # 不是"每条文字最多几个字"，那是另一回事。
 ActivityText = Annotated[str, Field(max_length=255)]
 
+# 行程天数的合法范围，跟 itinerary_planner.MAX_DAYS 对齐。
+# 单独提成常量而不是直接写在 Field(ge=1, le=30) 里：extraction.py 里"把超出范围的
+# 天数归零成 null"那一步要用同一个范围，两处各写一遍死数字的话，以后改上限只改了
+# 一处就会出现"schema 拒绝但归零逻辑不认"的错位。
+MIN_DURATION_DAYS = 1
+MAX_DURATION_DAYS = 30
+
 
 class Coords(BaseModel):
     lat: float
@@ -60,7 +67,33 @@ class TripExtraction(BaseModel):
         "If the text only says Day 1 / Day 2 with no real dates, return an empty array. "
         "Never invent a year.",
     )
-    places: list[Place] = Field(min_length=1, description="Every place mentioned in the text")
+    # 为什么单独加这个字段，而不是让下游从 dates 推算：dates 是"文中明确写出的日历
+    # 日期"，["2026-08-09", "2026-08-11"] 到底是"9号到11号玩3天"还是"9号和11号各去
+    # 一次"，从数组本身分辨不出来。而 /plan-itinerary 的 num_days 必须是个确定的数，
+    # 猜错了整个行程的天数就是错的。所以让模型直接抽"文本说玩几天"这件事本身，
+    # 抽不到就是 None —— 跟 coords/dates 一样，宁可为空也不编。
+    # 上限 30 对齐 itinerary_planner.MAX_DAYS，免得抽出个 200 天传下去才被拒。
+    duration_days: Optional[int] = Field(
+        default=None,
+        ge=MIN_DURATION_DAYS,
+        le=MAX_DURATION_DAYS,
+        description="Total number of days the whole trip lasts, if the text states it "
+        "(e.g. 'a 3-day trip', or the text is organised as Day 1 / Day 2 / Day 3). "
+        "Never guess or infer this from the number of places: return null when the "
+        "text does not say how long the trip is.",
+    )
+    # 2026-08-14 起允许空列表：以前 min_length=1 逼着模型在"文本压根没提地点"时
+    # 要么编一个地方出来、要么校验失败触发 3 次白费的重试，最后还是 502。
+    # 跟 coords/dates/duration_days 一样的原则——宁可为空也不编：真的没有就让
+    # extract_with_retry 一次成功返回 places=[]，orchestrator.run_extraction()
+    # 把"抽到了但地点是空的"识别成 NO_USEFUL_CONTENT，直接告诉用户重新输入，
+    # 不用再靠重试碰运气。
+    places: list[Place] = Field(
+        default_factory=list,
+        description="Every place mentioned in the text. Return an empty list when the "
+        "text contains no actual destination, place, or attraction to extract — never "
+        "invent one just to make this list non-empty.",
+    )
 
 
 if __name__ == "__main__":

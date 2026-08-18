@@ -1,4 +1,5 @@
 import React from 'react';
+import PropTypes from 'prop-types';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAdminAuth } from './AdminAuthContext';
 
@@ -16,3 +17,7 @@ export default function AdminProtectedRoute({ children }) {
   }
   return children;
 }
+
+AdminProtectedRoute.propTypes = {
+  children: PropTypes.node.isRequired,
+};

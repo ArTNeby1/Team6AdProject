@@ -36,6 +36,21 @@ loomytrip:
   ai:
     # ML/app 那个 FastAPI 服务的地址（uvicorn main:app --app-dir ML/app --port 8001）
     base-url: ${AI_SERVICE_BASE_URL:http://localhost:8001}
+  map:
+    # Photon is the primary geocoder: public Nominatim often blocks AWS ECS IPs,
+    # which made every online validate-places call mark landmarks as INVALID.
+    photon-base-url: ${PHOTON_BASE_URL:https://photon.komoot.io}
+    nominatim-base-url: ${NOMINATIM_BASE_URL:https://nominatim.openstreetmap.org}
+    tile-url-template: ${MAP_TILE_URL_TEMPLATE:https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png}
+    attribution: ${MAP_ATTRIBUTION:© OpenStreetMap contributors}
+    default-latitude: ${MAP_DEFAULT_LAT:1.3521}
+    default-longitude: ${MAP_DEFAULT_LNG:103.8198}
+    default-zoom: ${MAP_DEFAULT_ZOOM:12}
+  routing:
+    # Google Routes API key (F-14, 2026-08-16) — driving/walking/transit/bicycling ETAs
+    # between consecutive stops. Blank (unset) degrades gracefully to a Haversine
+    # straight-line estimate per mode, see RoutingClientHttp — never fails the request.
+    google-maps-api-key: ${GOOGLE_MAPS_API_KEY:}
 
 logging:
   level:

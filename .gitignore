@@ -3,6 +3,9 @@
 *.iml
 .vscode/
 .DS_Store
+
+# Office temp / lock files (e.g. ~$工作簿.xlsx) created while a doc is open
+~$*
 Thumbs.db
 
 # Android / Gradle
@@ -23,6 +26,7 @@ pytest-cache-files-*/
 
 # Java / Maven (also ignored under backend/)
 **/target/
+backend/.idea-lib/
 
 # Local env / secrets
 .env
@@ -38,3 +42,10 @@ notes/
 node_modules/
 dist/
 .eslintcache
+
+# Test coverage reports (generated)
+coverage/
+coverage_html/
+.coverage
+ML/results.xml
+ML/coverage.xml

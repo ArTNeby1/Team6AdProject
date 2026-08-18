@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mail
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -38,11 +39,13 @@ import androidx.compose.ui.unit.sp
 
 @Composable
 fun LoginScreen(
-    onLogin: (String) -> Unit,
-    onCreateAccount: () -> Unit
+    onLogin: (String, String) -> Unit,
+    onCreateAccount: () -> Unit,
+    isLoading: Boolean = false,
+    serverError: String? = null
 ) {
-    var email by remember { mutableStateOf("traveler@loomytrip.com") }
-    var password by remember { mutableStateOf("loomytrip") }
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
 
     AuthPage(
@@ -70,20 +73,22 @@ fun LoginScreen(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             shape = RoundedCornerShape(16.dp)
         )
-        error?.let {
+        (error ?: serverError)?.let {
             Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
         }
         Button(
+            enabled = !isLoading,
             onClick = {
                 if (!email.contains("@") || password.length < 6) {
                     error = "Enter a valid email and a password of at least 6 characters."
                 } else {
-                    onLogin(email)
+                    error = null
+                    onLogin(email, password)
                 }
             },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Sign in", fontWeight = FontWeight.Bold)
+            Text(if (isLoading) "Signing in..." else "Sign in", fontWeight = FontWeight.Bold)
         }
         OutlinedButton(
             onClick = onCreateAccount,
@@ -91,23 +96,21 @@ fun LoginScreen(
         ) {
             Text("Create an account")
         }
-        Text(
-            text = "Demo login: any email and password will work.",
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
-            fontSize = 12.sp,
-            lineHeight = 17.sp
-        )
     }
 }
 
 @Composable
 fun RegisterScreen(
-    onRegister: (String) -> Unit,
-    onBackToLogin: () -> Unit
+    onRegister: (String, String, String, Int, String) -> Unit,
+    onBackToLogin: () -> Unit,
+    isLoading: Boolean = false,
+    serverError: String? = null
 ) {
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var age by remember { mutableStateOf("") }
+    var gender by remember { mutableStateOf("Male") }
     var error by remember { mutableStateOf<String?>(null) }
 
     AuthPage(
@@ -142,23 +145,51 @@ fun RegisterScreen(
             leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            supportingText = { Text("At least 6 characters") },
+            supportingText = { Text("At least 8 characters") },
             shape = RoundedCornerShape(16.dp)
         )
-        error?.let {
+        OutlinedTextField(
+            value = age,
+            onValueChange = { value ->
+                if (value.length <= 3 && value.all(Char::isDigit)) age = value
+                error = null
+            },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            label = { Text("Age") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            shape = RoundedCornerShape(16.dp)
+        )
+        Text("Gender", fontWeight = FontWeight.Medium)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf("Male", "Female", "Other").forEach { option ->
+                FilterChip(
+                    selected = gender == option,
+                    onClick = { gender = option; error = null },
+                    label = { Text(option) }
+                )
+            }
+        }
+        (error ?: serverError)?.let {
             Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
         }
         Button(
+            enabled = !isLoading,
             onClick = {
-                if (name.isBlank() || !email.contains("@") || password.length < 6) {
-                    error = "Complete all fields with a valid email and password."
+                val parsedAge = age.toIntOrNull()
+                if (name.isBlank() || !email.contains("@") || password.length < 8 || parsedAge !in 1..120) {
+                    error = "Complete all fields with a valid email, age and a password of at least 8 characters."
                 } else {
-                    onRegister(email)
+                    error = null
+                    onRegister(name, email, password, requireNotNull(parsedAge), gender)
                 }
             },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Create account", fontWeight = FontWeight.Bold)
+            Text(if (isLoading) "Creating account..." else "Create account", fontWeight = FontWeight.Bold)
         }
         OutlinedButton(
             onClick = onBackToLogin,

@@ -9,11 +9,13 @@ on:
     branches: [ main ]
     paths:
       - 'terraform/**'
+  workflow_dispatch: {}
 
 permissions:
   id-token: write
   contents: read
   pull-requests: write
+  security-events: write # 上传 SARIF 到 Security 标签页要用
 
 jobs:
   # ============================================================
@@ -21,7 +23,7 @@ jobs:
   # ============================================================
   terraform-plan:
     name: Terraform Plan
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -48,12 +50,24 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
+      # checkov-action 是 uses: 步骤，不受这个 job 的 defaults.working-directory 影响
+      # （那个只对 run: 步骤生效），所以 output_file_path 是相对仓库根目录写的，
+      # 下面 upload-sarif 引用同一个路径。
       - name: IaC 安全扫描（Checkov）
         uses: bridgecrewio/checkov-action@v12
         with:
           directory: ./terraform
           framework: terraform
+          output_format: cli,sarif
+          output_file_path: console,checkov-results.sarif
         continue-on-error: true
+
+      - name: 上传 SARIF 到 Security 标签页
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: checkov-results.sarif
+          category: checkov
 
       - name: Terraform Plan
         run: terraform plan -no-color -out=tfplan
@@ -62,6 +76,7 @@ jobs:
         run: terraform show -no-color tfplan > plan.txt
 
       - name: 把 Plan 结果写到 PR 评论里
+        if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
           script: |
@@ -88,6 +103,11 @@ jobs:
     defaults:
       run:
         working-directory: ./terraform
+    env:
+      # RoutingClientHttp（Java 后端）调 Google Routes API 用的 key，写进
+      # Secrets Manager（见 rds.tf 的 google_maps 那两个资源）。留空的话
+      # ECS 任务就不会挂 GOOGLE_MAPS_API_KEY，降级用直线距离估算。
+      TF_VAR_google_maps_api_key: ${{ secrets.GOOGLE_MAPS_ROUTES_API_KEY }}
 
     steps:
       - uses: actions/checkout@v4
