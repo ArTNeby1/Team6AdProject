@@ -6,7 +6,12 @@
     <title>LoomyTrip</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <!-- integrity 是照 Chrome 实际收到的响应算的 sha384——Google Fonts 这个接口会按浏览器
+         User-Agent 返回不同内容（WOFF2 支持与否等），换个 UA 拿到的字节可能不一样，
+         其他浏览器如果对不上这个 hash 会导致这几款字体静默加载失败，不会报错但样式会退回
+         系统默认字体。部署后建议实际用 Firefox/Safari 打开页面确认字体正常，
+         DevTools 控制台没有 integrity 相关的报错。 -->
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" integrity="sha384-WQp0TPBQ5pvKq9qOH4jTC4CVwJBA0chhW5CmeEph2c6E40xH8lfft64KO+vkmdTh" crossorigin="anonymous">
   </head>
   <body>
     <div id="root"></div>
