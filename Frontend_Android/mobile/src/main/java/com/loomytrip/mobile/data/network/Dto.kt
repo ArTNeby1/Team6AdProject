@@ -36,6 +36,18 @@ data class UpdateUserProfileRequest(
     val gender: String
 )
 
+/** A persistent in-app message created by Backend for an import result. */
+data class UserNotificationDto(
+    val id: Long,
+    val type: String,
+    val title: String,
+    val body: String,
+    val planningSessionId: Long? = null,
+    val tripId: Long? = null,
+    val readAt: String? = null,
+    val createdAt: String? = null
+)
+
 data class DestinationDto(
     val id: Long? = null,
     val name: String,

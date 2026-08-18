@@ -162,6 +162,14 @@ interface UserApi {
     suspend fun updateMyProfile(@Body request: UpdateUserProfileRequest): UserProfileDto
 }
 
+interface NotificationApi {
+    @GET("notifications")
+    suspend fun getNotifications(@Query("unreadOnly") unreadOnly: Boolean = false): List<UserNotificationDto>
+
+    @POST("notifications/{id}/read")
+    suspend fun markRead(@Path("id") notificationId: Long): UserNotificationDto
+}
+
 interface MapApi {
     @GET("map/config")
     suspend fun getConfig(): MapConfigDto
@@ -214,3 +222,4 @@ val tripApi: TripApi by lazy { retrofit.create(TripApi::class.java) }
 val planningApi: PlanningApi by lazy { retrofit.create(PlanningApi::class.java) }
 val userApi: UserApi by lazy { retrofit.create(UserApi::class.java) }
 val mapApi: MapApi by lazy { retrofit.create(MapApi::class.java) }
+val notificationApi: NotificationApi by lazy { retrofit.create(NotificationApi::class.java) }

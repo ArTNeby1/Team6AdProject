@@ -15,9 +15,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material3.BottomAppBar
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -67,6 +70,7 @@ import com.loomytrip.mobile.data.network.MapConfigDto
 import com.loomytrip.mobile.data.network.NearbyRecommendationDto
 import com.loomytrip.mobile.data.network.PlanningSessionSummaryDto
 import com.loomytrip.mobile.data.network.TripRouteDto
+import com.loomytrip.mobile.data.network.UserNotificationDto
 import com.loomytrip.mobile.data.network.UserProfileDto
 import com.loomytrip.mobile.data.repository.AiPlanningRepository
 import com.loomytrip.mobile.data.repository.AuthRepository
@@ -76,6 +80,7 @@ import com.loomytrip.mobile.data.repository.MapRepository
 import com.loomytrip.mobile.data.repository.LocalDestination
 import com.loomytrip.mobile.data.repository.LocalExploreRepository
 import com.loomytrip.mobile.data.repository.MockTripRepository
+import com.loomytrip.mobile.data.repository.NotificationRepository
 import com.loomytrip.mobile.data.repository.ProfileRepository
 import com.loomytrip.mobile.data.repository.TripSyncRepository
 import com.loomytrip.mobile.ui.screen.CityExploreScreen
@@ -87,6 +92,7 @@ import com.loomytrip.mobile.ui.screen.ImportGuideScreen
 import com.loomytrip.mobile.ui.screen.LoginScreen
 import com.loomytrip.mobile.ui.screen.MapScreen
 import com.loomytrip.mobile.ui.screen.MapTripOption
+import com.loomytrip.mobile.ui.screen.NotificationScreen
 import com.loomytrip.mobile.ui.screen.RegisterScreen
 import com.loomytrip.mobile.ui.screen.ReviewExtractedScreen
 import com.loomytrip.mobile.ui.screen.RouteScreen
@@ -106,6 +112,7 @@ private enum class Destination(val route: String, val label: String) {
     Place("place", "Place Details"),
     Trips("trips", "My Itineraries"),
     Itinerary("itinerary", "Itinerary Details"),
+    Notifications("notifications", "Notifications"),
     Map("map", "Map"),
     Edit("edit", "Edit Itinerary"),
     Profile("profile", "Profile")
@@ -167,6 +174,9 @@ fun LoomyTripApp() {
     val planningHistory = remember { mutableStateListOf<PlanningSessionSummaryDto>() }
     var planningHistoryLoading by remember { mutableStateOf(false) }
     var planningHistoryError by remember { mutableStateOf<String?>(null) }
+    val notifications = remember { mutableStateListOf<UserNotificationDto>() }
+    var notificationsLoading by remember { mutableStateOf(false) }
+    var notificationsError by remember { mutableStateOf<String?>(null) }
     var itineraryGenerating by remember { mutableStateOf(false) }
     var itineraryGenerateError by remember { mutableStateOf<String?>(null) }
     var itineraryGenerateSummary by remember { mutableStateOf<String?>(null) }
@@ -293,6 +303,19 @@ fun LoomyTripApp() {
         }
     }
 
+    suspend fun loadNotifications() {
+        notificationsLoading = true
+        notificationsError = null
+        try {
+            notifications.clear()
+            notifications.addAll(NotificationRepository.notifications())
+        } catch (error: Exception) {
+            notificationsError = error.userMessage("Could not load notifications.")
+        } finally {
+            notificationsLoading = false
+        }
+    }
+
     suspend fun deleteTrip(tripId: Long): Boolean {
         deletingTripId = tripId
         deleteTripError = null
@@ -356,6 +379,12 @@ fun LoomyTripApp() {
         if (signedInEmail != null && current == Destination.Import) {
             loadPlanningHistory()
         }
+        if (signedInEmail != null && current == Destination.Home) {
+            loadNotifications()
+        }
+        if (signedInEmail != null && current == Destination.Notifications) {
+            loadNotifications()
+        }
     }
 
     val activeTrip = trips.firstOrNull { it.id == activeTripId } ?: trips.firstOrNull()
@@ -382,6 +411,20 @@ fun LoomyTripApp() {
                         if (shouldShowBackButton) {
                             IconButton(onClick = { navController.popBackStack() }) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            }
+                        }
+                    },
+                    actions = {
+                        if (signedInEmail != null && current != Destination.Notifications) {
+                            IconButton(onClick = { navController.navigate(Destination.Notifications.route) }) {
+                                BadgedBox(
+                                    badge = {
+                                        val unreadCount = notifications.count { it.readAt == null }
+                                        if (unreadCount > 0) Badge { Text(unreadCount.coerceAtMost(9).toString()) }
+                                    }
+                                ) {
+                                    Icon(Icons.Default.Notifications, contentDescription = "Notifications")
+                                }
                             }
                         }
                     },
@@ -484,6 +527,46 @@ fun LoomyTripApp() {
                     tripName = activeTrip?.tripName,
                     tripDayCount = activeTrip?.durationDays ?: 1,
                     tripStopCount = tripActivities.size
+                )
+            }
+            composable(Destination.Notifications.route) {
+                NotificationScreen(
+                    notifications = notifications,
+                    isLoading = notificationsLoading,
+                    errorMessage = notificationsError,
+                    onRetry = { scope.launch { loadNotifications() } },
+                    onNotificationClick = { notification ->
+                        scope.launch {
+                            notificationsError = null
+                            try {
+                                if (notification.readAt == null) {
+                                    val updated = NotificationRepository.markRead(notification.id)
+                                    val index = notifications.indexOfFirst { it.id == updated.id }
+                                    if (index >= 0) notifications[index] = updated
+                                }
+                                when {
+                                    notification.tripId != null -> {
+                                        loadTrips(notification.tripId)
+                                        navController.navigate(Destination.Itinerary.route)
+                                    }
+                                    notification.planningSessionId != null && notification.type != "IMPORT_FAILED" -> {
+                                        val resumed = AiPlanningRepository.resumeSession(notification.planningSessionId)
+                                        applyPlanningResult(resumed)
+                                        refinementText = ""
+                                        navController.navigate(Destination.Review.route)
+                                    }
+                                    else -> {
+                                        importGuideSeed = DEFAULT_IMPORT_GUIDE
+                                        planningError = null
+                                        invalidPlanningInputMessage = null
+                                        navController.navigate(Destination.Import.route)
+                                    }
+                                }
+                            } catch (error: Exception) {
+                                notificationsError = error.userMessage("Could not open this import.")
+                            }
+                        }
+                    }
                 )
             }
             composable(Destination.Explore.route) {
