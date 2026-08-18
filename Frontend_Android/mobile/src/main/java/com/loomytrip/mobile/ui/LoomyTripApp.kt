@@ -902,7 +902,6 @@ fun LoomyTripApp() {
                     activities = tripActivities,
                     tripName = activeTrip?.tripName ?: "Your itinerary",
                     startDate = activeTrip?.startDate,
-                    tripStatus = activeTrip?.status,
                     totalDays = activeTrip?.durationDays ?: 1,
                     initialDay = selectedMapDay,
                     isUpdatingTripName = tripNameUpdating,

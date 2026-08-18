@@ -107,7 +107,6 @@ fun RouteScreen(
     activities: List<TripActivity>,
     tripName: String,
     startDate: String?,
-    tripStatus: String?,
     totalDays: Int,
     initialDay: Int = 1,
     isUpdatingTripName: Boolean = false,
@@ -190,7 +189,8 @@ fun RouteScreen(
                     onDateSelected = onStartDateChange
                 )
             },
-            enabled = startDate != null && tripStatus != "FINISHED" && !isUpdatingStartDate,
+            // A generated itinerary is still editable. Only block another date request while saving.
+            enabled = startDate != null && !isUpdatingStartDate,
             modifier = Modifier.semantics { contentDescription = "Change start date" }
         ) {
             Icon(Icons.Default.CalendarMonth, contentDescription = null)
@@ -309,7 +309,7 @@ fun RouteScreen(
         Button(
             onClick = { showGenerateDialog = true },
             modifier = Modifier.fillMaxWidth(),
-            enabled = activities.isNotEmpty() && tripStatus != "FINISHED" && !isGenerating
+            enabled = activities.isNotEmpty() && !isGenerating
         ) {
             Icon(Icons.Default.AutoAwesome, contentDescription = null)
             Spacer(Modifier.width(7.dp))
@@ -343,7 +343,7 @@ fun RouteScreen(
             existingPlaceNames = activities.map { it.title.trim().lowercase() }.toSet(),
             addingSuggestedPlace = addingSuggestedPlace,
             errorMessage = suggestionErrorMessage,
-            canAdd = tripStatus != "FINISHED",
+            canAdd = true,
             onAddSuggestion = { suggestion -> onAddSuggestedPlace(suggestion, selectedDay) },
             onDismiss = { showAiNotesDialog = false }
         )
