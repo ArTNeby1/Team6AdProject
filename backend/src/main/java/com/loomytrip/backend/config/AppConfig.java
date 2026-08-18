@@ -8,3 +8,4 @@ import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 @EnableConfigurationProperties({JwtProperties.class, CorsProperties.class})
 public class AppConfig {
 }
+// cicd demonstration

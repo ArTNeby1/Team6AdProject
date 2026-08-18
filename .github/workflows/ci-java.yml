@@ -219,7 +219,11 @@ jobs:
           severity: HIGH,CRITICAL
 
       - name: 上传 Trivy SARIF 到 Security 标签页
-        if: always()
+        # 必须跟"Trivy 镜像扫描"那步用同一个 if 条件：这里不能单纯写 always()，
+        # 否则在扫描步骤被跳过（比如非 main 分支的 push）时，trivy-results.sarif
+        # 根本没生成，这步还是会被拉起来，报 "Path does not exist"。
+        # 加上这个条件后，只要扫描步骤本来就该跑，这里依然是"扫描失败也要上传"。
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-results.sarif
