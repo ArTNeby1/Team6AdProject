@@ -185,7 +185,9 @@ jobs:
           severity: HIGH,CRITICAL
 
       - name: 上传 Trivy SARIF 到 Security 标签页
-        if: always()
+        # 同 ci-java.yml：不能单纯写 always()，否则扫描步骤被跳过（非 main 分支）时
+        # trivy-results.sarif 没生成，这步还是会被拉起来报 "Path does not exist"。
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-results.sarif
