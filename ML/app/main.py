@@ -45,12 +45,16 @@ mock 模式下：
 
 等 HTTP 那层调通了，把这三个环境变量去掉就切回真实模型。
 """
+import logging
 import os
 import sys
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger("loomytrip-ml")
 
 SCHEMA_DIR = Path(__file__).resolve().parent.parent / "schema"
 sys.path.insert(0, str(SCHEMA_DIR))  # trip_models.py 不在标准包路径下，手动加进搜索路径
@@ -71,6 +75,43 @@ from orchestrator import (  # noqa: E402
 )
 
 app = FastAPI(title="LoomyTrip Extract Service")#整个服务的"前台"本身
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    """ZAP 扫描报告里的两条 Low 风险项（X-Content-Type-Options / Cross-Origin-Resource-Policy
+    缺失）：这个服务只被后端 Java 服务以 server-to-server 方式调用，不经浏览器，
+    same-origin 不会挡住任何合法调用方。"""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+    return response
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """
+    兜底：任何路由里没显式 catch 的异常，原来会变成裸的 500（ZAP 扫描报告里
+    /extract、/extract-travel-info、/refine 三个接口都出现过——比如给 source_url
+    传一个单引号就触发一次未捕获异常，ZAP 的 SQLi 规则一看到 500 就报"SQL Injection"，
+    其实这几个接口压根不碰任何 SQL，是误报，根子是异常没兜底）。
+    统一改成 502（跟 /recommend、/plan-itinerary 遇到意外异常时的约定一致，
+    表示"上游依赖处理失败"而不是"这个服务自己写挂了"），详细堆栈只写服务端日志，
+    不回传给调用方，避免把内部实现细节泄露出去。
+    """
+    logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
+    # 直接在这里补两个安全头，而不是指望 add_security_headers 中间件补上：
+    # BaseHTTPMiddleware 的已知限制——异常在 call_next() 内部被 exception_handler
+    # 处理掉之后，响应不会正常地"返回"给外层中间件去改 header，而是重新抛出去做
+    # 日志用途，外层中间件根本碰不到这个 response 对象。
+    return JSONResponse(
+        status_code=502,
+        content={"detail": "upstream processing failed"},
+        headers={
+            "X-Content-Type-Options": "nosniff",
+            "Cross-Origin-Resource-Policy": "same-origin",
+        },
+    )
 
 
 @app.get("/health")
