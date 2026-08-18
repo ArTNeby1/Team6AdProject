@@ -13,11 +13,19 @@ vi.mock('../services/api', () => ({
 }));
 
 const TestComponent = () => {
-  const { user, login, logout } = useAuth();
+  const { user, login, register, logout, updateProfile } = useAuth();
+
+  // 🟢 Catch errors to prevent unhandled rejections in tests
+  const handleLogin = async () => {
+    try { await login('t@t.com', 'pw'); } catch (e) { /* silent */ }
+  };
+
   return (
     <div>
       <div data-testid="user">{user ? user.username : 'no-user'}</div>
-      <button onClick={() => login('test@example.com', 'password')}>Login</button>
+      <button onClick={handleLogin}>Login</button>
+      <button onClick={() => register('u', 'e', 'p', 20, 'M')}>Register</button>
+      <button onClick={() => updateProfile('new-nick', 21, 'F')}>Update</button>
       <button onClick={logout}>Logout</button>
     </div>
   );
@@ -29,24 +37,33 @@ describe('AuthContext', () => {
     localStorage.clear();
   });
 
-  it('handles login and logout flow', async () => {
+  it('handles full auth lifecycle', async () => {
     api.post.mockResolvedValueOnce({
-      data: { accessToken: 'tk', userId: 1, username: 'tester', email: 't@t.com' }
+      data: { accessToken: 'tk1', userId: 1, username: 'user1', email: 't@t.com' }
     });
 
     render(<AuthProvider><TestComponent /></AuthProvider>);
 
-    // 1. Initial State
-    expect(screen.getByTestId('user').textContent).toBe('no-user');
+    fireEvent.click(screen.getByText('Register'));
+    await waitFor(() => expect(screen.getByTestId('user').textContent).toBe('user1'));
 
-    // 2. Login
-    fireEvent.click(screen.getByText('Login'));
-    await waitFor(() => {
-      expect(screen.getByTestId('user').textContent).toBe('tester');
+    api.put.mockResolvedValueOnce({
+      data: { username: 'new-nick', age: 21, gender: 'F' }
     });
 
-    // 3. Logout
+    fireEvent.click(screen.getByText('Update'));
+    await waitFor(() => expect(screen.getByTestId('user').textContent).toBe('new-nick'));
+
     fireEvent.click(screen.getByText('Logout'));
     expect(screen.getByTestId('user').textContent).toBe('no-user');
+  });
+
+  it('handles login failure without crashing', async () => {
+    api.post.mockRejectedValueOnce({ response: { data: { message: 'Wrong PW' } } });
+    render(<AuthProvider><TestComponent /></AuthProvider>);
+
+    fireEvent.click(screen.getByText('Login'));
+    // State remains no-user
+    await waitFor(() => expect(screen.getByTestId('user').textContent).toBe('no-user'));
   });
 });

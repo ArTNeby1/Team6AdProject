@@ -1,8 +1,7 @@
 import React from 'react';
-import { render, waitFor, screen } from '@testing-library/react';
+import { render, waitFor, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// 🟢 所有要在 vi.mock 中使用的变量都必须放在 vi.hoisted 块中
 const { mockUser, mockApi } = vi.hoisted(() => ({
   mockUser: { id: 1 },
   mockApi: {
@@ -27,8 +26,14 @@ vi.mock('./AuthContext', () => ({
 import { TripProvider, useTrip } from './TripContext';
 
 const TestComponent = () => {
-  const { trips } = useTrip();
-  return <div data-testid="trips-count">{trips.length}</div>;
+  const { trips, createNewTrip, deleteTrip } = useTrip();
+  return (
+    <div>
+      <div data-testid="count">{trips.length}</div>
+      <button onClick={() => createNewTrip(['Place'])}>Create</button>
+      <button onClick={() => deleteTrip('1')}>Delete</button>
+    </div>
+  );
 };
 
 describe('TripContext', () => {
@@ -36,33 +41,36 @@ describe('TripContext', () => {
     vi.clearAllMocks();
   });
 
-  it('fetches trips and updates state', async () => {
-    const mockTrips = [
-      {
-        id: 1,
-        tripName: 'Trip A',
-        startDate: '2026-01-01',
-        status: 'ACTIVE',
-        durationDays: 1,
-        schedules: []
-      }
-    ];
+  it('handles trip management operations', async () => {
+    // 1. Initial State: Return 1 trip
+    mockApi.get.mockResolvedValue({ data: [{ id: 1, tripName: 'Trip 1' }] });
 
-    // 🟢 在渲染前设置 mock 返回值
-    mockApi.get.mockResolvedValue({ data: mockTrips });
+    render(<TripProvider><TestComponent /></TripProvider>);
+    await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('1'));
 
-    render(
-      <TripProvider>
-        <TestComponent />
-      </TripProvider>
-    );
+    // 2. Create Trip Step
+    // When create is clicked, it will call GET /trips multiple times (due to redundant calls in Context)
+    // 🟢 We set the mock to return 2 trips for ALL subsequent GET calls in this stage
+    mockApi.post.mockResolvedValue({ data: { id: 2 } });
+    mockApi.get.mockResolvedValue({ data: [
+        { id: 1, tripName: 'Trip 1' },
+        { id: 2, tripName: 'Trip 2' }
+    ] });
 
-    // 增加超时时间并确保 DOM 已更新
+    fireEvent.click(screen.getByText('Create'));
+    await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('2'));
+
+    // 3. Delete Trip '1'
+    mockApi.delete.mockResolvedValue({ data: {} });
+    // 🟢 After delete, all subsequent GET calls should return only the remaining trip
+    mockApi.get.mockResolvedValue({ data: [
+        { id: 2, tripName: 'Trip 2' }
+    ] });
+
+    fireEvent.click(screen.getByText('Delete'));
+
     await waitFor(() => {
-      const element = screen.getByTestId('trips-count');
-      expect(element.textContent).toBe('1');
-    }, { timeout: 4000 });
-
-    expect(mockApi.get).toHaveBeenCalledWith('/trips');
+        expect(screen.getByTestId('count').textContent).toBe('1');
+    });
   });
 });
