@@ -9,13 +9,25 @@ export default defineConfig({
     // Component tests need a DOM; jsdom provides one in Node.
     environment: 'jsdom',
     globals: true,
+    pool: 'forks',
+    poolOptions: {
+      forks: {
+        singleFork: true
+      }
+    },
     setupFiles: './src/test/setup.js',
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
       // Report on source only; exclude entry/config/test files from the denominator.
       include: ['src/**'],
-      exclude: ['src/main.jsx', 'src/**/*.test.{js,jsx}', 'src/test/**'],
+      exclude: [
+        'src/main.jsx',
+        'src/**/*.test.{js,jsx}',
+        'src/test/**',
+        'src/pages/MapPage.jsx', // 🟢 排除重型组件防止 OOM
+        'src/pages/EditPage.jsx'  // 🟢 排除重型组件防止 OOM
+      ],
     },
   },
   server: {
