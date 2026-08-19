@@ -3,14 +3,14 @@ import { BrowserRouter } from 'react-router-dom';
 import { describe, it, expect, vi } from 'vitest';
 
 // 🟢 Setup mocks BEFORE component import
-vi.mock('../context/AuthContext', () => ({
+vi.mock('../../context/AuthContext', () => ({
   useAuth: () => ({ user: null }),
 }));
-vi.mock('../context/TripContext', () => ({
+vi.mock('../../context/TripContext', () => ({
   useTrip: () => ({ getActiveTrip: () => null }),
 }));
 
-import HomePage from './HomePage';
+import HomePage from '../../pages/HomePage';
 
 describe('HomePage', () => {
   it('renders hero section with title and search box', () => {

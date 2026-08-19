@@ -16,22 +16,22 @@ const mockTrip = {
   loadingTrips: false
 };
 
-vi.mock('../context/AuthContext', () => ({
+vi.mock('../../context/AuthContext', () => ({
   useAuth: () => mockAuth
 }));
 
-vi.mock('../context/TripContext', () => ({
+vi.mock('../../context/TripContext', () => ({
   useTrip: () => mockTrip
 }));
 
-vi.mock('../services/api', () => ({
+vi.mock('../../services/api', () => ({
   default: {
     get: vi.fn().mockResolvedValue({ data: { id: 1, username: 'testuser', email: 'test@example.com' } }),
     put: vi.fn().mockResolvedValue({ data: {} })
   }
 }));
 
-import ProfilePage from './ProfilePage';
+import ProfilePage from '../../pages/ProfilePage';
 
 describe('ProfilePage', () => {
   it('renders profile correctly', async () => {

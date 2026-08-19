@@ -62,11 +62,11 @@ vi.mock('react-leaflet', () => ({
 
 vi.mock('leaflet.heat', () => ({ default: vi.fn() }));
 
-vi.mock('../context/TripContext', () => ({
+vi.mock('../../context/TripContext', () => ({
   useTrip: () => mockTripData
 }));
 
-vi.mock('../services/api', () => ({
+vi.mock('../../services/api', () => ({
   mapApi: {
     getConfig: vi.fn().mockResolvedValue({ data: {} }),
     getRoute: vi.fn().mockResolvedValue({ data: { stopCount: 1 } }),
@@ -74,7 +74,7 @@ vi.mock('../services/api', () => ({
   },
 }));
 
-import MapPage from './MapPage';
+import MapPage from '../../pages/MapPage';
 
 describe('MapPage', () => {
   it('renders map page successfully with async data', async () => {

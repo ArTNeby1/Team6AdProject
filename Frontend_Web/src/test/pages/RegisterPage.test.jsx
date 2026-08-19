@@ -1,13 +1,13 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { describe, it, expect, vi } from 'vitest';
-import RegisterPage from './RegisterPage';
+import RegisterPage from '../../pages/RegisterPage';
 
 // 🟢 Define mocks outside
 const mockRegister = vi.fn();
 const mockNavigate = vi.fn();
 
-vi.mock('../context/AuthContext', () => ({
+vi.mock('../../context/AuthContext', () => ({
   useAuth: () => ({
     register: mockRegister,
   }),

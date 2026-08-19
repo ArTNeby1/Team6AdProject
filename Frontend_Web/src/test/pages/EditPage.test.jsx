@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { describe, it, expect, vi } from 'vitest';
-import EditPage from './EditPage';
+import EditPage from '../../pages/EditPage';
 
 // 🟢 1. 使用 hoisted 定義一個靜態、永遠不變的行程對象引用
 const { mockTripStatic } = vi.hoisted(() => ({
@@ -18,7 +18,7 @@ const { mockTripStatic } = vi.hoisted(() => ({
 }));
 
 // 🟢 2. 確保 Hook 始終返回同一個對象
-vi.mock('../context/TripContext', () => ({
+vi.mock('../../context/TripContext', () => ({
   useTrip: () => ({
     getActiveTrip: () => mockTripStatic,
     loadingTrips: false,

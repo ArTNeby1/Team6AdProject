@@ -20,18 +20,18 @@ const { mockDeleteTrip, mockTripContext, mockAuthContext } = vi.hoisted(() => ({
   }
 }));
 
-vi.mock('../context/TripContext', () => ({
+vi.mock('../../context/TripContext', () => ({
   useTrip: () => ({
     ...mockTripContext,
     deleteTrip: mockDeleteTrip
   })
 }));
 
-vi.mock('../context/AuthContext', () => ({
+vi.mock('../../context/AuthContext', () => ({
   useAuth: () => mockAuthContext
 }));
 
-import ItineraryListPage from './ItineraryListPage';
+import ItineraryListPage from '../../pages/ItineraryListPage';
 
 describe('ItineraryListPage', () => {
   beforeEach(() => {

@@ -1,10 +1,10 @@
 import React from 'react';
 import { render, waitFor, fireEvent, screen } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AuthProvider, useAuth } from './AuthContext';
-import api from '../services/api';
+import { AuthProvider, useAuth } from '../../context/AuthContext';
+import api from '../../services/api';
 
-vi.mock('../services/api', () => ({
+vi.mock('../../services/api', () => ({
   default: {
     post: vi.fn(),
     put: vi.fn(),

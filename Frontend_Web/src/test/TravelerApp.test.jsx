@@ -2,16 +2,16 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { describe, it, expect, vi } from 'vitest';
-import TravelerApp from './TravelerApp';
+import TravelerApp from '../TravelerApp';
 
 // 🟢 Mock out the sub-pages to save massive memory during coverage
-vi.mock('./pages/HomePage', () => ({ default: () => <div data-testid="mock-home">Home</div> }));
-vi.mock('./pages/LoginPage', () => ({ default: () => <div>Login</div> }));
+vi.mock('../pages/HomePage', () => ({ default: () => <div data-testid="mock-home">Home</div> }));
+vi.mock('../pages/LoginPage', () => ({ default: () => <div>Login</div> }));
 
-vi.mock('./context/AuthContext', () => ({
+vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({ user: null, loading: false }),
 }));
-vi.mock('./context/TripContext', () => ({
+vi.mock('../context/TripContext', () => ({
   useTrip: () => ({ trips: [], loadingTrips: false, fetchTrips: vi.fn() }),
 }));
 

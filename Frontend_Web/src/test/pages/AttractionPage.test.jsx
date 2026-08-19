@@ -14,15 +14,15 @@ const { mockAuth, mockTrip } = vi.hoisted(() => ({
   }
 }));
 
-vi.mock('../context/AuthContext', () => ({
+vi.mock('../../context/AuthContext', () => ({
   useAuth: () => mockAuth
 }));
 
-vi.mock('../context/TripContext', () => ({
+vi.mock('../../context/TripContext', () => ({
   useTrip: () => mockTrip
 }));
 
-import AttractionPage from './AttractionPage';
+import AttractionPage from '../../pages/AttractionPage';
 
 describe('AttractionPage', () => {
   it('renders attraction details correctly', () => {

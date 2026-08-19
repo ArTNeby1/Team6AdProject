@@ -4,7 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { describe, it, expect, vi } from 'vitest';
 
 // 🟢 Setup mock for the hook explicitly
-vi.mock('../context/TripContext', () => ({
+vi.mock('../../context/TripContext', () => ({
   useTrip: vi.fn(() => ({
     itinerary: [],
     trips: [],
@@ -12,7 +12,7 @@ vi.mock('../context/TripContext', () => ({
   }))
 }));
 
-import RoutePage from './RoutePage';
+import RoutePage from '../../pages/RoutePage';
 
 describe('RoutePage', () => {
   it('renders route page correctly', () => {

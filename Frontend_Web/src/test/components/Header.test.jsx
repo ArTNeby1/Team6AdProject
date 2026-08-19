@@ -2,14 +2,14 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { describe, it, expect, vi } from 'vitest';
-import Header from './Header';
+import Header from '../../components/Header';
 
 // 🟢 Use a stable mock for context
 const { mockAuth } = vi.hoisted(() => ({
   mockAuth: { user: null, logout: vi.fn() }
 }));
 
-vi.mock('../context/AuthContext', () => ({
+vi.mock('../../context/AuthContext', () => ({
   useAuth: () => mockAuth,
 }));
 

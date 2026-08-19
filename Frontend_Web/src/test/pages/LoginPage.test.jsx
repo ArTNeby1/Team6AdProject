@@ -1,13 +1,13 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { describe, it, expect, vi } from 'vitest';
-import LoginPage from './LoginPage';
+import LoginPage from '../../pages/LoginPage';
 
 // 🟢 Define mocks outside so they are consistent across calls
 const mockLogin = vi.fn();
 const mockNavigate = vi.fn();
 
-vi.mock('../context/AuthContext', () => ({
+vi.mock('../../context/AuthContext', () => ({
   useAuth: () => ({
     login: mockLogin,
   }),

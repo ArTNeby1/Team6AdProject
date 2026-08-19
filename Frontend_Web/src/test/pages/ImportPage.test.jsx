@@ -1,10 +1,10 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import ImportPage from './ImportPage';
+import ImportPage from '../../pages/ImportPage';
 
 // 🟢 Setup mocks before component import
-vi.mock('../services/api', () => ({
+vi.mock('../../services/api', () => ({
   __esModule: true,
   default: {
     get: vi.fn(),
@@ -13,17 +13,17 @@ vi.mock('../services/api', () => ({
   }
 }));
 
-vi.mock('../context/AuthContext', () => ({
+vi.mock('../../context/AuthContext', () => ({
   __esModule: true,
   useAuth: () => ({ user: { id: 1 } }),
 }));
 
-vi.mock('../context/TripContext', () => ({
+vi.mock('../../context/TripContext', () => ({
   __esModule: true,
   useTrip: () => ({ fetchTrips: vi.fn(), addLocationsToTripDay: vi.fn() }),
 }));
 
-import api from '../services/api';
+import api from '../../services/api';
 
 describe('ImportPage', () => {
   beforeEach(() => {
@@ -69,6 +69,28 @@ describe('ImportPage', () => {
     await waitFor(() => {
       expect(screen.getByText(/LoomyTrip AI Agent/i)).toBeInTheDocument();
       expect(screen.getByDisplayValue(/Gardens by the Bay/i)).toBeInTheDocument();
+    });
+
+    // 🟢 Match the actual button text in the UI
+    const confirmBtn = screen.getByText(/Confirm & Generate Itinerary/i);
+    fireEvent.click(confirmBtn);
+  });
+
+  it('handles parsing errors gracefully', async () => {
+    // Component displays the error message directly from the error object
+    api.post.mockRejectedValueOnce(new Error('AI Service Down'));
+
+    render(
+      <BrowserRouter>
+        <ImportPage />
+      </BrowserRouter>
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(/Paste or enter your travel notes here/i), { target: { value: 'test' } });
+    fireEvent.click(screen.getByRole('button', { name: /Start Parsing/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/AI Service Down/i)).toBeInTheDocument();
     });
   });
 });
