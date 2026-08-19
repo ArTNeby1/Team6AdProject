@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import AdminEvalPage from './AdminEvalPage';
 
 const apiFetchMock = vi.fn();
@@ -34,6 +35,10 @@ const PAGE = {
   totalPages: 1,
 };
 
+function renderPage() {
+  return render(<MemoryRouter><AdminEvalPage /></MemoryRouter>);
+}
+
 describe('AdminEvalPage (frontend-only scoring)', () => {
   beforeEach(() => {
     apiFetchMock.mockReset();
@@ -41,11 +46,10 @@ describe('AdminEvalPage (frontend-only scoring)', () => {
 
   it('reads the audit log, scores imports in-browser, and averages only IMPORT/SUCCESS rows', async () => {
     apiFetchMock.mockResolvedValue(PAGE);
-    render(<AdminEvalPage />);
+    renderPage();
 
     await waitFor(() => expect(apiFetchMock)
       .toHaveBeenCalledWith('/api/v1/admin/agent-validations?page=0&size=50'));
-    // Only the single IMPORT/SUCCESS row counts.
     expect(await screen.findByText('Average across 1 import')).toBeInTheDocument();
     expect(screen.getByText('traveler@example.com')).toBeInTheDocument();
     // recall = 2/3 -> 67%; precision & groundedness = 100%.
@@ -53,27 +57,23 @@ describe('AdminEvalPage (frontend-only scoring)', () => {
     expect(screen.getAllByText('100%').length).toBeGreaterThan(0);
   });
 
-  it('drills into an import to show matched and missed places', async () => {
+  it('links each import to its own detail route', async () => {
     apiFetchMock.mockResolvedValue(PAGE);
-    render(<AdminEvalPage />);
+    renderPage();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Inspect' }));
-
-    expect(await screen.findByText('Import #10 · traveler@example.com')).toBeInTheDocument();
-    expect(screen.getByText(/Merlion Park and Marina Bay Sands/)).toBeInTheDocument();
-    expect(screen.getByText('✓ Merlion Park')).toBeInTheDocument();   // matched
-    expect(screen.getByText('✗ Sentosa Island')).toBeInTheDocument(); // missed by the model
+    const inspect = await screen.findByRole('link', { name: 'Inspect' });
+    expect(inspect).toHaveAttribute('href', '/admin/eval/10');
   });
 
   it('shows an empty state when no successful imports exist', async () => {
     apiFetchMock.mockResolvedValue({ content: [], totalPages: 0 });
-    render(<AdminEvalPage />);
+    renderPage();
     expect(await screen.findByText(/No successful imports have been recorded yet/)).toBeInTheDocument();
   });
 
   it('surfaces an error when the request fails', async () => {
     apiFetchMock.mockRejectedValue(new Error('boom'));
-    render(<AdminEvalPage />);
+    renderPage();
     await waitFor(() => expect(screen.getByText('boom')).toBeInTheDocument());
   });
 });
