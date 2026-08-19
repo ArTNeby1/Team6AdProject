@@ -6,7 +6,9 @@
 orchestrator 形成循环依赖。抽成独立模块，两边各自 import 这里就没有这个问题。
 """
 import json
+import re
 import sys
+from datetime import date
 from pathlib import Path
 from typing import Callable
 
@@ -84,11 +86,66 @@ def _null_unusable_duration(data: dict) -> dict:
     return data
 
 
+_YEAR_IN_DATE_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
+
+
+def _fix_invented_dates(data: dict, source_text: str) -> dict:
+    """
+    把"原文没写年份、模型自己编了一个"的日期，就地改成用当前年份，在 schema 校验之前。
+
+    为什么要有这一步（实测出来的坑，不是假想）：用户输入 "starting February 14th"
+    这种没写年份的日期时，schema description 里已经写了"Never invent a year"，但这只是
+    prompt 里的提示，Bedrock/Claude 系模型不保证遵守——实测 Nova Lite/Claude Haiku/
+    Sonnet 三个候选模型都出现过至少一次编年份（见 ML/docs/model_evaluation.md），
+    常见编出来的是训练数据里常见的年份（比如 2023），跟"今天是哪年"完全无关。这条
+    日期最终会被前端当成"计划开始日期"展示给用户，编出来的年份会让新生成的计划显示
+    成过去的日期。
+
+    这里跟重试无关（不属于 extract_with_retry 那套"重试救得回来"的错误）：原文压根
+    没写年份，再问模型一百次它还是只能编，问题不在"没抽对"，而在"这个信息原文里就
+    没有"。所以不重试，直接在这一步用确定性规则纠正。
+
+    纠正规则：如果模型抽出的年份能在原文里找到（用户确实写了年份），保留原样；
+    找不到就说明是编的，换成当前年份，只留模型抽对的月/日（原文里真实写着的部分）。
+    跟 coords/duration_days 那种"没法用就整条清空"不一样：用户明确写了"2月14日"，
+    只是编年份不对，直接丢掉整条日期反而丢了原文里真实存在的信息。
+    """
+    if not isinstance(data, dict) or not data.get("dates"):
+        return data
+
+    today = date.today()
+    fixed = []
+    for raw_date in data["dates"]:
+        if not isinstance(raw_date, str):
+            continue
+        m = _YEAR_IN_DATE_RE.match(raw_date)
+        if not m:
+            # 格式本身就不对，留给 schema 校验去拒绝/触发重试，这里不处理
+            fixed.append(raw_date)
+            continue
+        year, month, day = m.group(1), m.group(2), m.group(3)
+        if year in source_text:
+            fixed.append(raw_date)
+            continue
+        print(
+            f"[dates] model invented year {year} (not found in source text) for "
+            f"{raw_date} -> replacing with current year {today.year}"
+        )
+        try:
+            fixed.append(date(today.year, int(month), int(day)).isoformat())
+        except ValueError:
+            # 换成当前年份后日期不合法（比如 2/29 换到非闰年），这条日期没法用，
+            # 宁可丢弃也不留一个换算出来仍然错误的值
+            continue
+    data["dates"] = fixed
+    return data
+
+
 class ExtractionFailedError(Exception):
     """模型连续 MAX_ATTEMPTS 次都没能返回合规结果。"""
 
 
-def parse_and_validate(raw_text: str) -> TripExtraction:
+def parse_and_validate(raw_text: str, source_text: str = "") -> TripExtraction:
     """
     把模型返回的原始文字，转成校验通过的 TripExtraction 对象。
     要闯两道关：
@@ -97,12 +154,17 @@ def parse_and_validate(raw_text: str) -> TripExtraction:
        不然 model_validate 会抛 ValidationError
     这两种异常都不在这里处理，直接抛出去，交给调用方(extract_with_retry)决定要不要重试。
 
-    两关之间夹一步 _null_unusable_duration()：天数超范围是**重试救不回来**的一类
-    错误（文本就写着 200 天，再问几次还是 200），单独降级成"没抽到天数"，
-    免得一个可选字段把整份抽取结果拖去 502。理由详见那个函数的说明。
+    两关之间夹两步：
+    - _null_unusable_duration()：天数超范围是**重试救不回来**的一类错误（文本就写着
+      200 天，再问几次还是 200），单独降级成"没抽到天数"，免得一个可选字段把整份
+      抽取结果拖去 502。理由详见那个函数的说明。
+    - _fix_invented_dates(..., source_text)：原文没写年份时模型编的年份，换成当前
+      年份。source_text 是原始输入文本（不含重试时附加的 schema 报错），用来判断
+      模型抽出的年份是不是原文真实写着的。理由详见那个函数的说明。
     """
     data = json.loads(raw_text)
     data = _null_unusable_duration(data)
+    data = _fix_invented_dates(data, source_text)
     return TripExtraction.model_validate(data)
 
 
@@ -133,7 +195,10 @@ def extract_with_retry(
 
         raw_text = extract_fn(prompt_text, source_name=source_name)
         try:
-            return parse_and_validate(raw_text)
+            # source_text 用原始 text（不含上面附加的报错内容），跟用户输入原文
+            # 逐字比对年份才有意义——prompt_text 混入报错信息后，"2023"这类年份
+            # 反而可能在报错文字里巧合出现，稀释掉"原文没写年份"这个判断依据。
+            return parse_and_validate(raw_text, text)
         except (json.JSONDecodeError, ValidationError) as e:
             last_error = e
             print(f"[retry {attempt}/{max_attempts}] model output failed validation: {e}")
