@@ -45,4 +45,16 @@ public interface AiPlanningClient {
      * across multiple days (F-09).
      */
     AiPlanItineraryResult planItinerary(List<Map<String, Object>> places, String startDate, int numDays);
+
+    /**
+     * Calls ML/app/main.py {@code POST /evaluate-extraction} — content-level accuracy scoring
+     * for one import (admin LLM Evaluation console). The ML service uses an LLM-as-judge to
+     * derive the gold place list from {@code sourceText}, then scores {@code predictedPlaces}
+     * against it, returning precision / recall / f1 / groundedness plus the matched / missed /
+     * spurious breakdown. A {@code default} so alternative clients (tests, stubs) need not
+     * implement it — they degrade to an unavailable stub.
+     */
+    default Map<String, Object> evaluateExtraction(String sourceText, List<String> predictedPlaces) {
+        return Map.of("status", "AI_SERVICE_UNAVAILABLE");
+    }
 }
