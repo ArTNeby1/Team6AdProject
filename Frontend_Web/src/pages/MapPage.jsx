@@ -93,14 +93,13 @@ const createCustomIcon = (number) => {
   });
 };
 
-// Custom Icon for Nearby Recommendations
-const nearbyIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
+// 🟢 Custom Icon for Nearby Recommendations (using DivIcon for consistency and to avoid CSP issues)
+const recommendationIcon = new L.DivIcon({
+  html: '<div class="custom-map-marker recommendation">✨</div>',
+  className: 'custom-div-icon',
+  iconSize: [32, 44],
+  iconAnchor: [16, 44],
+  popupAnchor: [0, -46],
 });
 
 // Component to handle map clicks
@@ -398,7 +397,7 @@ const MapPage = () => {
                 <Marker
                   key={`nearby-${idx}`}
                   position={[item.latitude, item.longitude]}
-                  icon={nearbyIcon}
+                  icon={recommendationIcon}
                   eventHandlers={{
                     click: () => {
                       setManualCenter([item.latitude, item.longitude]);

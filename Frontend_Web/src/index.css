@@ -930,6 +930,17 @@ main {
   border-top: 12px solid var(--jade);
 }
 
+/* 🟢 Recommendation Marker Styling (Orange) */
+.custom-map-marker.recommendation {
+  background: var(--amber);
+  border-color: #fff;
+  font-size: 14px;
+}
+
+.custom-map-marker.recommendation::after {
+  border-top-color: var(--amber);
+}
+
 .custom-div-icon div {
   /* Reset previous rotation logic */
   transform: none !important;
