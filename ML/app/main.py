@@ -68,6 +68,12 @@ from extraction import (  # noqa: E402
     parse_and_validate,
 )
 from local_llm_client import local_extract  # noqa: E402
+from extraction_eval import (  # noqa: E402
+    JUDGE_SYSTEM_PROMPT,
+    heuristic_gold,
+    parse_gold,
+    score,
+)
 from orchestrator import (  # noqa: E402
     run_daily_itinerary,
     run_extraction,
@@ -136,6 +142,24 @@ elif EXTRACT_PROVIDER == "mock":
     EXTRACT_FN = mock_extract
 else:
     EXTRACT_FN = local_extract
+
+
+def judge_gold(source_text: str) -> list:
+    """评估用的「黄金答案」来源：让裁判模型通读原文、列出所有真实地点。
+    只有 bedrock（默认线上路径）真的走 LLM 裁判；mock / 无凭证的离线场景退回
+    heuristic_gold（粗略但不需要模型），保证评估接口在没有 AWS 时也能跑通。"""
+    if EXTRACT_PROVIDER == "bedrock":
+        try:
+            from bedrock_client import call_bedrock_model
+
+            raw = call_bedrock_model(JUDGE_SYSTEM_PROMPT, source_text)
+            gold = parse_gold(raw)
+            # 裁判偶尔返回空/解析失败，退回启发式，别让整条记录变成 0 分。
+            return gold or heuristic_gold(source_text)
+        except Exception:
+            logger.exception("LLM judge failed; falling back to heuristic gold")
+            return heuristic_gold(source_text)
+    return heuristic_gold(source_text)
 
 
 class ExtractRequest(BaseModel):
@@ -376,3 +400,24 @@ def plan_itinerary(request: PlanItineraryRequest) -> dict:
         raise HTTPException(status_code=502, detail=f"itinerary planning failed: {e}")
 
     return {"status": "OK", **result}
+
+
+class EvaluateExtractionRequest(BaseModel):
+    """内容级评估接口的入参：一次导入的原文 + 抽取阶段吐出的地点名。
+    字段名对齐后端 AiPlanningClient.evaluateExtraction(sourceText, predictedPlaces)。"""
+    source_text: str
+    predicted_places: list[str] = Field(default_factory=list)
+
+
+@app.post("/evaluate-extraction")
+def evaluate_extraction_endpoint(request: EvaluateExtractionRequest) -> dict:
+    """
+    LLM-as-judge 内容级评估（给 /admin/eval 用）：拿一次导入的原文和它抽出来的
+    地点，算 Precision / Recall / F1 / Groundedness 四个指标。
+
+    gold（原文里真实提到的所有地点）由裁判模型现场列出（见 judge_gold）；指标本身
+    是确定性字符串匹配算的（见 extraction_eval.score），可解释、可复现。后端会把
+    结果按导入记录缓存，不会每次打开页面都重算。
+    """
+    gold = judge_gold(request.source_text)
+    return score(request.source_text, request.predicted_places, gold)

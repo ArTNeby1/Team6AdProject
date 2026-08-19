@@ -157,6 +157,27 @@ public class AiPlanningClientHttp implements AiPlanningClient {
         }
     }
 
+    @Override
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> evaluateExtraction(String sourceText, List<String> predictedPlaces) {
+        if (sourceText == null || sourceText.isBlank()) {
+            return Map.of("status", "NO_CONTENT");
+        }
+        Map<String, Object> body = new HashMap<>();
+        body.put("source_text", sourceText);
+        body.put("predicted_places", predictedPlaces == null ? List.of() : predictedPlaces);
+
+        try {
+            return restClient.post()
+                    .uri("/evaluate-extraction")
+                    .body(body)
+                    .retrieve()
+                    .body(Map.class);
+        } catch (RestClientException e) {
+            return Map.of("status", "AI_SERVICE_UNAVAILABLE");
+        }
+    }
+
     private Map<String, Object> unavailableResponse(String status) {
         return Map.of(
                 "status", status,
