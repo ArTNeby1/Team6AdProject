@@ -81,8 +81,11 @@ jobs:
           npx eslint . --format @microsoft/eslint-formatter-sarif --output-file sast-report.sarif || true
         continue-on-error: true
 
+      # hashFiles 判断文件是否真的生成了：上一步 "生成 SARIF 报告" 本身带
+      # continue-on-error，npm install/eslint 失败会被吞掉、报告压根没生成——
+      # 这种情况下直接跳过上传，而不是硬报 "Path does not exist"。
       - name: 上传 SAST SARIF 到 Security 标签页
-        if: always()
+        if: always() && hashFiles('Frontend_Web/sast-report.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: Frontend_Web/sast-report.sarif
@@ -94,7 +97,10 @@ jobs:
       # test:coverage / vite.config.js 的 coverage 配置（v8 provider）已经在
       # package.json 里了，只是之前一直没有一步真正执行——admin 那几个 Vitest
       # 测试文件合并进来之后，在 CI 里从没被跑过。
+      # if: always()：SAST SARIF 上传失败不该连带跳过测试/构建/部署——
+      # 扫描只报告不拦截，是这几条 pipeline 一直以来的口径。
       - name: 单元测试（含覆盖率）
+        if: always()
         run: npm run test:coverage
 
       - name: 上传 Web 覆盖率报告

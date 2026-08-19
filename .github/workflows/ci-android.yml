@@ -91,8 +91,12 @@ jobs:
           name: android-sca-report
           path: Frontend_Android/mobile/build/reports/dependency-check/dependency-check-report.json
 
+      # hashFiles 判断文件是否真的生成了：NVD 数据源偶尔会超时/限流，
+      # dependencyCheckAnalyze 那步 continue-on-error 吞掉失败后，SARIF 报告
+      # 可能压根没生成——这种情况下直接跳过上传，而不是硬报 "Path does not exist"
+      # 让这一步显示成 failure（历史上出现过，见 2026-08-18 那次运行）。
       - name: 上传 SCA SARIF 到 Security 标签页
-        if: always()
+        if: always() && hashFiles('Frontend_Android/mobile/build/reports/dependency-check/dependency-check-report.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: Frontend_Android/mobile/build/reports/dependency-check/dependency-check-report.sarif
@@ -101,7 +105,11 @@ jobs:
       # ============================================================
       # SAST：静态代码扫描
       # ============================================================
+      # if: always() 是这次要补的关键一步：SAST（lint）跟上面的 SCA
+      # 是两条独立的扫描流水线，不该因为上一条的 SARIF 上传失败就被
+      # GitHub Actions 默认的 "上一步失败就跳过" 规则连带跳过。
       - name: SAST 静态代码扫描
+        if: always()
         run: ./gradlew :mobile:lintDebug --continue || true
         continue-on-error: true
 
@@ -113,13 +121,16 @@ jobs:
           path: Frontend_Android/mobile/build/reports/lint-results-debug.xml
 
       - name: 上传 SAST SARIF 到 Security 标签页
-        if: always()
+        if: always() && hashFiles('Frontend_Android/mobile/build/reports/lint-results-debug.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: Frontend_Android/mobile/build/reports/lint-results-debug.sarif
           category: android-lint
 
+      # 同样加 if: always()：单元测试/构建/发布不该被前面任何一步扫描报告
+      # 上传失败连带卡住——扫描只报告不拦截，是这几条 pipeline 一直以来的口径。
       - name: 单元测试
+        if: always()
         run: ./gradlew :mobile:testDebugUnitTest --continue
 
       - name: 上传测试报告
@@ -130,6 +141,7 @@ jobs:
          path: Frontend_Android/mobile/build/reports/tests/
 
       - name: 生成覆盖率报告
+        if: always()
         run: ./gradlew :mobile:jacocoTestReport
 
       - name: 上传 Android 覆盖率报告
