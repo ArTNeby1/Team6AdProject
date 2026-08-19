@@ -8,6 +8,7 @@ import AdminLoginPage from './admin/pages/AdminLoginPage';
 import AdminDashboardPage from './admin/pages/AdminDashboardPage';
 import AdminUsersPage from './admin/pages/AdminUsersPage';
 import AdminEvalPage from './admin/pages/AdminEvalPage';
+import AdminEvalDetailPage from './admin/pages/AdminEvalDetailPage';
 import './admin/admin.css';
 
 // Top-level split: the admin console (its own chrome + auth) lives under
@@ -31,6 +32,7 @@ function App() {
                 <Route index element={<AdminDashboardPage />} />
                 <Route path="users" element={<AdminUsersPage />} />
                 <Route path="eval" element={<AdminEvalPage />} />
+                <Route path="eval/:id" element={<AdminEvalDetailPage />} />
               </Route>
             </Routes>
           </AdminAuthProvider>
