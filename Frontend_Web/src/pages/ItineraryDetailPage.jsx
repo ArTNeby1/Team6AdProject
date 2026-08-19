@@ -55,7 +55,6 @@ const ItineraryDetailPage = () => {
   // AI Summary State from Import flow
   const [aiSummary, setAiSummary] = useState(location.state?.showAiSummary ? location.state : null);
   const [selectedGems, setSelectedGems] = useState(new Set());
-  const [showCopyAlert, setShowCopyAlert] = useState(false);
 
   const toggleGem = (name) => {
     setSelectedGems(prev => {
@@ -114,34 +113,10 @@ const ItineraryDetailPage = () => {
     }
   };
 
-  const handleShare = () => {
-    // Current URL as the share link
-    const shareUrl = window.location.href;
-
-    navigator.clipboard.writeText(shareUrl).then(() => {
-      setShowCopyAlert(true);
-      setTimeout(() => setShowCopyAlert(false), 3000); // Auto-hide after 3s
-    }).catch(err => {
-      console.error('Failed to copy link:', err);
-    });
-  };
-
   const dayLocations = trip.locations.filter(loc => loc.day === selectedDay);
 
   return (
     <div className="route-page">
-      {/* COPY NOTIFICATION TOAST */}
-      {showCopyAlert && (
-        <div style={{
-          position: 'fixed', top: '100px', left: '50%', transform: 'translateX(-50%)',
-          background: 'var(--ink)', color: '#fff', padding: '12px 24px',
-          borderRadius: '12px', zIndex: 9999, fontWeight: '700',
-          boxShadow: '0 8px 30px rgba(0,0,0,0.2)', animation: 'slideDown 0.3s ease-out'
-        }}>
-          ✅ Trip URL copied to clipboard!
-        </div>
-      )}
-
       <header className="page-header" style={{marginBottom: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
           <button className="btn-secondary" style={{alignSelf: 'flex-start', padding: '6px 16px', marginBottom: '12px', fontSize: '14px'}} onClick={() => navigate('/route')}>
@@ -227,20 +202,6 @@ const ItineraryDetailPage = () => {
       <div className="route-grid">
         <div className="itinerary-sidebar">
           <div className="info-card">
-            <button
-              className="btn-primary"
-              style={{
-                position: 'absolute',
-                top: '24px',
-                right: '24px',
-                padding: '8px 20px',
-                fontSize: '14px',
-                borderRadius: '12px'
-              }}
-              onClick={handleShare}
-            >
-              Share
-            </button>
             <h3>Trip Overview</h3>
             <div className="aibadge" style={{background: '#FCEFD6', border: '1px solid #F3DDAF', padding: '12px', borderRadius: '12px', margin: '16px 0', fontSize: '14px'}}>
               <span className="s">🪄</span>
