@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import PropTypes from 'prop-types';
 import { apiFetch, ADMIN_TOKEN_KEY, getAdminToken } from './api';
 
 // Separate auth context from the traveler-facing AuthContext: the admin console
@@ -48,7 +47,3 @@ export function AdminAuthProvider({ children }) {
     </AdminAuthContext.Provider>
   );
 }
-
-AdminAuthProvider.propTypes = {
-  children: PropTypes.node.isRequired,
-};
