@@ -4,7 +4,8 @@ import { useTrip } from '../context/TripContext';
 
 const RoutePage = () => {
   const navigate = useNavigate();
-  const { itinerary } = useTrip();
+  const context = useTrip();
+  const itinerary = context.itinerary || [];
 
   return (
     <div className="route-page">
