@@ -21,7 +21,7 @@ const HomePage = () => {
 
   const activeTrip = getActiveTrip();
 
-  const allPlaces = ["Marina Bay Sands, Singapore", "Sentosa Island", "Chinatown", "Little India", "Orchard Road", "Universal Studios Singapore", "Chiang Mai Old City", "Wat Chedi Luang", "Doi Suthep", "Nimman Road"];
+  const allPlaces = ["Marina Bay Sands, Singapore", "Sentosa Island", "Chinatown", "Little India", "Orchard Road", "Universal Studios Singapore", "Gardens by the Bay", "Clarke Quay", "Singapore Zoo", "Jewel Changi Airport"];
   const searchResults = allPlaces.filter(p => p.toLowerCase().includes(query.toLowerCase()) && query !== '');
 
   return (
@@ -78,49 +78,28 @@ const HomePage = () => {
             <h2>Active Itinerary</h2>
             <a href="#" className="link-more" onClick={(e) => { e.preventDefault(); navigate('/route'); }}>View All</a>
           </div>
-          <div className="destination-grid">
-            <div className="destination-card" onClick={() => navigate(`/itinerary/${activeTrip.id}`)}>
-              <div
-                className="dest-img"
-                style={{
-                  backgroundImage: 'linear-gradient(135deg, var(--jade), var(--jade-deep))'
-                }}
-              >
-                <h3>{activeTrip.title}</h3>
+          <div
+            className="active-itinerary-card"
+            onClick={() => navigate(`/itinerary/${activeTrip.id}`)}
+          >
+            <div
+              className="active-itinerary-img"
+              style={{
+                backgroundImage: 'linear-gradient(135deg, var(--jade), var(--jade-deep))'
+              }}
+            >
+              <h3>{activeTrip.title}</h3>
+            </div>
+            <div className="active-itinerary-info">
+              <p>{activeTrip.dayCount} Days · {activeTrip.locations.length} Attractions · {activeTrip.date.split(' - ')[0]}</p>
+              <div className="progress-bar">
+                <div className="progress" style={{ width: `${(activeTrip.progress || 0) * 100}%` }}></div>
               </div>
-              <div className="dest-info">
-                <p>{activeTrip.dayCount} Days · {activeTrip.locations.length} Attractions · {activeTrip.date.split(' - ')[0]}</p>
-                <div className="progress-bar">
-                  <div className="progress" style={{ width: `${(activeTrip.progress || 0) * 100}%` }}></div>
-                </div>
-                <a className="go-link">Continue Planning ➔</a>
-              </div>
+              <a className="go-link">Continue Planning ➔</a>
             </div>
           </div>
         </section>
       )}
-
-      <section className="popular-destinations" style={{marginTop: user ? '60px' : '20px'}}>
-        <div className="section-title">
-          <h2>Popular Destinations</h2>
-        </div>
-        <div className="destination-grid">
-          {[
-            { name: "Bangkok", count: "8.2k", img: "https://images.unsplash.com/photo-1552465011-b4e21bf6e79a" },
-            { name: "Phuket", count: "5.4k", img: "https://images.unsplash.com/photo-1537996194471-e657df975ab4" },
-            { name: "Kyoto", count: "12.1k", img: "https://images.unsplash.com/photo-1513415277900-a62401e19be4" }
-          ].map((dest, i) => (
-            <div key={i} className="destination-card" onClick={() => navigate(`/attraction/${encodeURIComponent(dest.name)}`)}>
-              <div className="dest-img" style={{backgroundImage: `linear-gradient(rgba(0,0,0,0),rgba(0,0,0,0.6)), url(${dest.img}?w=600&h=400&fit=crop)`}}>
-                <h3>{dest.name}</h3>
-              </div>
-              <div className="dest-info">
-                <p>{dest.count} Saved</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
     </div>
   );
 };
