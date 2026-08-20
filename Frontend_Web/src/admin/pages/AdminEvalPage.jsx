@@ -12,10 +12,14 @@ import { ScoreCards } from '../EvalScoreCards';
 // The point it makes: schema validation (Pydantic) proves the JSON is well-formed, but only
 // content-level metrics reveal whether the model captured what the traveller actually wrote.
 
+const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
+
 export default function AdminEvalPage() {
   const [records, setRecords] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
+  const [page, setPage] = useState(0); // 0-indexed
 
   useEffect(() => {
     let cancelled = false;
@@ -48,6 +52,19 @@ export default function AdminEvalPage() {
     };
   }, [records]);
 
+  // Client-side pagination of the per-import table. Averages above always cover ALL records;
+  // only the table below is paged. `safePage` clamps in case the page size grew past the last page.
+  const total = records.length;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, pageCount - 1);
+  const start = safePage * pageSize;
+  const visible = records.slice(start, start + pageSize);
+
+  function changePageSize(next) {
+    setPageSize(next);
+    setPage(0); // a new page size invalidates the current offset — jump back to the first page
+  }
+
   return (
     <div>
       <div className="admin-page-head">
@@ -75,7 +92,21 @@ export default function AdminEvalPage() {
             )}
 
             <div className="admin-eval-panel" style={{ marginTop: 20 }}>
-              <h2 className="admin-eval-h2">Per-import scores — open one to inspect</h2>
+              <div className="admin-eval-pager-head">
+                <h2 className="admin-eval-h2" style={{ margin: 0 }}>Per-import scores — open one to inspect</h2>
+                <label className="admin-eval-pagesize">
+                  Rows per page:
+                  <select
+                    aria-label="Rows per page"
+                    value={pageSize}
+                    onChange={(e) => changePageSize(Number(e.target.value))}
+                  >
+                    {PAGE_SIZE_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                  <span className="admin-eval-note">of {total}</span>
+                </label>
+              </div>
+
               <div className="admin-table-wrap">
                 <table className="admin-table">
                   <thead>
@@ -85,7 +116,7 @@ export default function AdminEvalPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {records.map((rec) => (
+                    {visible.map((rec) => (
                       <tr key={rec.id}>
                         <td>{rec.createdAt ? new Date(rec.createdAt).toLocaleString() : '—'}</td>
                         <td>{rec.userEmail}</td>
@@ -103,6 +134,29 @@ export default function AdminEvalPage() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              <div className="admin-eval-pager">
+                <span className="admin-eval-note">
+                  {total === 0 ? '0' : `${start + 1}–${Math.min(start + pageSize, total)}`} of {total}
+                </span>
+                <div className="admin-eval-pager-btns">
+                  <button
+                    className="admin-btn admin-btn-ghost"
+                    disabled={safePage === 0}
+                    onClick={() => setPage(safePage - 1)}
+                  >
+                    Previous
+                  </button>
+                  <span className="admin-eval-note">Page {safePage + 1} / {pageCount}</span>
+                  <button
+                    className="admin-btn admin-btn-ghost"
+                    disabled={safePage >= pageCount - 1}
+                    onClick={() => setPage(safePage + 1)}
+                  >
+                    Next
+                  </button>
+                </div>
               </div>
             </div>
           </>

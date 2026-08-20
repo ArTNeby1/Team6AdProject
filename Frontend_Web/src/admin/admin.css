@@ -299,3 +299,23 @@
   .admin-nav { flex-direction: row; }
   .admin-eval-io { grid-template-columns: 1fr; }
 }
+
+/* LLM Evaluation — per-import table pagination controls */
+.admin-eval-pager-head {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 12px; margin-bottom: 12px;
+}
+.admin-eval-pagesize {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: .85rem; color: var(--muted);
+}
+.admin-eval-pagesize select {
+  padding: 4px 8px; border: 1px solid var(--line); border-radius: 8px;
+  background: #fff; color: var(--ink); font-size: .85rem; cursor: pointer;
+}
+.admin-eval-pager {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 12px; margin-top: 14px;
+}
+.admin-eval-pager-btns { display: inline-flex; align-items: center; gap: 10px; }
+.admin-eval-pager-btns button:disabled { opacity: .45; cursor: not-allowed; }
