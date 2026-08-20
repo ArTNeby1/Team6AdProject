@@ -31,12 +31,6 @@ loomytrip:
   jwt:
     secret: ${JWT_SECRET:loomytrip-dev-secret-change-me-please-32bytes-min}
     expiration-ms: ${JWT_EXPIRATION_MS:86400000}
-  admin-seed:
-    # Initial super_admin, created on startup by AdminSeeder. Blank by default —
-    # in prod ECS injects these from Secrets Manager (see terraform/rds.tf,
-    # ecs.tf); blank means "do not seed". Local dev overrides in application-dev.yml.
-    email: ${SEED_ADMIN_EMAIL:}
-    password: ${SEED_ADMIN_PASSWORD:}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
   ai:

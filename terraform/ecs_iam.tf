@@ -46,8 +46,7 @@ resource "aws_iam_role_policy" "ecs_task_execution_secrets" {
         Resource = [
           aws_secretsmanager_secret.db.arn,
           aws_secretsmanager_secret.jwt.arn,
-          aws_secretsmanager_secret.google_maps.arn,
-          aws_secretsmanager_secret.admin_seed.arn
+          aws_secretsmanager_secret.google_maps.arn
         ]
       }
     ]
