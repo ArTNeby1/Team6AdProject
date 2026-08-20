@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import AdminEvalPage from './AdminEvalPage';
 
@@ -94,5 +94,56 @@ describe('AdminEvalPage (frontend-only scoring)', () => {
     apiFetchMock.mockRejectedValue(new Error('boom'));
     renderPage();
     await waitFor(() => expect(screen.getByText('boom')).toBeInTheDocument());
+  });
+});
+
+describe('AdminEvalPage pagination', () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+  });
+
+  // 7 scoreable imports so paging is exercised at the default page size of 5.
+  const MANY = {
+    content: Array.from({ length: 7 }, (_, i) =>
+      importRow(20 + i, `u${i + 1}@example.com`, 'Visited Merlion Park today.', ['Merlion Park'])),
+    totalPages: 1,
+  };
+  const rowCount = () => screen.getAllByRole('link', { name: 'Inspect' }).length;
+
+  it('shows only the first page (default 5) and the total count', async () => {
+    apiFetchMock.mockResolvedValue(MANY);
+    renderPage();
+
+    await waitFor(() => expect(screen.getByLabelText('Rows per page')).toBeInTheDocument());
+    expect(rowCount()).toBe(5);                      // 5 of 7 on page 1
+    expect(screen.getByText('of 7')).toBeInTheDocument();
+    expect(screen.getByText('Page 1 / 2')).toBeInTheDocument();
+    expect(screen.getByText('1–5 of 7')).toBeInTheDocument();
+  });
+
+  it('advances to the next page with the remaining rows', async () => {
+    apiFetchMock.mockResolvedValue(MANY);
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Page 1 / 2')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(rowCount()).toBe(2);                      // remaining 2 on page 2
+    expect(screen.getByText('6–7 of 7')).toBeInTheDocument();
+    expect(screen.getByText('Page 2 / 2')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+  });
+
+  it('changing the page size shows more rows and resets to page 1', async () => {
+    apiFetchMock.mockResolvedValue(MANY);
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Page 1 / 2')).toBeInTheDocument());
+
+    // Go to page 2 first, then grow the page size — should snap back to page 1 with all rows.
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.change(screen.getByLabelText('Rows per page'), { target: { value: '10' } });
+
+    expect(rowCount()).toBe(7);
+    expect(screen.getByText('1–7 of 7')).toBeInTheDocument();
+    expect(screen.getByText('Page 1 / 1')).toBeInTheDocument();
   });
 });
