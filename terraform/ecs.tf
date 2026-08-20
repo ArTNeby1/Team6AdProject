@@ -65,10 +65,7 @@ resource "aws_ecs_task_definition" "java" {
         { name = "DB_NAME", valueFrom = "${aws_secretsmanager_secret.db.arn}:dbname::" },
         { name = "DB_USERNAME", valueFrom = "${aws_secretsmanager_secret.db.arn}:username::" },
         { name = "DB_PASSWORD", valueFrom = "${aws_secretsmanager_secret.db.arn}:password::" },
-        { name = "JWT_SECRET", valueFrom = aws_secretsmanager_secret.jwt.arn },
-        # 后端 AdminSeeder 用这两个值初始化种子管理员（随机密码，见 rds.tf）
-        { name = "SEED_ADMIN_EMAIL", valueFrom = "${aws_secretsmanager_secret.admin_seed.arn}:email::" },
-        { name = "SEED_ADMIN_PASSWORD", valueFrom = "${aws_secretsmanager_secret.admin_seed.arn}:password::" }
+        { name = "JWT_SECRET", valueFrom = aws_secretsmanager_secret.jwt.arn }
         ], var.google_maps_api_key == "" ? [] : [
         { name = "GOOGLE_MAPS_API_KEY", valueFrom = aws_secretsmanager_secret.google_maps.arn }
       ])
@@ -88,8 +85,7 @@ resource "aws_ecs_task_definition" "java" {
   depends_on = [
     aws_secretsmanager_secret_version.db,
     aws_secretsmanager_secret_version.jwt,
-    aws_secretsmanager_secret_version.google_maps,
-    aws_secretsmanager_secret_version.admin_seed
+    aws_secretsmanager_secret_version.google_maps
   ]
 }
 
