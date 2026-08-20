@@ -133,3 +133,29 @@ resource "aws_secretsmanager_secret_version" "google_maps" {
   secret_id     = aws_secretsmanager_secret.google_maps.id
   secret_string = var.google_maps_api_key
 }
+
+# ------------------------------------------------------------
+# 后台种子管理员：跟 db 密码一样随机生成 + 进 Secrets Manager。
+# 后端启动时（AdminSeeder）从 SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD 读取，
+# 若该 admin 不存在就用随机密码建一个 super_admin。密码不出现在代码/Terraform 输出里。
+# 旧的 V2 硬编码种子（明文 "Admin@12345"）由迁移 V13 清除。
+# override_special 只留对 BCrypt / shell 安全的字符。
+# ------------------------------------------------------------
+resource "random_password" "admin_seed" {
+  length           = 20
+  special          = true
+  override_special = "!#%^*()-_=+"
+}
+
+resource "aws_secretsmanager_secret" "admin_seed" {
+  #checkov:skip=CKV_AWS_149:同上，默认加密已经够用
+  name = "${var.project_name}/${var.environment}/admin-seed"
+}
+
+resource "aws_secretsmanager_secret_version" "admin_seed" {
+  secret_id = aws_secretsmanager_secret.admin_seed.id
+  secret_string = jsonencode({
+    email    = "admin@loomytrip.local"
+    password = random_password.admin_seed.result
+  })
+}

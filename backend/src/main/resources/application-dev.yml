@@ -14,6 +14,13 @@ spring:
         format_sql: true
 
 loomytrip:
+  admin-seed:
+    # Local-only convenience: recreate the familiar dev admin so the console
+    # still logs in after V13 removes the old committed-password seed. These
+    # defaults never reach prod (prod uses application.yml's blank defaults plus
+    # Secrets Manager). Override via SEED_ADMIN_* if you want different creds.
+    email: ${SEED_ADMIN_EMAIL:admin@loomytrip.local}
+    password: ${SEED_ADMIN_PASSWORD:Admin@12345}
   cors:
     # Vite may fall back to 5174/5175 when 5173 is taken; allow those too so a
     # port shift does not break the admin console with a CORS error.
