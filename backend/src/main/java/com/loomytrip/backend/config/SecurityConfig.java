@@ -1,11 +1,20 @@
 package com.loomytrip.backend.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.loomytrip.backend.exception.ErrorResponse;
 import com.loomytrip.backend.security.JwtAuthenticationFilter;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.Customizer;
@@ -30,15 +39,18 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final UserDetailsService userDetailsService;
     private final CorsProperties corsProperties;
+    private final ObjectMapper objectMapper;
 
     public SecurityConfig(
             JwtAuthenticationFilter jwtAuthenticationFilter,
             UserDetailsService userDetailsService,
-            CorsProperties corsProperties
+            CorsProperties corsProperties,
+            ObjectMapper objectMapper
     ) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.userDetailsService = userDetailsService;
         this.corsProperties = corsProperties;
+        this.objectMapper = objectMapper;
     }
 
     @Bean
@@ -62,10 +74,34 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
                         .anyRequest().authenticated()
                 )
+                // Without this, the stateless JWT chain has no AuthenticationEntryPoint, so an
+                // unauthenticated request (missing/expired token) falls back to Spring's default
+                // 403 with no body — indistinguishable from a real authorization denial, and the
+                // web client's interceptor only auto-logs-out on 401. Return a proper 401 so an
+                // expired session redirects to login instead of surfacing a bare 403. Authenticated
+                // -but-forbidden requests (wrong role, not-your-resource) still get 403 via the
+                // default access-denied handler.
+                .exceptionHandling(ex -> ex.authenticationEntryPoint(this::writeUnauthorized))
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    private void writeUnauthorized(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            AuthenticationException authException
+    ) throws IOException {
+        response.setStatus(HttpStatus.UNAUTHORIZED.value());
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        ErrorResponse body = new ErrorResponse(
+                Instant.now(),
+                "UNAUTHENTICATED",
+                "Authentication required. Your session may have expired — please sign in again.",
+                List.of()
+        );
+        objectMapper.writeValue(response.getWriter(), body);
     }
 
     @Bean
