@@ -171,6 +171,7 @@ fun LoomyTripApp() {
     var profileSaving by remember { mutableStateOf(false) }
     var selectedExploreCity by remember { mutableStateOf<ExploreCity?>(null) }
     var selectedLocalDestination by remember { mutableStateOf<LocalDestination?>(null) }
+    var returnToProfileAfterTrips by remember { mutableStateOf(false) }
     val planningHistory = remember { mutableStateListOf<PlanningSessionSummaryDto>() }
     var planningHistoryLoading by remember { mutableStateOf(false) }
     var planningHistoryError by remember { mutableStateOf<String?>(null) }
@@ -345,7 +346,7 @@ fun LoomyTripApp() {
     val showAppChrome = current !in authDestinations
     val showBottomBar = current in bottomDestinations
     val shouldShowBackButton = current !in bottomDestinations ||
-        (current == Destination.Trips && previousRoute == Destination.Profile.route)
+        (current == Destination.Trips && returnToProfileAfterTrips)
     val bottomItems = listOf(
         BottomItem(Destination.Home, Icons.Default.Home),
         BottomItem(Destination.Trips, Icons.Default.Route),
@@ -354,12 +355,16 @@ fun LoomyTripApp() {
     )
 
     fun navigateToRoot(destination: Destination) {
+        if (current == destination) return
+        returnToProfileAfterTrips = false
         navController.navigate(destination.route) {
             popUpTo(navController.graph.findStartDestination().id) {
-                saveState = true
+                saveState = false
             }
             launchSingleTop = true
-            restoreState = true
+            // A root tab should always open its own screen. Restoring a saved
+            // tab state here could show the map after the user selected trips.
+            restoreState = false
         }
     }
 
@@ -409,7 +414,18 @@ fun LoomyTripApp() {
                     title = { Text(if (current == Destination.Home) "LoomyTrip" else current.label) },
                     navigationIcon = {
                         if (shouldShowBackButton) {
-                            IconButton(onClick = { navController.popBackStack() }) {
+                            IconButton(onClick = {
+                                if (current == Destination.Trips && returnToProfileAfterTrips) {
+                                    returnToProfileAfterTrips = false
+                                    val returned = navController.popBackStack(
+                                        Destination.Profile.route,
+                                        inclusive = false
+                                    )
+                                    if (!returned) navigateToRoot(Destination.Profile)
+                                } else {
+                                    navController.popBackStack()
+                                }
+                            }) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                             }
                         }
@@ -1211,6 +1227,7 @@ fun LoomyTripApp() {
                     errorMessage = profileError,
                     onRetry = { scope.launch { loadProfile() } },
                     onTripsClick = {
+                        returnToProfileAfterTrips = true
                         navController.navigate(Destination.Trips.route) {
                             launchSingleTop = true
                         }

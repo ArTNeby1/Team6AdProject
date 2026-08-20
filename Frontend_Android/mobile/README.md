@@ -1,28 +1,31 @@
-# Loomytrip Mobile
+# LoomyTrip Mobile
 
-Android app for Loomytrip, built with Kotlin and Jetpack Compose.
+This is the Android side of LoomyTrip. It is written in Kotlin with Jetpack Compose.
 
-## Current progress
+## My part
 
-Sprint 1:
+I am Wang Boliang and I mainly worked on the Mobile traveller app.
 
-- local sign in and registration
-- home page and trip planner entry
-- paste travel guide text (`F-02`)
-- review the extracted places (`F-06`)
-- confirm the selected places as a trip
+- Login, registration, log out and profile editing.
+- Keeping the login token after the app is reopened.
+- AI import: paste travel text, wait for the AI processing result, show errors for invalid input or service problems, and view earlier import records.
+- Review extracted places: rename/delete a place, add another instruction, validate places, choose trip duration and assign places to days.
+- Confirming the AI result and showing the created trip, including the start date, weather result and nearby suggestions returned by the backend.
+- Trip page: see different days, edit activities and start times, add/delete days, delete a trip and use smart reorder.
+- Map page: choose a trip and day, see the route/crowd information, compare public transport, driving, cycling and walking, and open Google Maps for directions.
+- Showing import success/failure notifications and letting the user jump from a notification to the related page.
+- Fixing Mobile navigation problems, for example returning from Trips to Profile and stopping the Trips tab from opening the Map page by mistake.
+- Connecting the Android UI to the backend API, while keeping small local data fallbacks for some explore/recommendation screens.
+- Some unit tests, lint/code-scanning fixes and Android network settings.
 
-Sprint 2:
+I also changed a few Mobile pages after comparing them with the Web flow, mainly so the buttons and trip data behave in a similar way.
 
-- browse the itinerary by day (`F-10`)
-- add, delete and reorder activities (`F-11`)
-- route map with numbered stops (`F-13`)
-- open external navigation (`F-15`)
+## Basic flow
 
-## Notes
+Sign in → AI import → review places → confirm trip → view or edit itinerary → map/navigation.
 
-The backend connection is not finished yet. Login, place extraction and itinerary data currently use local mock data. The map is also drawn locally, so it does not need a map API key.
+## How to run
 
-## Run
+Open `Frontend_Android` in Android Studio. After Gradle sync finishes, select the `mobile` configuration and run it on an API 26+ emulator.
 
-Open the `Frontend_Android` directory in Android Studio, allow Gradle sync to finish, select the `mobile` run configuration, and launch an API 26+ emulator.
+The app connects to the team backend. For local testing, the debug configuration allows the listed development hosts only.
