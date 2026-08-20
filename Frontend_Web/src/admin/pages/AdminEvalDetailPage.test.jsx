@@ -24,6 +24,10 @@ const PAGE = {
     importRow(10, 'traveler@example.com',
       'Day 1: Merlion Park and Marina Bay Sands. Day 2: Sentosa Island.',
       ['Merlion Park', 'Marina Bay Sands']),
+    // Lowercase places -> no gold detected -> unscoreable (N/A), groundedness still 100%.
+    importRow(13, 'casual@example.com',
+      'We would also like to visit sentosa and arab street.',
+      ['Sentosa', 'Arab Street']),
   ],
   totalPages: 1,
 };
@@ -54,6 +58,20 @@ describe('AdminEvalDetailPage', () => {
     expect(screen.getByText('✗ Sentosa Island')).toBeInTheDocument(); // missed by the model
     // recall = 2/3 -> 67% present in the scorecard.
     expect(screen.getAllByText('67%').length).toBeGreaterThan(0);
+  });
+
+  it('shows N/A and an explanatory note for an unscoreable import (no reference detected)', async () => {
+    apiFetchMock.mockResolvedValue(PAGE);
+    renderAt('/admin/eval/13');
+
+    expect(await screen.findByText('casual@example.com', { exact: false })).toBeInTheDocument();
+    // P/R/F1 are N/A; groundedness stays exact at 100%.
+    expect(screen.getAllByText('N/A').length).toBeGreaterThanOrEqual(3);
+    expect(screen.getByText('100%')).toBeInTheDocument();
+    expect(screen.getByText(/No reference places could be detected/)).toBeInTheDocument();
+    // No misleading "0%" and no matched/missed chips.
+    expect(screen.queryByText('0%')).not.toBeInTheDocument();
+    expect(screen.queryByText('✓ Sentosa')).not.toBeInTheDocument();
   });
 
   it('shows a not-found message when the id is absent from recent imports', async () => {

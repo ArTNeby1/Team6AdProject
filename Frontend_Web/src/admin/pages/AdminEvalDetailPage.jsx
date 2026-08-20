@@ -69,15 +69,26 @@ export default function AdminEvalDetailPage() {
             <h2 className="admin-eval-h2">
               Reference places (heuristic found {record.gold.length}) — matched vs missed
             </h2>
-            <p className="admin-eval-note" style={{ marginBottom: 6 }}>Matched — real places the agent captured</p>
-            <Chips names={record.matched} kind="hit" />
-            <p className="admin-eval-note" style={{ margin: '12px 0 6px' }}>Missed — real places the agent dropped</p>
-            <Chips names={record.missed} kind="miss" />
-            {record.spurious.length > 0 && (
+            {record.scored ? (
               <>
-                <p className="admin-eval-note" style={{ margin: '12px 0 6px' }}>Not in reference — extracted but not a heuristic place</p>
-                <Chips names={record.spurious} kind="miss" />
+                <p className="admin-eval-note" style={{ marginBottom: 6 }}>Matched — real places the agent captured</p>
+                <Chips names={record.matched} kind="hit" />
+                <p className="admin-eval-note" style={{ margin: '12px 0 6px' }}>Missed — real places the agent dropped</p>
+                <Chips names={record.missed} kind="miss" />
+                {record.spurious.length > 0 && (
+                  <>
+                    <p className="admin-eval-note" style={{ margin: '12px 0 6px' }}>Not in reference — extracted but not a heuristic place</p>
+                    <Chips names={record.spurious} kind="miss" />
+                  </>
+                )}
               </>
+            ) : (
+              <p className="admin-eval-note">
+                No reference places could be detected in the source text (the heuristic only
+                recognises capitalised place names), so Precision / Recall / F1 are shown as N/A.
+                Groundedness above is still exact — it just checks the extracted places appear in
+                the text.
+              </p>
             )}
           </div>
         </>

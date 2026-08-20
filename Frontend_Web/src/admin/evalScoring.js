@@ -38,19 +38,31 @@ export function scoreImport(sourceText, predictedRaw) {
   const predicted = (predictedRaw || []).filter((p) => normalize(p));
   const gold = heuristicGold(sourceText);
 
+  // Precision / Recall / F1 all need a reference ("gold") list. The heuristic only detects
+  // capitalised multi-word phrases, so casual / lowercase source text ("sentosa and arab
+  // street") yields no gold — and then these three are *unscoreable*, not zero. Reporting 0%
+  // there would wrongly read as "the model got everything wrong". So we mark them null (shown
+  // as N/A). Groundedness needs no gold and is always computed.
+  const scored = gold.length > 0;
+
   const matched = gold.filter((g) => predicted.some((p) => matches(g, p)));
   const missed = gold.filter((g) => !matched.includes(g));
-  const spurious = predicted.filter((p) => !gold.some((g) => matches(g, p)));
+  const spurious = scored ? predicted.filter((p) => !gold.some((g) => matches(g, p))) : [];
 
-  const precision = predicted.length ? (predicted.length - spurious.length) / predicted.length : 0;
-  const recall = gold.length ? matched.length / gold.length : 0;
-  const f1 = precision + recall ? (2 * precision * recall) / (precision + recall) : 0;
+  let precision = null;
+  let recall = null;
+  let f1 = null;
+  if (scored) {
+    precision = predicted.length ? (predicted.length - spurious.length) / predicted.length : 0;
+    recall = matched.length / gold.length;
+    f1 = precision + recall ? (2 * precision * recall) / (precision + recall) : 0;
+  }
 
   const srcNorm = normalize(sourceText);
   const grounded = predicted.filter((p) => srcNorm.includes(normalize(p)));
   const groundedness = predicted.length ? grounded.length / predicted.length : 0;
 
-  return { precision, recall, f1, groundedness, gold, predicted, matched, missed, spurious };
+  return { scored, precision, recall, f1, groundedness, gold, predicted, matched, missed, spurious };
 }
 
 // The audit log stores payloads as JSON strings; pull the source text + extracted place names,
@@ -94,7 +106,7 @@ export const METRICS = [
 ];
 
 export function pct(value) {
-  return value == null ? '—' : `${Math.round(value * 100)}%`;
+  return value == null ? 'N/A' : `${Math.round(value * 100)}%`;
 }
 
 export function toneClass(value) {
