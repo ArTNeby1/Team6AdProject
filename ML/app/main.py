@@ -54,6 +54,18 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+# 之前没有任何地方调用过 basicConfig：所有 logger（包括 bedrock_client.py 里的
+# 请求日志）都没有 handler，INFO 级别的调用日志根本不会输出到任何地方，只有
+# logger.exception 这种 ERROR 级别的会靠 Python 的 lastResort handler 漏到
+# stderr。uvicorn 跑在容器里，stdout/stderr 都会被 ECS 的 awslogs 驱动收进
+# CloudWatch（见 terraform/ecs.tf 的 ml 日志组），所以这里只要把 root logger
+# 接到 stdout 就行，不用额外配 CloudWatch 相关代码。
+logging.basicConfig(
+    level=os.environ.get("LOG_LEVEL", "INFO"),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    stream=sys.stdout,
+)
+
 logger = logging.getLogger("loomytrip-ml")
 
 SCHEMA_DIR = Path(__file__).resolve().parent.parent / "schema"
