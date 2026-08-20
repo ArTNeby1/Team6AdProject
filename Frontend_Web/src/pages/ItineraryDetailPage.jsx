@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useTrip } from '../context/TripContext';
 import { mapApi } from '../services/api';
@@ -25,6 +25,34 @@ const ItineraryDetailPage = () => {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitleValue, setEditTitleValue] = useState('');
   const [routeStats, setRouteStats] = useState({ distance: 0, time: 0, transports: [] });
+
+  // 开始日期的原生 <input type="date">。要拿 ref 是因为不能靠"把透明 input 铺满整块、
+  // 让用户去点它"这套老写法：Chrome 只在点到 ::-webkit-calendar-picker-indicator（input
+  // 右端那个约 18px 的小图标）时才弹日历，而那个指示器正好落在胶囊右侧 padding 里、在
+  // 可见的 📅 emoji **右边**。用户点图标其实点在 input 的空白处，只是让它获得焦点，
+  // opacity:0 又看不出任何变化 —— 表现就是"点了没反应"。所以改成自己调 showPicker()。
+  const startDateInputRef = useRef(null);
+
+  /**
+   * 点整颗 "Start Time" 胶囊都能打开日历。
+   *
+   * showPicker() 是标准 API（Chrome/Edge 99+、Firefox 101+、Safari 16+），必须由真实的
+   * 用户手势触发，否则抛 NotAllowedError —— 这里是 onClick/onKeyDown 里调的，满足条件。
+   * 老浏览器没有这个方法时退回 focus()：至少能用键盘直接输日期，不会变成一个死掉的控件。
+   */
+  const openStartDatePicker = () => {
+    const el = startDateInputRef.current;
+    if (!el) return;
+    try {
+      if (typeof el.showPicker === 'function') {
+        el.showPicker();
+        return;
+      }
+    } catch {
+      // 少数情况下 showPicker 会抛（比如日历已经开着），退回 focus 就行，不要把异常抛给用户
+    }
+    el.focus();
+  };
 
   // F-18: nearby/similar place suggestions from the AI /recommend agent, handed off from
   // ImportPage's confirm step via navigation state. Backend doesn't persist these, so a
@@ -167,12 +195,27 @@ const ItineraryDetailPage = () => {
 
         <div className="header-actions" style={{display: 'flex', gap: '12px', alignItems: 'center', height: 'fit-content', marginTop: 'auto'}}>
           {/* START DATE MODIFIER MOVED HERE */}
-          <div className="trip-date-modifier" style={{ cursor: trip.status !== 'FINISHED' ? 'pointer' : 'default' }}>
+          <div
+            className="trip-date-modifier"
+            style={{ cursor: trip.status !== 'FINISHED' ? 'pointer' : 'default' }}
+            onClick={trip.status !== 'FINISHED' ? openStartDatePicker : undefined}
+            // 整块当按钮用，所以要补键盘可达性：div 默认既不可聚焦也不响应回车/空格。
+            role={trip.status !== 'FINISHED' ? 'button' : undefined}
+            tabIndex={trip.status !== 'FINISHED' ? 0 : undefined}
+            onKeyDown={trip.status !== 'FINISHED' ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                openStartDatePicker();
+              }
+            } : undefined}
+            title={trip.status !== 'FINISHED' ? 'Click to change start date' : undefined}
+          >
             <span className="label">Start Time:</span>
             <span className="date-val">{trip.date}</span>
             <span className="cal-icon">📅</span>
             {trip.status !== 'FINISHED' && (
               <input
+                ref={startDateInputRef}
                 type="date"
                 min={new Date().toISOString().split('T')[0]}
                 onChange={(e) => {
@@ -180,7 +223,11 @@ const ItineraryDetailPage = () => {
                     updateTripDate(trip.id, e.target.value);
                   }
                 }}
-                title="Click to change start date"
+                // 不进 Tab 顺序：外层 div 才是那个可聚焦、看得见焦点环的控件。
+                // 但也不用 aria-hidden —— showPicker 不可用时会退回 focus() 到这个 input，
+                // 对一个声明成"对辅助技术不存在"的元素设焦点是自相矛盾的。
+                tabIndex={-1}
+                aria-label="Trip start date"
               />
             )}
           </div>

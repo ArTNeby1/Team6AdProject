@@ -361,7 +361,16 @@ public class PlanningService {
         ensureDraftPlacesValidated(draftPlaces);
 
         User user = currentUser();
-        LocalDate startDate = session.getStartDate() != null ? session.getStartDate() : LocalDate.now();
+        // 新生成的计划不可能从过去开始：session.startDate 来自 AI 抽取（parseStartDate），
+        // 抽到的日期不一定可用——原文没写日期时模型可能编一个，或者写着"2月14号"而今天
+        // 已经过了 2月14号。ML 侧已经在 extraction.py 里拦掉编造的日期、把只写月/日的
+        // 补成下一次出现，这里再兜一道：只要落到今天之前，就退回默认值"今天"，
+        // 用户在行程页可以自己改（PUT /trips/{id}）。
+        LocalDate today = LocalDate.now();
+        LocalDate sessionStartDate = session.getStartDate();
+        LocalDate startDate = sessionStartDate != null && !sessionStartDate.isBefore(today)
+                ? sessionStartDate
+                : today;
 
         Trip trip = new Trip();
         trip.setUser(user);

@@ -63,6 +63,11 @@ CRITICAL RULES:
    is greetings, small talk, complaints, or content unrelated to travel), output
    "places": [] and "destination": "". Do NOT invent a place or destination just
    to make the output non-empty.
+7. Only put a date in "dates" when the text spells out the full calendar date
+   including the year. Anything less is an empty array: a month/day with no
+   year ("Feb 14th"), a vague time ("a weekend", "next Friday"), Day 1 / Day 2
+   labels, or no date at all. Never guess or infer a year — not from today's
+   date, and not from your training data.
 
 JSON Schema:
 {schema}

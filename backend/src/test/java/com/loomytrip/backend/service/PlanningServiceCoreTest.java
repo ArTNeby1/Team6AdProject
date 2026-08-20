@@ -230,7 +230,8 @@ class PlanningServiceCoreTest {
     void confirmSession_createsTripAndMarksConfirmed() {
         PlanningSession session = ownedSession(40L, PlanningSessionStatus.DRAFT_READY);
         session.setTitle("SG Trip");
-        session.setStartDate(LocalDate.of(2026, 9, 18));
+        LocalDate futureStart = LocalDate.now().plusMonths(1);
+        session.setStartDate(futureStart);
         DraftPlace place = draftPlace(204L, session, "MBS", new BigDecimal("1.28"), new BigDecimal("103.85"));
         place.setValidationStatus(ValidationStatus.VALID);
         when(planningSessionRepository.findById(40L)).thenReturn(Optional.of(session));
@@ -257,11 +258,46 @@ class PlanningServiceCoreTest {
         ConfirmSessionResponse response = planningService.confirmSession(40L, new ConfirmSessionRequest(1));
 
         assertThat(response.id()).isEqualTo(400L);
-        assertThat(response.startDate()).isEqualTo(LocalDate.of(2026, 9, 18));
+        assertThat(response.startDate()).isEqualTo(futureStart);
         assertThat(response.weatherSummary()).isEqualTo("sunny");
         assertThat(session.getStatus()).isEqualTo(PlanningSessionStatus.CONFIRMED);
         assertThat(session.getConfirmedTrip().getId()).isEqualTo(400L);
         verify(tripScheduleRepository).save(any());
+    }
+
+    @Test
+    void confirmSession_fallsBackToTodayWhenExtractedStartDateIsInThePast() {
+        // session.startDate 来自 AI 抽取，抽到的日期不一定可用（原文没写日期时模型可能编一个，
+        // 或者写着"2月14号"而今天已经过了）。新生成的计划不该从过去开始 —— 退回"今天"。
+        PlanningSession session = ownedSession(41L, PlanningSessionStatus.DRAFT_READY);
+        session.setTitle("SG Trip");
+        session.setStartDate(LocalDate.now().minusMonths(6));
+        DraftPlace place = draftPlace(206L, session, "MBS", new BigDecimal("1.28"), new BigDecimal("103.85"));
+        place.setValidationStatus(ValidationStatus.VALID);
+        when(planningSessionRepository.findById(41L)).thenReturn(Optional.of(session));
+        when(draftPlaceRepository.findBySession_Id(41L)).thenReturn(List.of(place));
+        when(draftActivityRepository.findBySession_Id(41L)).thenReturn(List.of());
+        when(tripRepository.save(any(Trip.class))).thenAnswer(inv -> {
+            Trip trip = inv.getArgument(0);
+            trip.setId(410L);
+            return trip;
+        });
+        when(tripDayRepository.save(any(TripDay.class))).thenAnswer(inv -> {
+            TripDay day = inv.getArgument(0);
+            day.setId(411L);
+            return day;
+        });
+        when(destinationService.findOrCreateByName(eq("MBS"), any(), any(), any()))
+                .thenReturn(destination(10L, "MBS"));
+        when(aiPlanningClient.recommend(anyList(), anyString(), isNull()))
+                .thenReturn(new AiRecommendResult("OK", "sunny", List.of(), List.of()));
+        when(tripScheduleRepository.findVisitedDestinationNamesByUserId(1L)).thenReturn(Set.of());
+        when(tripService.generateItinerary(410L)).thenThrow(new ApiException(
+                org.springframework.http.HttpStatus.BAD_GATEWAY, "AI_SERVICE_UNAVAILABLE", "down"));
+
+        ConfirmSessionResponse response = planningService.confirmSession(41L, new ConfirmSessionRequest(1));
+
+        assertThat(response.startDate()).isEqualTo(LocalDate.now());
     }
 
     @Test

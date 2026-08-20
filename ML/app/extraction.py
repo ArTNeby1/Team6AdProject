@@ -89,55 +89,57 @@ def _null_unusable_duration(data: dict) -> dict:
 _YEAR_IN_DATE_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
 
 
-def _fix_invented_dates(data: dict, source_text: str) -> dict:
+def _drop_invented_dates(data: dict, source_text: str) -> dict:
     """
-    把"原文没写年份、模型自己编了一个"的日期，就地改成用当前年份，在 schema 校验之前。
+    在 schema 校验之前，把 dates 里"原文没有明确写出来"的日期全部丢掉。
 
-    为什么要有这一步（实测出来的坑，不是假想）：用户输入 "starting February 14th"
-    这种没写年份的日期时，schema description 里已经写了"Never invent a year"，但这只是
-    prompt 里的提示，Bedrock/Claude 系模型不保证遵守——实测 Nova Lite/Claude Haiku/
-    Sonnet 三个候选模型都出现过至少一次编年份（见 ML/docs/model_evaluation.md），
-    常见编出来的是训练数据里常见的年份（比如 2023），跟"今天是哪年"完全无关。这条
-    日期最终会被前端当成"计划开始日期"展示给用户，编出来的年份会让新生成的计划显示
-    成过去的日期。
+    判断标准只有一条：**模型给的年份能不能在原文里逐字找到**。找得到，说明用户自己
+    写了完整日期（"2026-08-22"、"August 22, 2026"），原样保留；找不到，整条丢掉。
+
+    为什么标准这么严（2026-08-19 定的产品行为）：dates 的第一条会被后端当成新计划的
+    startDate 显示给用户（PlanningService.confirmSession），而这个字段的默认值就该是
+    **今天** —— 用户打开计划看到今天的日期，需要改再自己改。任何"从半个日期推出来的"
+    值都不合格：
+
+      - 原文 "starting February 14th"（没写年份）：套今年得到 2026-02-14，是个过去的
+        日期；顺延到下一次得到 2027-02-14，是个 6 个月后的日期。两个都不能当默认值，
+        所以不猜年份，直接丢掉，退回今天。
+      - 原文 "for a weekend" / "next Friday"：实测 Nova Lite 会擅自落成具体某两天
+        （见下），整条都是编的，丢掉。
 
     这里跟重试无关（不属于 extract_with_retry 那套"重试救得回来"的错误）：原文压根
-    没写年份，再问模型一百次它还是只能编，问题不在"没抽对"，而在"这个信息原文里就
-    没有"。所以不重试，直接在这一步用确定性规则纠正。
+    没写完整日期，再问模型一百次它还是只能编，问题不在"没抽对"，而在"这个信息原文里
+    就没有"。所以不重试，直接在这一步用确定性规则纠正。schema description 和 prompt
+    里都已经写了"没写全就返回空数组"，但那只是提示，Bedrock/Claude 系模型不保证遵守，
+    2026-08-19 实测：
 
-    纠正规则：如果模型抽出的年份能在原文里找到（用户确实写了年份），保留原样；
-    找不到就说明是编的，换成当前年份，只留模型抽对的月/日（原文里真实写着的部分）。
-    跟 coords/duration_days 那种"没法用就整条清空"不一样：用户明确写了"2月14日"，
-    只是编年份不对，直接丢掉整条日期反而丢了原文里真实存在的信息。
+      "Singapore trip starting February 14th"       -> dates: ["2026-02-14"]  年份是编的
+      "take me to Universal Studios for a weekend"  -> dates: ["2026-08-20","2026-08-21"]  整条是编的
+      "a trip to Sentosa, 3 days"                   -> dates: []              正确，没日期就不给
+
+    dates 变空之后，后端会退回"开始日期 = 今天"，这才是用户要的默认值。
     """
     if not isinstance(data, dict) or not data.get("dates"):
         return data
 
-    today = date.today()
-    fixed = []
+    kept = []
     for raw_date in data["dates"]:
         if not isinstance(raw_date, str):
             continue
         m = _YEAR_IN_DATE_RE.match(raw_date)
         if not m:
             # 格式本身就不对，留给 schema 校验去拒绝/触发重试，这里不处理
-            fixed.append(raw_date)
+            kept.append(raw_date)
             continue
-        year, month, day = m.group(1), m.group(2), m.group(3)
-        if year in source_text:
-            fixed.append(raw_date)
+        if m.group(1) in source_text:
+            kept.append(raw_date)
             continue
         print(
-            f"[dates] model invented year {year} (not found in source text) for "
-            f"{raw_date} -> replacing with current year {today.year}"
+            f"[dates] dropping {raw_date}: year {m.group(1)} is not written in the source "
+            f"text, so this date is not a date the user actually stated"
         )
-        try:
-            fixed.append(date(today.year, int(month), int(day)).isoformat())
-        except ValueError:
-            # 换成当前年份后日期不合法（比如 2/29 换到非闰年），这条日期没法用，
-            # 宁可丢弃也不留一个换算出来仍然错误的值
-            continue
-    data["dates"] = fixed
+
+    data["dates"] = kept
     return data
 
 
@@ -158,13 +160,14 @@ def parse_and_validate(raw_text: str, source_text: str = "") -> TripExtraction:
     - _null_unusable_duration()：天数超范围是**重试救不回来**的一类错误（文本就写着
       200 天，再问几次还是 200），单独降级成"没抽到天数"，免得一个可选字段把整份
       抽取结果拖去 502。理由详见那个函数的说明。
-    - _fix_invented_dates(..., source_text)：原文没写年份时模型编的年份，换成当前
-      年份。source_text 是原始输入文本（不含重试时附加的 schema 报错），用来判断
-      模型抽出的年份是不是原文真实写着的。理由详见那个函数的说明。
+    - _drop_invented_dates(..., source_text)：只留原文明确写了完整日期（含年份）的那些，
+      其余全部丢掉，让后端退回默认值"今天"。source_text 是原始输入文本（不含重试时
+      附加的 schema 报错），用来判断模型抽出的年份是不是原文真实写着的。理由详见
+      那个函数的说明。
     """
     data = json.loads(raw_text)
     data = _null_unusable_duration(data)
-    data = _fix_invented_dates(data, source_text)
+    data = _drop_invented_dates(data, source_text)
     return TripExtraction.model_validate(data)
 
 

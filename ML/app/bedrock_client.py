@@ -51,6 +51,12 @@ Read the travel blog text and output ONLY a single JSON object that matches
 this JSON Schema exactly. Do not include markdown code fences, explanations,
 or any text other than the JSON object itself.
 
+Only put a date in "dates" when the text spells out the full calendar date
+including the year. Anything less is an empty array: a month/day with no year
+("Feb 14th"), a vague time ("a weekend", "next Friday", "sometime next month"),
+Day 1 / Day 2 labels, or no date at all. Never guess or infer a year — not from
+today's date, and not from your training data.
+
 If the text contains no real destination, place, or attraction at all (e.g. it
 is greetings, small talk, complaints, or content unrelated to travel), output
 "places": [] and "destination": "". Do NOT invent a place or destination just

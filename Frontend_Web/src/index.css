@@ -1606,6 +1606,18 @@ main {
   white-space: nowrap;
 }
 
+/* 这个 input 只负责"持有日期值 + 弹出原生日历"，不负责接收点击 ——
+   点击由外层 .trip-date-modifier 的 onClick 统一处理，它会调 input.showPicker()。
+
+   为什么不让它接点击（这是 2026-08-19 修的坑）：以前这里是 z-index:10 + 铺满整块，
+   想让用户直接点这个透明 input。但 Chrome 只在点到 ::-webkit-calendar-picker-indicator
+   （input 右端那个约 18px 的小图标）时才弹日历，而它正好落在胶囊右侧 16px padding 里、
+   在可见的 📅 emoji 右边 —— 用户点图标等于点在 input 空白处，只是让它获得焦点，
+   opacity:0 又没有任何视觉反馈，表现就是"点了没反应"。
+
+   所以这里给 pointer-events:none，让点击全部落到外层 div 上；同时**必须保持元素处于
+   渲染状态**（用 opacity 而不是 display:none / visibility:hidden），否则 showPicker()
+   会抛 InvalidStateError。 */
 .trip-date-modifier input[type="date"] {
   position: absolute;
   opacity: 0;
@@ -1613,13 +1625,11 @@ main {
   height: 100%;
   left: 0;
   top: 0;
-  cursor: pointer;
-  z-index: 10; /* Ensure it's on top to catch clicks */
+  pointer-events: none;
 }
 
-/* For some browsers, we need to ensure the calendar icon itself triggers the picker */
 .trip-date-modifier .cal-icon {
   font-size: 18px;
-  pointer-events: none; /* Let the click pass through to the hidden input */
+  pointer-events: none; /* 图标只是装饰，点击交给外层 div */
 }
 

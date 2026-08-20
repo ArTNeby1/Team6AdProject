@@ -13,7 +13,7 @@
     "dates": {
       "type": "array",
       "default": [],
-      "description": "Calendar dates explicitly stated in the text, format YYYY-MM-DD. If the text only says Day 1 / Day 2 with no real dates, return an empty array. Never invent a year.",
+      "description": "Only calendar dates the text spells out in full, including the year, format YYYY-MM-DD. Everything else is an empty array: a month/day with no year ('Feb 14th'), a vague time ('a weekend', 'next Friday'), Day 1 / Day 2 labels, or no date at all. Never guess or infer a year.",
       "items": {
         "type": "string",
         "format": "date"
