@@ -30,19 +30,21 @@ export default function AdminEvalPage() {
     return () => { cancelled = true; };
   }, []);
 
+  // P/R/F1 average only over imports we could actually score (a reference was detected);
+  // otherwise unscoreable imports would drag the average toward 0. Groundedness averages over
+  // all imports, since it never needs a reference.
   const averages = useMemo(() => {
     if (records.length === 0) return null;
-    const sum = records.reduce((acc, rec) => ({
-      precision: acc.precision + rec.precision,
-      recall: acc.recall + rec.recall,
-      f1: acc.f1 + rec.f1,
-      groundedness: acc.groundedness + rec.groundedness,
-    }), { precision: 0, recall: 0, f1: 0, groundedness: 0 });
+    const avg = (rows, key) => (rows.length
+      ? rows.reduce((sum, rec) => sum + rec[key], 0) / rows.length
+      : null);
+    const scored = records.filter((rec) => rec.scored);
     return {
-      precision: sum.precision / records.length,
-      recall: sum.recall / records.length,
-      f1: sum.f1 / records.length,
-      groundedness: sum.groundedness / records.length,
+      scoredCount: scored.length,
+      precision: avg(scored, 'precision'),
+      recall: avg(scored, 'recall'),
+      f1: avg(scored, 'f1'),
+      groundedness: avg(records, 'groundedness'),
     };
   }, [records]);
 
@@ -65,6 +67,12 @@ export default function AdminEvalPage() {
               Average across {records.length} import{records.length === 1 ? '' : 's'}
             </h2>
             <ScoreCards source={averages} />
+            {averages && averages.scoredCount < records.length && (
+              <p className="admin-eval-note" style={{ marginTop: 8 }}>
+                Precision / Recall / F1 averaged over {averages.scoredCount} of {records.length} imports
+                where a reference place list could be detected; the rest show N/A. Groundedness covers all.
+              </p>
+            )}
 
             <div className="admin-eval-panel" style={{ marginTop: 20 }}>
               <h2 className="admin-eval-h2">Per-import scores — open one to inspect</h2>
