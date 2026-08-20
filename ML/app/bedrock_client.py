@@ -18,11 +18,15 @@ main.py 其它代码（parse_and_validate / call_with_retry）不用改。
     BEDROCK_ASSUME_ROLE_ARN  跨账号调用时才设，见下方 ASSUME_ROLE_ARN 的说明
 """
 import json
+import logging
 import os
 import sys
+import time
 from pathlib import Path
 
 import boto3
+
+logger = logging.getLogger(__name__)
 
 SCHEMA_DIR = Path(__file__).resolve().parent.parent / "schema"
 sys.path.insert(0, str(SCHEMA_DIR))
@@ -132,14 +136,35 @@ def call_bedrock_model(
     这个，不用各自重复写 boto3 调用代码。model_id 不传就用抽取阶段选定的
     MODEL_ID（Nova Lite），传了就用调用方指定的（比如给推荐阶段单独配一个）。
     """
-    response = _get_client().converse(
-        modelId=model_id or MODEL_ID,
-        system=[{"text": system_prompt}],
-        messages=[{"role": "user", "content": [{"text": user_text}]}],
-        inferenceConfig={
-            "maxTokens": max_tokens,
-            "temperature": 0,
-        },
+    resolved_model_id = model_id or MODEL_ID
+    started = time.monotonic()
+    logger.info("bedrock request start model_id=%s region=%s", resolved_model_id, REGION)
+    try:
+        response = _get_client().converse(
+            modelId=resolved_model_id,
+            system=[{"text": system_prompt}],
+            messages=[{"role": "user", "content": [{"text": user_text}]}],
+            inferenceConfig={
+                "maxTokens": max_tokens,
+                "temperature": 0,
+            },
+        )
+    except Exception:
+        # ECS 上排查 ExpiredToken/跨账号权限问题时，没有这条日志的话只能看到调用方
+        # 收到的 502，不知道底层这次 HTTP 请求到底是超时/权限拒绝还是别的原因。
+        logger.exception(
+            "bedrock request failed model_id=%s region=%s elapsed_ms=%.0f",
+            resolved_model_id, REGION, (time.monotonic() - started) * 1000,
+        )
+        raise
+    meta = response.get("ResponseMetadata", {})
+    logger.info(
+        "bedrock request done model_id=%s region=%s status=%s request_id=%s elapsed_ms=%.0f",
+        resolved_model_id,
+        REGION,
+        meta.get("HTTPStatusCode"),
+        meta.get("RequestId"),
+        (time.monotonic() - started) * 1000,
     )
     return _strip_code_fence(response["output"]["message"]["content"][0]["text"])
 
