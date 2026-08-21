@@ -5,8 +5,8 @@ Quick reference for deployed URLs and demo accounts (restored from the previous 
 ## Admin Web
 
 - **URL:** http://ad-project-frontend-web-dev.s3-website-ap-southeast-1.amazonaws.com/admin
-- **Account:** `admin@loomytrip.local`
-- **Password:** `Admin@12345`
+- **Account:** admin@loomytrip.local
+- **Password:** II9WMLvhiG_uP(iOh!!=
 
 ## Traveler (User)
 
