@@ -17,6 +17,7 @@ Quick reference for deployed URLs and demo accounts (restored from the previous 
 
 Use GitHub Actions to build the CI/CD pipeline and AWS deployment.
 **Scope:** `.github/workflows/...`, `ML/Dockerfile`, `backend/Dockerfile`,AWS terraform deploymengt
+details in `.github/workflows/readme.md`
 
 ## Teammate note (Zheng Chaorui)
 | **DB design** | Initial LoomyTrip schema (users, trips, planning drafts, destinations, transports) plus later migrations for notifications and agent-validation audit logs |
