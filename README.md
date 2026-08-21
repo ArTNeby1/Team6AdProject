@@ -32,3 +32,8 @@ As the core frontend developer, I independently architected and implemented the 
 I worked on the Android Mobile app. **Scope:** `Frontend_Android/mobile/...`
 
 Login/registration and saved login state; AI import, review, place editing, validation and multi-day confirmation; trip viewing/editing/reordering; route map, transport links and Google Maps navigation; profile and import notifications. I also fixed Mobile navigation issues and added Mobile tests, lint/code-scanning follow-up and network settings.
+
+## Teammate note (Mo Yundi)
+| Backend | Route/distance estimation via Google Routes API, Trip CRUD & ownership, favorites/share links, geocoding validation, multi-day AI import support |
+| Web (partial) | Route display & Google Maps navigation links, Profile edit, Edit Itinerary bug fixes, misc UI fixes |
+| Quality | ESLint/SAST fixes, `.env`-based local config, OWASP dependency-check, Chinese code docs for routing/import/dashboard modules |
