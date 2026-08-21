@@ -38,3 +38,8 @@ Login/registration and saved login state; AI import, review, place editing, vali
 As a full-stack developer, I built the Admin Web console end-to-end — admin authentication & RBAC, the read-only user management list, and the LLM extraction-accuracy evaluation dashboard (Precision / Recall / F1 / Groundedness). It spans the React admin frontend, the Spring Boot admin APIs, the Python ML evaluation service, and AWS Secrets Manager for admin credential seeding.
 
 **Scope:** `Frontend_Web/src/admin/...`, backend admin controllers/services, `ML/eval/...`, `terraform/` (admin secret). Details in `Frontend_Web/src/admin/README.md`
+
+## Teammate note (Zhang Mingchang)
+
+Built and owned the ML/AI service end-to-end: text-to-structured-trip extraction (schema design + validation), grounded place recommendations, weather- and geography-aware itinerary ordering, and model selection/evaluation across Bedrock and local providers. Plus smaller integration fixes in Mobile, Web and backend to wire the ML service into the rest of the app.
+Scope: ML/...
