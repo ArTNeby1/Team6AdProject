@@ -43,3 +43,8 @@ As a full-stack developer, I built the Admin Web console end-to-end — admin au
 
 Built and owned the ML/AI service end-to-end: text-to-structured-trip extraction (schema design + validation), grounded place recommendations, weather- and geography-aware itinerary ordering, and model selection/evaluation across Bedrock and local providers. Plus smaller integration fixes in Mobile, Web and backend to wire the ML service into the rest of the app.
 Scope: ML/...
+
+## Teammate note (Mo Yundi)
+| Backend | Route/distance estimation via Google Routes API, Trip CRUD & ownership, favorites/share links, geocoding validation, multi-day AI import support |
+| Web (partial) | Route display & Google Maps navigation links, Profile edit, Edit Itinerary bug fixes, misc UI fixes |
+| Quality | ESLint/SAST fixes, `.env`-based local config, OWASP dependency-check, Chinese code docs for routing/import/dashboard modules |
