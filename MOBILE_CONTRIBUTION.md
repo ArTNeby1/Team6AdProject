@@ -1,4 +1,4 @@
-# LoomyTrip Mobile
+# LoomyTrip Mobile Contribution
 
 This is the Android side of LoomyTrip. It is written in Kotlin with Jetpack Compose.
 

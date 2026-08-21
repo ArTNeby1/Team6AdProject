@@ -26,3 +26,9 @@ details in `.github/workflows/readme.md`
 
 ## Teammate note (Weng Yuhao)
 As the core frontend developer, I independently architected and implemented the user-facing Web application. Details in Frontend_Web/src/readme.md
+
+## Teammate note (Wang Boliang)
+
+I worked on the Android Mobile app. **Scope:** `Frontend_Android/mobile/...`
+
+Login/registration and saved login state; AI import, review, place editing, validation and multi-day confirmation; trip viewing/editing/reordering; route map, transport links and Google Maps navigation; profile and import notifications. I also fixed Mobile navigation issues and added Mobile tests, lint/code-scanning follow-up and network settings.
